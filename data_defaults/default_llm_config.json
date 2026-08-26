@@ -1,0 +1,9 @@
+{
+  "providerName": "OpenRouter / Groq",
+  "baseUrl": "https://api.groq.com/openai/v1",
+  "apiKey": "",
+  "model": "openai/gpt-oss-20b",
+  "temperature": 0.3,
+  "maxTokens": 2048,
+  "useCustomEndpoint": true
+}

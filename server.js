@@ -50,13 +50,27 @@ const MIME_TYPES = {
   '.txt': 'text/plain; charset=utf-8'
 };
 
+const DEFAULT_SCANS_FILE = path.join(__dirname, 'data_defaults', 'default_scans.json');
+const DEFAULT_LLM_FILE = path.join(__dirname, 'data_defaults', 'default_llm_config.json');
+const DEFAULT_USERS_FILE = path.join(__dirname, 'data_defaults', 'default_users.json');
+
 // Global Server-Side Scan Cache Helper
 function getServerScanHistory() {
   try {
     if (fs.existsSync(SCANS_CACHE_FILE)) {
       const data = JSON.parse(fs.readFileSync(SCANS_CACHE_FILE, 'utf-8'));
-      if (Array.isArray(data)) return data;
-      if (data && Array.isArray(data.scans)) return data.scans;
+      if (Array.isArray(data) && data.length > 0) return data;
+      if (data && Array.isArray(data.scans) && data.scans.length > 0) return data.scans;
+    }
+    if (fs.existsSync(DEFAULT_SCANS_FILE)) {
+      const data = JSON.parse(fs.readFileSync(DEFAULT_SCANS_FILE, 'utf-8'));
+      const scans = Array.isArray(data) ? data : (data?.scans || []);
+      if (scans.length > 0) {
+        try {
+          fs.writeFileSync(SCANS_CACHE_FILE, JSON.stringify(scans, null, 2), 'utf-8');
+        } catch (_) {}
+        return scans;
+      }
     }
   } catch (e) {
     console.warn('Note reading server scan history:', e.message);
@@ -67,6 +81,9 @@ function getServerScanHistory() {
 function saveServerScanHistory(scans) {
   try {
     fs.writeFileSync(SCANS_CACHE_FILE, JSON.stringify(scans, null, 2), 'utf-8');
+    if (fs.existsSync(path.dirname(DEFAULT_SCANS_FILE))) {
+      fs.writeFileSync(DEFAULT_SCANS_FILE, JSON.stringify(scans, null, 2), 'utf-8');
+    }
     return true;
   } catch (e) {
     console.error('Error saving server scan history:', e.message);
@@ -80,6 +97,13 @@ function getGlobalLlmConfig() {
     if (fs.existsSync(LLM_CONFIG_FILE)) {
       return JSON.parse(fs.readFileSync(LLM_CONFIG_FILE, 'utf-8'));
     }
+    if (fs.existsSync(DEFAULT_LLM_FILE)) {
+      const data = JSON.parse(fs.readFileSync(DEFAULT_LLM_FILE, 'utf-8'));
+      try {
+        fs.writeFileSync(LLM_CONFIG_FILE, JSON.stringify(data, null, 2), 'utf-8');
+      } catch (_) {}
+      return data;
+    }
   } catch (e) {}
   return null;
 }
@@ -87,6 +111,9 @@ function getGlobalLlmConfig() {
 function saveGlobalLlmConfig(conf) {
   try {
     fs.writeFileSync(LLM_CONFIG_FILE, JSON.stringify(conf, null, 2), 'utf-8');
+    if (fs.existsSync(path.dirname(DEFAULT_LLM_FILE))) {
+      fs.writeFileSync(DEFAULT_LLM_FILE, JSON.stringify(conf, null, 2), 'utf-8');
+    }
   } catch (e) {}
 }
 
@@ -97,8 +124,18 @@ function getGlobalUsersStore() {
   try {
     if (fs.existsSync(USERS_STORE_FILE)) {
       const data = JSON.parse(fs.readFileSync(USERS_STORE_FILE, 'utf-8'));
-      if (Array.isArray(data)) return data;
-      if (data && Array.isArray(data.users)) return data.users;
+      if (Array.isArray(data) && data.length > 0) return data;
+      if (data && Array.isArray(data.users) && data.users.length > 0) return data.users;
+    }
+    if (fs.existsSync(DEFAULT_USERS_FILE)) {
+      const data = JSON.parse(fs.readFileSync(DEFAULT_USERS_FILE, 'utf-8'));
+      const users = Array.isArray(data) ? data : (data?.users || []);
+      if (users.length > 0) {
+        try {
+          fs.writeFileSync(USERS_STORE_FILE, JSON.stringify(users, null, 2), 'utf-8');
+        } catch (_) {}
+        return users;
+      }
     }
   } catch (e) {}
   return null;
@@ -107,6 +144,9 @@ function getGlobalUsersStore() {
 function saveGlobalUsersStore(users) {
   try {
     fs.writeFileSync(USERS_STORE_FILE, JSON.stringify(users, null, 2), 'utf-8');
+    if (fs.existsSync(path.dirname(DEFAULT_USERS_FILE))) {
+      fs.writeFileSync(DEFAULT_USERS_FILE, JSON.stringify(users, null, 2), 'utf-8');
+    }
     return true;
   } catch (e) {
     return false;
@@ -236,6 +276,8 @@ const server = http.createServer(async (req, res) => {
       res.statusCode = 400;
       return res.end(JSON.stringify({ success: false, error: e.message }));
     }
+  }
+
   // 5.5 Users Store Routes
   if (pathname === '/api/users/get-users') {
     res.setHeader('Content-Type', 'application/json');
@@ -253,6 +295,40 @@ const server = http.createServer(async (req, res) => {
       res.setHeader('Content-Type', 'application/json');
       res.statusCode = 200;
       return res.end(JSON.stringify({ success: true, count: users ? users.length : 0 }));
+    } catch (e) {
+      res.setHeader('Content-Type', 'application/json');
+      res.statusCode = 400;
+      return res.end(JSON.stringify({ success: false, error: e.message }));
+    }
+  }
+
+  // 5.6 Full System Backup & Restore Routes
+  if (pathname === '/api/system/export-backup') {
+    const backupData = {
+      version: '1.0.0',
+      exportedAt: new Date().toISOString(),
+      serverConfig: getGlobalServerConfig(),
+      llmConfig: getGlobalLlmConfig(),
+      users: getGlobalUsersStore(),
+      scans: getServerScanHistory()
+    };
+    res.setHeader('Content-Type', 'application/json');
+    res.statusCode = 200;
+    return res.end(JSON.stringify({ success: true, backup: backupData }));
+  }
+
+  if (pathname === '/api/system/import-backup') {
+    try {
+      const data = await parseJsonBody(req);
+      const backup = data.backup || data;
+      if (backup.serverConfig) saveGlobalServerConfig(backup.serverConfig);
+      if (backup.llmConfig) saveGlobalLlmConfig(backup.llmConfig);
+      if (backup.users) saveGlobalUsersStore(backup.users);
+      if (backup.scans) saveServerScanHistory(backup.scans);
+      
+      res.setHeader('Content-Type', 'application/json');
+      res.statusCode = 200;
+      return res.end(JSON.stringify({ success: true, message: 'System snapshot imported and applied successfully' }));
     } catch (e) {
       res.setHeader('Content-Type', 'application/json');
       res.statusCode = 400;

@@ -9,6 +9,7 @@ const activeScans = new Map();
 
 // Persistent Global Strix Server Configuration (Admin configs shared across all users)
 const CONFIG_FILE_PATH = path.resolve(process.cwd(), '.strix_server_config.json');
+const DEFAULT_CONFIG_FILE_PATH = path.resolve(process.cwd(), 'data_defaults/default_strix_config.json');
 
 let globalStrixConfig = {
   host: '',
@@ -38,6 +39,12 @@ try {
   if (fs.existsSync(CONFIG_FILE_PATH)) {
     const data = JSON.parse(fs.readFileSync(CONFIG_FILE_PATH, 'utf-8'));
     globalStrixConfig = { ...globalStrixConfig, ...data };
+  } else if (fs.existsSync(DEFAULT_CONFIG_FILE_PATH)) {
+    const data = JSON.parse(fs.readFileSync(DEFAULT_CONFIG_FILE_PATH, 'utf-8'));
+    globalStrixConfig = { ...globalStrixConfig, ...data };
+    try {
+      fs.writeFileSync(CONFIG_FILE_PATH, JSON.stringify(globalStrixConfig, null, 2), 'utf-8');
+    } catch (_) {}
   }
 } catch (e) {
   console.warn('Note reading saved strix server config:', e.message);
@@ -52,6 +59,9 @@ export function saveGlobalServerConfig(newConfig) {
   globalStrixConfig = { ...globalStrixConfig, ...newConfig };
   try {
     fs.writeFileSync(CONFIG_FILE_PATH, JSON.stringify(globalStrixConfig, null, 2), 'utf-8');
+    if (fs.existsSync(path.dirname(DEFAULT_CONFIG_FILE_PATH))) {
+      fs.writeFileSync(DEFAULT_CONFIG_FILE_PATH, JSON.stringify(globalStrixConfig, null, 2), 'utf-8');
+    }
   } catch (e) {
     console.warn('Note writing strix server config:', e.message);
   }

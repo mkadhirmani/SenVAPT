@@ -69,12 +69,24 @@ function strixBackendPlugin() {
 
       // 1.5. Server Scan History Get & Save Routes (Persisted in .scans_cache.json)
       const SCANS_CACHE_FILE = path.resolve(process.cwd(), '.scans_cache.json');
+      const DEFAULT_SCANS_FILE = path.resolve(process.cwd(), 'data_defaults/default_scans.json');
+      const DEFAULT_LLM_FILE = path.resolve(process.cwd(), 'data_defaults/default_llm_config.json');
+      const DEFAULT_USERS_FILE = path.resolve(process.cwd(), 'data_defaults/default_users.json');
+
       const getServerScanHistory = () => {
         try {
           if (fs.existsSync(SCANS_CACHE_FILE)) {
             const data = JSON.parse(fs.readFileSync(SCANS_CACHE_FILE, 'utf-8'));
-            if (Array.isArray(data)) return data;
-            if (data && Array.isArray(data.scans)) return data.scans;
+            if (Array.isArray(data) && data.length > 0) return data;
+            if (data && Array.isArray(data.scans) && data.scans.length > 0) return data.scans;
+          }
+          if (fs.existsSync(DEFAULT_SCANS_FILE)) {
+            const data = JSON.parse(fs.readFileSync(DEFAULT_SCANS_FILE, 'utf-8'));
+            const scans = Array.isArray(data) ? data : (data?.scans || []);
+            if (scans.length > 0) {
+              try { fs.writeFileSync(SCANS_CACHE_FILE, JSON.stringify(scans, null, 2), 'utf-8'); } catch (_) {}
+              return scans;
+            }
           }
         } catch (e) {}
         return [];
@@ -83,6 +95,9 @@ function strixBackendPlugin() {
       const saveServerScanHistory = (scans) => {
         try {
           fs.writeFileSync(SCANS_CACHE_FILE, JSON.stringify(scans, null, 2), 'utf-8');
+          if (fs.existsSync(path.dirname(DEFAULT_SCANS_FILE))) {
+            fs.writeFileSync(DEFAULT_SCANS_FILE, JSON.stringify(scans, null, 2), 'utf-8');
+          }
           return true;
         } catch (e) {
           return false;
@@ -193,7 +208,17 @@ function strixBackendPlugin() {
       const getGlobalUsers = () => {
         try {
           if (fs.existsSync(USERS_STORE_FILE)) {
-            return JSON.parse(fs.readFileSync(USERS_STORE_FILE, 'utf-8'));
+            const data = JSON.parse(fs.readFileSync(USERS_STORE_FILE, 'utf-8'));
+            if (Array.isArray(data) && data.length > 0) return data;
+            if (data && Array.isArray(data.users) && data.users.length > 0) return data.users;
+          }
+          if (fs.existsSync(DEFAULT_USERS_FILE)) {
+            const data = JSON.parse(fs.readFileSync(DEFAULT_USERS_FILE, 'utf-8'));
+            const users = Array.isArray(data) ? data : (data?.users || []);
+            if (users.length > 0) {
+              try { fs.writeFileSync(USERS_STORE_FILE, JSON.stringify(users, null, 2), 'utf-8'); } catch (_) {}
+              return users;
+            }
           }
         } catch (e) {}
         return null;
@@ -202,6 +227,9 @@ function strixBackendPlugin() {
       const saveGlobalUsers = (users) => {
         try {
           fs.writeFileSync(USERS_STORE_FILE, JSON.stringify(users, null, 2), 'utf-8');
+          if (fs.existsSync(path.dirname(DEFAULT_USERS_FILE))) {
+            fs.writeFileSync(DEFAULT_USERS_FILE, JSON.stringify(users, null, 2), 'utf-8');
+          }
         } catch (e) {}
       };
 
@@ -226,6 +254,46 @@ function strixBackendPlugin() {
             res.setHeader('Content-Type', 'application/json');
             res.statusCode = 200;
             res.end(JSON.stringify({ success: true, count: users ? users.length : 0 }));
+          } catch (e) {
+            res.setHeader('Content-Type', 'application/json');
+            res.statusCode = 400;
+            res.end(JSON.stringify({ success: false, error: e.message }));
+          }
+        });
+      });
+
+      // 3.6 Full System Backup & Restore Routes
+      server.middlewares.use('/api/system/export-backup', (req, res) => {
+        const backupData = {
+          version: '1.0.0',
+          exportedAt: new Date().toISOString(),
+          serverConfig: getGlobalServerConfig(),
+          llmConfig: getGlobalLlmConfig(),
+          users: getGlobalUsers(),
+          scans: getServerScanHistory()
+        };
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.setHeader('Content-Type', 'application/json');
+        res.statusCode = 200;
+        res.end(JSON.stringify({ success: true, backup: backupData }));
+      });
+
+      server.middlewares.use('/api/system/import-backup', (req, res) => {
+        let body = '';
+        req.on('data', chunk => { body += chunk; });
+        req.on('end', () => {
+          try {
+            const data = JSON.parse(body || '{}');
+            const backup = data.backup || data;
+            if (backup.serverConfig) saveGlobalServerConfig(backup.serverConfig);
+            if (backup.llmConfig) saveGlobalLlmConfig(backup.llmConfig);
+            if (backup.users) saveGlobalUsers(backup.users);
+            if (backup.scans) saveServerScanHistory(backup.scans);
+            
+            res.setHeader('Access-Control-Allow-Origin', '*');
+            res.setHeader('Content-Type', 'application/json');
+            res.statusCode = 200;
+            res.end(JSON.stringify({ success: true, message: 'System snapshot imported and applied successfully' }));
           } catch (e) {
             res.setHeader('Content-Type', 'application/json');
             res.statusCode = 400;

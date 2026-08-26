@@ -525,21 +525,27 @@ export async function syncScanHistoryWithServer() {
     const res = await fetch('/api/scans/get-history');
     if (res.ok) {
       const data = await res.json();
-      if (data.success && Array.isArray(data.scans) && data.scans.length > 0) {
-        const local = getStoredScanHistory();
-        const scanMap = new Map();
-        
-        for (const s of data.scans) {
+      const local = getStoredScanHistory();
+      const serverScans = (data && data.success && Array.isArray(data.scans)) ? data.scans : [];
+
+      const scanMap = new Map();
+      for (const s of serverScans) {
+        if (s && s.id) scanMap.set(s.id, s);
+      }
+      for (const s of local) {
+        if (s && s.id && !scanMap.has(s.id)) {
           scanMap.set(s.id, s);
         }
-        for (const s of local) {
-          if (!scanMap.has(s.id)) {
-            scanMap.set(s.id, s);
-          }
-        }
-        
-        const merged = Array.from(scanMap.values());
+      }
+
+      const merged = Array.from(scanMap.values());
+      if (merged.length > 0) {
         localStorage.setItem('sennovate_scan_history', JSON.stringify(merged));
+        
+        // If local had scans that the server was missing, upload back to server
+        if (merged.length > serverScans.length) {
+          saveScanHistory(merged);
+        }
         return merged;
       }
     }

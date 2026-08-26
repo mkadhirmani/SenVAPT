@@ -28,7 +28,10 @@ import {
   Shield,
   FileText,
   AlertTriangle,
-  ChevronRight
+  ChevronRight,
+  Download,
+  Upload,
+  Database
 } from 'lucide-react';
 import { 
   getUsersList, 
@@ -155,7 +158,74 @@ export default function AdminUserManagement({
           </p>
         </div>
 
-        <div className="flex items-center gap-3 flex-shrink-0">
+        <div className="flex items-center gap-2.5 flex-wrap flex-shrink-0">
+          {/* Export System Backup Button */}
+          <button
+            onClick={async () => {
+              try {
+                const res = await fetch('/api/system/export-backup');
+                if (res.ok) {
+                  const data = await res.json();
+                  const blob = new Blob([JSON.stringify(data.backup || data, null, 2)], { type: 'application/json' });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = `Sennovate_VAPT_System_Backup_${new Date().toISOString().slice(0, 10)}.json`;
+                  a.click();
+                  URL.revokeObjectURL(url);
+                  showFeedback('System Snapshot Backup Downloaded Successfully!');
+                }
+              } catch (e) {
+                showFeedback(`Backup Export Failed: ${e.message}`);
+              }
+            }}
+            className={`flex items-center justify-center gap-1.5 px-3.5 h-10 rounded-xl border text-xs font-mono font-bold transition-all cursor-pointer ${
+              theme === 'dark' 
+                ? 'bg-[#0E172B] hover:bg-[#152342] text-slate-300 border-slate-700' 
+                : 'bg-slate-100 hover:bg-slate-200 text-slate-800 border-slate-300'
+            }`}
+            title="Download full backup of all users, scans, and configurations"
+          >
+            <Download className="w-3.5 h-3.5 text-cyan-400" />
+            <span>Export Backup</span>
+          </button>
+
+          {/* Import / Restore System Backup Button */}
+          <label className={`flex items-center justify-center gap-1.5 px-3.5 h-10 rounded-xl border text-xs font-mono font-bold transition-all cursor-pointer ${
+            theme === 'dark' 
+              ? 'bg-[#0E172B] hover:bg-[#152342] text-slate-300 border-slate-700' 
+              : 'bg-slate-100 hover:bg-slate-200 text-slate-800 border-slate-300'
+          }`}>
+            <Upload className="w-3.5 h-3.5 text-cyan-400" />
+            <span>Restore Backup</span>
+            <input
+              type="file"
+              accept=".json"
+              className="hidden"
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                try {
+                  const text = await file.text();
+                  const json = JSON.parse(text);
+                  const res = await fetch('/api/system/import-backup', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(json)
+                  });
+                  if (res.ok) {
+                    showFeedback('System Snapshot Restored! Refreshing data...');
+                    setTimeout(() => window.location.reload(), 1200);
+                  } else {
+                    throw new Error('Import API failed');
+                  }
+                } catch (err) {
+                  showFeedback(`Import Failed: ${err.message}`);
+                }
+              }}
+            />
+          </label>
+
           <button
             onClick={() => setIsAddUserOpen(true)}
             className="flex items-center justify-center gap-2 px-4 h-10 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 text-xs font-bold font-sans transition-all shadow-md cursor-pointer"
