@@ -1,0 +1,50 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply font-sans;
+  }
+}
+
+/* Custom Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.dark ::-webkit-scrollbar-track {
+  background: #0B0F19;
+}
+.dark ::-webkit-scrollbar-thumb {
+  background: #1E293B;
+  border-radius: 4px;
+}
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: #334155;
+}
+
+::-webkit-scrollbar-track {
+  background: #F1F5F9;
+}
+::-webkit-scrollbar-thumb {
+  background: #CBD5E1;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94A3B8;
+}
+
+/* PDF Print styles */
+@media print {
+  body {
+    background: #ffffff !important;
+    color: #0f172a !important;
+  }
+  .no-print {
+    display: none !important;
+  }
+  .page-break {
+    page-break-before: always;
+  }
+}
