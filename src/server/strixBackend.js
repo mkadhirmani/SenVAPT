@@ -891,12 +891,25 @@ function resolveStrixOutputFolderFromExtract(extractDir, minStartTimeMs = 0, tar
             if (runJson.start_time) startTimeMs = Date.parse(runJson.start_time) || 0;
             if (runJson.end_time) endTimeMs = Date.parse(runJson.end_time) || 0;
             if (runJson.status && runJson.status !== 'running') isFinalized = true;
+            if (runJson.end_time || runJson.duration) isFinalized = true;
           }
           const reportPath = path.join(dir, 'penetration_test_report.md');
           if (fs.existsSync(reportPath)) {
             const reportStat = fs.statSync(reportPath);
-            if (reportStat.size > 200) isFinalized = true;
+            if (reportStat.size > 50) isFinalized = true;
             if (!startTimeMs && reportStat.mtimeMs) startTimeMs = reportStat.mtimeMs;
+          }
+          const sarifPath = path.join(dir, 'findings.sarif');
+          if (fs.existsSync(sarifPath) && fs.statSync(sarifPath).size > 50) {
+            isFinalized = true;
+          }
+          const csvPath = path.join(dir, 'vulnerabilities.csv');
+          if (fs.existsSync(csvPath) && fs.statSync(csvPath).size > 20) {
+            isFinalized = true;
+          }
+          const vulnsDir = path.join(dir, 'vulnerabilities');
+          if (fs.existsSync(vulnsDir) && fs.readdirSync(vulnsDir).length > 0) {
+            isFinalized = true;
           }
         } catch (_) {}
 
@@ -943,7 +956,22 @@ function resolveStrixOutputFolderFromExtract(extractDir, minStartTimeMs = 0, tar
     });
 
     if (freshCandidates.length === 0) {
-      // No fresh scan directory exists yet in the archive -> Still scanning!
+      // If no fresh scan directory found yet, check if ANY candidate matches the target domain
+      const anyDomainMatch = candidateDirs.filter(c => c.targetMatch);
+      if (anyDomainMatch.length > 0) {
+        anyDomainMatch.sort((a, b) => Math.max(b.startTimeMs, b.mtime) - Math.max(a.startTimeMs, a.mtime));
+        const latest = anyDomainMatch[0];
+        if (latest.isFinalized || latest.fileCount >= 3) {
+          return { 
+            bestDir: latest.dir, 
+            folderName: latest.name, 
+            isScanning: false, 
+            inProgress: false, 
+            freshFound: true 
+          };
+        }
+      }
+
       return { 
         bestDir: null, 
         folderName: null, 
@@ -958,8 +986,8 @@ function resolveStrixOutputFolderFromExtract(extractDir, minStartTimeMs = 0, tar
     freshCandidates.sort((a, b) => Math.max(b.startTimeMs, b.mtime) - Math.max(a.startTimeMs, a.mtime));
     const newestFresh = freshCandidates[0];
 
-    // Check if the newest fresh run has finalized
-    if (!newestFresh.isFinalized && scanLogIndicatesActive) {
+    // Check if the newest fresh run has finalized or has findings files ready
+    if (!newestFresh.isFinalized && scanLogIndicatesActive && newestFresh.fileCount < 3) {
       return {
         bestDir: null,
         folderName: newestFresh.name,

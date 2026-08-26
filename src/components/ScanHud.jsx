@@ -786,11 +786,11 @@ export default function ScanHud({
               requireFresh: true
             });
 
-            // If the server scan is still running or findings are not ready yet, continue active scanning
-            if (results.inProgress || results.isScanning || !results.vulnerabilities || results.vulnerabilities.length === 0) {
+            // If the server scan is still running or results are not finalized yet, continue polling
+            if (results && (results.inProgress === true || results.isScanning === true || !results.folderName)) {
               if (pollAttempts % 2 === 0) {
-                const elapsedMin = Math.floor(pollAttempts * 12 / 60);
-                const elapsedSec = (pollAttempts * 12) % 60;
+                const elapsedMin = Math.floor(pollAttempts * 7 / 60);
+                const elapsedSec = (pollAttempts * 7) % 60;
                 appendLog(`[SERVER AUDITING] Strix AI engine is actively testing ${cleanDomain}... (Elapsed: ${elapsedMin > 0 ? `${elapsedMin}m ` : ''}${elapsedSec}s)`);
               }
               return;
@@ -876,7 +876,7 @@ export default function ScanHud({
               appendLog(`[STATUS] Audit in progress on remote server (Polling server for results...)`);
             }
           }
-        }, 12000);
+        }, 7000);
 
       } catch (triggerErr) {
         if (elapsedTimerRef.current) clearInterval(elapsedTimerRef.current);
@@ -1365,7 +1365,7 @@ export default function ScanHud({
         <div className={`flex flex-wrap items-center justify-between gap-4 pt-2 border-t ${
           theme === 'dark' ? 'border-slate-800' : 'border-slate-200'
         }`}>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
             <button
               onClick={handleStartRealScan}
               disabled={isScanning || !targetUrl.trim()}
@@ -1383,6 +1383,19 @@ export default function ScanHud({
                 </>
               )}
             </button>
+
+            {/* Stop Scan Button (Available to both Admin and User during active scan) */}
+            {isScanning && (
+              <button
+                type="button"
+                onClick={handleStopScan}
+                className="flex items-center gap-2 px-5 h-11 rounded-xl bg-gradient-to-r from-rose-600 to-red-700 hover:from-rose-500 hover:to-red-600 text-white font-bold text-xs font-sans shadow-lg cursor-pointer transition-all animate-pulse"
+                title="Stop and abort the running security scan"
+              >
+                <Square className="w-4 h-4 fill-current text-white" />
+                <span>Stop Scan</span>
+              </button>
+            )}
 
             {/* View Dashboard Button */}
             <button
@@ -1767,6 +1780,17 @@ export default function ScanHud({
               </div>
 
               <div className="flex items-center gap-4 flex-shrink-0">
+                {isScanning && (
+                  <button
+                    type="button"
+                    onClick={handleStopScan}
+                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-gradient-to-r from-rose-600 to-red-700 hover:from-rose-500 hover:to-red-600 text-white font-bold text-xs font-sans shadow-md transition-all cursor-pointer"
+                    title="Stop and abort the running security assessment"
+                  >
+                    <Square className="w-3.5 h-3.5 fill-current text-white" />
+                    <span>Stop Scan</span>
+                  </button>
+                )}
                 <div className="text-right">
                   <div className={`text-2xl sm:text-3xl font-black font-mono ${
                     scanError ? 'text-rose-500' : 'text-cyan-400'
