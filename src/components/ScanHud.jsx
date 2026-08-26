@@ -871,6 +871,13 @@ export default function ScanHud({
             setIsScanning(false);
             setScanFinished(true);
             refreshLocalFolders();
+
+            // Intimate scan completion and immediately display findings on dashboard
+            if (onViewFindings) {
+              setTimeout(() => {
+                onViewFindings();
+              }, 600);
+            }
           } catch (pollErr) {
             if (pollAttempts % 3 === 0) {
               appendLog(`[STATUS] Audit in progress on remote server (Polling server for results...)`);

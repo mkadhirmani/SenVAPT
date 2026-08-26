@@ -1239,6 +1239,7 @@ export async function fetchN8nScanResultsProxy(payload) {
     }
 
     // Binary ZIP Archive Handling: Save ZIP exclusively to downloaded_scans in server workspace
+    const isZip = buffer.length > 4 && buffer[0] === 0x50 && buffer[1] === 0x4B;
     const zipName = `${norm.folderName}-scan.zip`;
     const targetDir = path.join(process.cwd(), 'downloaded_scans');
     if (!fs.existsSync(targetDir)) fs.mkdirSync(targetDir, { recursive: true });
