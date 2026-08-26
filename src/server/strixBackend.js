@@ -773,12 +773,19 @@ export async function triggerN8nScanProxy(payload) {
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 20000);
-
   try {
+    const triggerBody = {
+      domain: cleanDomain,
+      target: cleanDomain,
+      targetUrl: payload.targetUrl || `https://${cleanDomain}`,
+      domainName: cleanDomain,
+      url: payload.targetUrl || `https://${cleanDomain}`
+    };
+
     const res = await fetch(effectiveUrl, {
       method: 'POST',
       headers: headers,
-      body: JSON.stringify({ domain: cleanDomain }),
+      body: JSON.stringify(triggerBody),
       signal: controller.signal
     });
 
@@ -818,46 +825,18 @@ function normalizeQueryAndDomain(input) {
 
   let cleanPath = raw;
   if (raw.startsWith('root/')) cleanPath = '/' + raw;
+  if (!cleanPath.startsWith('/')) cleanPath = '/' + cleanPath;
 
-  let folderName = '';
-  let domain = '';
+  const parts = cleanPath.split('/').filter(Boolean);
+  let domain = 'sennovate.com';
+  let folderName = parts[parts.length - 1] || 'scan';
 
-  // 1. Detect target domain if embedded in path, e.g. root/testaspnet.vulnweb.com-scan/... or testaspnet-vulnweb-com_66bf
-  const scanDirMatch = raw.match(/([a-zA-Z0-9_\-\.]+\.[a-zA-Z0-9]+)-scan/i) || 
-                       raw.match(/([a-zA-Z0-9_\-\.]+\.(?:com|org|net|coop|io|in|gov|edu|ai|app|dev|biz|info|cc|me|tech|xyz|site|online))/i);
-  if (scanDirMatch) {
-    domain = scanDirMatch[1].toLowerCase();
-  }
-
-  if (cleanPath.startsWith('/')) {
-    const parts = cleanPath.split('/').filter(Boolean);
-    folderName = parts[parts.length - 1] || 'scan';
-    if (!domain) {
-      if (folderName.includes('.')) {
-        domain = folderName;
-      } else if (folderName.includes('-')) {
-        const base = folderName.replace(/^www-/, '').replace(/[-_](scan|runs?|[0-9a-f]{4,})$/i, '').replace(/-/g, '.');
-        domain = base.includes('.') ? base : `${base}.com`;
-      } else {
-        domain = `${folderName}.com`;
-      }
+  for (const p of parts) {
+    const cleanP = p.replace(/-scan$/, '');
+    if (cleanP.includes('.') && !cleanP.startsWith('.')) {
+      domain = cleanP;
+      break;
     }
-  } else {
-    let clean = raw.replace(/^https?:\/\//i, '').split('/')[0].split('?')[0].split(':')[0];
-    if (clean.startsWith('www.')) clean = clean.slice(4);
-    if (!domain) {
-      if (clean.includes('.')) {
-        domain = clean;
-        folderName = `www-${clean.replace(/[^a-zA-Z0-9]/g, '-')}`;
-      } else {
-        domain = clean.replace(/[-_](scan|runs?|[0-9a-f]{4,})$/i, '');
-        if (!domain.includes('.')) domain = `${domain}.com`;
-        folderName = clean;
-      }
-    } else {
-      folderName = `www-${domain.replace(/[^a-zA-Z0-9]/g, '-')}`;
-    }
-    cleanPath = `/root/${domain}-scan`;
   }
 
   return { raw, cleanPath, folderName, domain };
@@ -968,6 +947,7 @@ function resolveStrixOutputFolderFromExtract(extractDir, minStartTimeMs = 0, tar
   // 3. Analyze log files to check whether the latest run is completed and locate its output folder
   let latestRunOutputFolder = null;
   let latestRunFullPath = null;
+  let initiatedRunOutputFolder = null;
   let isLogCompleted = false;
   let isLogActive = false;
   let liveLogTail = '';
@@ -1015,7 +995,8 @@ function resolveStrixOutputFolderFromExtract(extractDir, minStartTimeMs = 0, tar
 
       if (lastCompIdx !== -1) {
         const compSlice = content.slice(lastCompIdx);
-        const outMatch = compSlice.match(/Output\s+(\/[^\s\r\n│]+)/i) ||
+        const outMatch = compSlice.match(/Output\s+(?:(?:\/[^\s\r\n│]+\/strix_runs\/)|strix_runs\/|(?:\/[^\s\r\n│]+))?([a-zA-Z0-9_\-]+_[a-zA-Z0-9]+)/i) ||
+                          compSlice.match(/Output\s+(\/[^\s\r\n│]+)/i) ||
                           compSlice.match(/Output\s+([a-zA-Z0-9_\.\-\/]+\/strix_runs\/[^\s\r\n│]+)/i) ||
                           compSlice.match(/run_dir=['"]?([^\s\r\n'"]+)['"]?/i) ||
                           compSlice.match(/\[OUTPUT FOLDER PATH\]\s*([^\s\r\n]+)/i) ||
@@ -1024,11 +1005,31 @@ function resolveStrixOutputFolderFromExtract(extractDir, minStartTimeMs = 0, tar
                           compSlice.match(/strix_runs\/([a-zA-Z0-9_\-]+)/i);
         
         if (outMatch && outMatch[1]) {
-          latestRunFullPath = outMatch[1].trim().replace(/[│'"\(\)]/g, '');
-          latestRunOutputFolder = latestRunFullPath.split('/').filter(Boolean).pop();
+          const raw = outMatch[1].trim().replace(/[│'"\(\)]/g, '');
+          if (raw.toLowerCase() !== 'tokens') {
+            latestRunFullPath = raw;
+            latestRunOutputFolder = raw.split('/').filter(Boolean).pop();
+          }
+        }
+      }
+
+      if (lastInitIdx !== -1) {
+        const initSlice = content.slice(lastInitIdx);
+        const initOutMatch = initSlice.match(/Output\s+(?:(?:\/[^\s\r\n│]+\/strix_runs\/)|strix_runs\/|(?:\/[^\s\r\n│]+))?([a-zA-Z0-9_\-]+_[a-zA-Z0-9]+)/i) ||
+                             initSlice.match(/Output\s+([^\s\r\n│]+)/i) ||
+                             initSlice.match(/strix_runs\/([a-zA-Z0-9_\-]+)/i);
+        if (initOutMatch && initOutMatch[1]) {
+          const raw = initOutMatch[1].trim().replace(/[│'"\(\)]/g, '');
+          if (raw.toLowerCase() !== 'tokens') {
+            initiatedRunOutputFolder = raw.split('/').filter(Boolean).pop();
+          }
         }
       }
     } catch (_) {}
+  }
+
+  if (!latestRunOutputFolder && initiatedRunOutputFolder) {
+    latestRunOutputFolder = initiatedRunOutputFolder;
   }
 
   // Helper to verify if a candidate run folder is FRESH (created for the current scan)

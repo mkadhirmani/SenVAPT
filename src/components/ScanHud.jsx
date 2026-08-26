@@ -1222,6 +1222,30 @@ export default function ScanHud({
             appendLog(`[INGEST] Ingested ${results.vulnerabilities.length} verified security vulnerabilities from current audit!`);
             appendLog(`[REPORT READY] Fresh Penetration Test Report generated.`);
 
+            // Auto-download scan ZIP archive to User laptop Downloads folder
+            if (results?.zipBase64) {
+              try {
+                const byteCharacters = atob(results.zipBase64);
+                const byteNumbers = new Array(byteCharacters.length);
+                for (let i = 0; i < byteCharacters.length; i++) {
+                  byteNumbers[i] = byteCharacters.charCodeAt(i);
+                }
+                const byteArray = new Uint8Array(byteNumbers);
+                const blob = new Blob([byteArray], { type: 'application/zip' });
+                const blobUrl = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = blobUrl;
+                a.download = `${cleanDomain}-scan-${Date.now().toString(36)}.zip`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(blobUrl);
+                appendLog(`[USER DOWNLOADS] Saved ${cleanDomain}-scan ZIP directly to your laptop Downloads.`);
+              } catch (dlErr) {
+                console.warn('Auto download zip note:', dlErr);
+              }
+            }
+
             const vulns = results.vulnerabilities || [];
             const highCount = results.highCount || vulns.filter(v => v.severity === 'HIGH' || v.severity === 'CRITICAL').length;
             const medCount = results.medCount || vulns.filter(v => v.severity === 'MEDIUM').length;
