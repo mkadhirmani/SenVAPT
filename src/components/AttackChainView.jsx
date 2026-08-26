@@ -21,9 +21,9 @@ import { ATTACK_CHAIN, VULNERABILITIES } from '../data/scanData';
 export default function AttackChainView({ 
   onSelectVuln, 
   activeScan,
-  companyName = "Vontier Corporation",
-  targetUrl = "https://www.vontier.com/",
-  vulnerabilities = VULNERABILITIES,
+  companyName = "",
+  targetUrl = "",
+  vulnerabilities = [],
   scanHistory = [],
   activeScanId = '',
   onSelectScan,

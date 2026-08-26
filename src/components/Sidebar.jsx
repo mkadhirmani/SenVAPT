@@ -40,11 +40,11 @@ export default function Sidebar({
   onOpenDataLoader,
   onOpenLlmSettings,
   onOpenStrixSettings,
-  vulnerabilitiesCount = 7,
-  scanHistoryCount = 2,
-  companyName = "Vontier Corporation",
-  targetUrl = "https://www.vontier.com/",
-  riskLevel = "ELEVATED"
+  vulnerabilitiesCount = 0,
+  scanHistoryCount = 0,
+  companyName = "",
+  targetUrl = "",
+  riskLevel = ""
 }) {
   const [strixConfig, setStrixConfig] = useState(() => getStrixServerConfig());
   const isAdmin = currentUser?.role === 'admin';
@@ -81,23 +81,29 @@ export default function Sidebar({
           <Logo theme={theme} size="md" />
         </div>
 
-        {/* Dynamic Company & Target Status Pill */}
-        <div className={`p-2.5 rounded-xl border flex flex-col gap-1 text-[11px] font-mono ${
-          theme === 'dark' ? 'bg-[#0D1527] border-slate-800' : 'bg-slate-50 border-slate-300'
-        }`}>
-          <div className="flex items-center justify-between">
-            <span className={`font-bold truncate text-xs ${theme === 'dark' ? 'text-slate-100' : 'text-slate-900'}`}>
-              {companyName}
-            </span>
-            <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-rose-500/20 text-rose-600 dark:text-rose-400 border border-rose-500/30">
-              {riskLevel}
-            </span>
+        {/* Dynamic Company & Target Status Pill (Only when target exists) */}
+        {(companyName || targetUrl) && (
+          <div className={`p-2.5 rounded-xl border flex flex-col gap-1 text-[11px] font-mono ${
+            theme === 'dark' ? 'bg-[#0D1527] border-slate-800' : 'bg-slate-50 border-slate-300'
+          }`}>
+            <div className="flex items-center justify-between">
+              <span className={`font-bold truncate text-xs ${theme === 'dark' ? 'text-slate-100' : 'text-slate-900'}`}>
+                {companyName || 'Active Target'}
+              </span>
+              {riskLevel && riskLevel !== 'NONE' && (
+                <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-rose-500/20 text-rose-600 dark:text-rose-400 border border-rose-500/30">
+                  {riskLevel}
+                </span>
+              )}
+            </div>
+            {targetUrl && (
+              <div className="flex items-center gap-1.5 text-slate-500 truncate text-[10px] font-semibold">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse flex-shrink-0"></span>
+                <span className="truncate">{targetUrl.replace(/^https?:\/\//, '').replace(/\/$/, '')}</span>
+              </div>
+            )}
           </div>
-          <div className="flex items-center gap-1.5 text-slate-500 truncate text-[10px] font-semibold">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse flex-shrink-0"></span>
-            <span className="truncate">{targetUrl.replace('https://', '').replace('/', '')}</span>
-          </div>
-        </div>
+        )}
       </div>
 
       {/* Navigation Links */}

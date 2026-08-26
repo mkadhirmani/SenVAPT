@@ -52,17 +52,15 @@ export default function ScanHud({
   onOpenStrixSettings,
   theme = 'dark' 
 }) {
-  const currentTarget = activeScan || scanHistory.find(s => s.id === activeScanId) || scanHistory[0] || {};
-  const isEmco = currentTarget.id?.includes('emcochem') || currentTarget.targetUrl?.includes('emcochem');
-  const isSmeco = currentTarget.id?.includes('smeco') || currentTarget.targetUrl?.includes('smeco');
+  const currentTarget = activeScan || scanHistory.find(s => s.id === activeScanId) || {};
 
   const targetUrl = scannerState?.targetUrl !== undefined 
     ? scannerState.targetUrl 
-    : (currentTarget.targetUrl || 'https://www.emcochem.com/');
+    : (currentTarget.targetUrl || '');
 
   const companyName = scannerState?.companyName !== undefined 
     ? scannerState.companyName 
-    : (currentTarget.companyName || 'Emcochem Inc');
+    : (currentTarget.companyName || '');
 
   const logs = scannerState?.logs ?? [];
   const scanStats = scannerState?.scanStats ?? {
@@ -146,8 +144,8 @@ export default function ScanHud({
     if (currentTarget.id && currentTarget.id !== lastActiveScanIdRef.current) {
       lastActiveScanIdRef.current = currentTarget.id;
       updateScannerState({
-        targetUrl: currentTarget.targetUrl || 'https://www.emcochem.com/',
-        companyName: currentTarget.companyName || 'Emcochem Inc'
+        targetUrl: currentTarget.targetUrl || '',
+        companyName: currentTarget.companyName || ''
       });
     }
   }, [currentTarget.id, currentTarget.targetUrl, currentTarget.companyName, isScanning, scannerState?.scanFinished]);
@@ -1297,7 +1295,7 @@ export default function ScanHud({
               value={targetUrl}
               onChange={handleTargetUrlChange}
               disabled={isScanning}
-              placeholder="https://example.com/ or https://your-app.com/"
+              placeholder="Enter target URL (e.g. https://your-domain.com)"
               className={`w-full px-4 py-2.5 rounded-xl font-mono text-xs focus:outline-none transition-all ${
                 theme === 'dark'
                   ? 'bg-[#080E1C] border border-slate-700 text-white placeholder-slate-500 focus:border-cyan-400'
@@ -1319,7 +1317,7 @@ export default function ScanHud({
               value={companyName}
               onChange={(e) => setCompanyName(e.target.value)}
               disabled={isScanning}
-              placeholder="e.g. Smeco Inc, Vontier Corporation, Acme Corp"
+              placeholder="Enter organization or target name"
               className={`w-full px-4 py-2.5 rounded-xl font-mono text-xs focus:outline-none transition-all ${
                 theme === 'dark'
                   ? 'bg-[#080E1C] border border-slate-700 text-white placeholder-slate-500 focus:border-cyan-400'
@@ -1651,7 +1649,7 @@ export default function ScanHud({
                   type="text"
                   value={customFolderInput || (effectiveOutputFolder || '')}
                   onChange={(e) => setCustomFolderInput(e.target.value)}
-                  placeholder="e.g. www-emcochem-com_406f or ~/Downloads/..."
+                  placeholder="Enter scan folder name or path..."
                   className={`flex-1 min-w-[200px] px-3 py-2 rounded-xl text-xs font-mono focus:outline-none transition-all ${
                     theme === 'dark'
                       ? 'bg-[#040813] border border-slate-700 text-cyan-300 placeholder-slate-500 focus:border-cyan-400'
@@ -1923,7 +1921,7 @@ export default function ScanHud({
                   type="text"
                   value={customFolderInput || (effectiveOutputFolder || '')}
                   onChange={(e) => setCustomFolderInput(e.target.value)}
-                  placeholder="e.g. www-emcochem-com_406f or ~/Downloads/..."
+                  placeholder="Enter scan folder name or path..."
                   className={`flex-1 min-w-[200px] px-3 py-2 rounded-xl text-xs font-mono focus:outline-none transition-all ${
                     theme === 'dark'
                       ? 'bg-[#040813] border border-slate-700 text-cyan-300 placeholder-slate-500 focus:border-cyan-400'

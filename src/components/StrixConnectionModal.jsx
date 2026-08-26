@@ -36,7 +36,7 @@ export default function StrixConnectionModal({ isOpen, onClose, onConnected, the
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState(null);
   const [saveSuccess, setSaveSuccess] = useState(false);
-  const [fetchTestDomain, setFetchTestDomain] = useState('sennovate.com');
+  const [fetchTestDomain, setFetchTestDomain] = useState('');
   const [testingFetch, setTestingFetch] = useState(false);
   const [fetchTestResult, setFetchTestResult] = useState(null);
 
@@ -59,10 +59,11 @@ export default function StrixConnectionModal({ isOpen, onClose, onConnected, the
 
     if (activeTab === 'n8n') {
       try {
+        const testDom = fetchTestDomain.trim() || config.domain || 'test-target.com';
         const effCred = config.n8nCredential || (config.n8nUsername && config.n8nPassword ? `${config.n8nUsername}:${config.n8nPassword}` : (config.n8nUsername || config.n8nPassword || ''));
         const result = await triggerN8nScan({
           webhookUrl: config.n8nWebhookUrl,
-          domain: 'smeco.coop',
+          domain: testDom,
           authType: config.n8nAuthType || 'basic',
           credential: effCred,
           username: config.n8nUsername,
@@ -71,7 +72,7 @@ export default function StrixConnectionModal({ isOpen, onClose, onConnected, the
         });
         setTestResult({
           success: true,
-          message: `Successfully connected to n8n Webhook! Trigger verified for domain: smeco.coop.`
+          message: `Successfully connected to n8n Webhook! Trigger verified for domain: ${testDom}.`
         });
       } catch (err) {
         setTestResult({

@@ -149,36 +149,24 @@ export default function App() {
       const saved = sessionStorage.getItem('sennovate_persistent_scanner_state');
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (parsed && parsed.targetUrl) return parsed;
+        if (parsed && typeof parsed === 'object') return parsed;
       }
     } catch (e) {}
 
-    const history = getStoredScanHistory();
-    const latest = history[0] || INITIAL_SCAN_HISTORY[0];
-    const folder = latest?.outputFolderPath || latest?.metadata?.remoteRunDir || '';
-
     return {
-      targetUrl: latest?.targetUrl || 'https://www.smeco.coop/',
-      companyName: latest?.companyName || 'Smeco Inc',
-      logs: [
-        `[INIT] Remote SSH Server Connected: root@127.0.0.1`,
-        `[TARGET] ${latest?.targetUrl || 'https://www.smeco.coop/'} (${latest?.companyName || 'Smeco Inc'})`,
-        `[ENGINE] Autonomous AI Penetration Testing Engine (OWASP WSTG v4.2)`,
-        `[RECON] Discovered active endpoints and API gateways`,
-        `[STATUS] Findings recorded to server database.`,
-        `[OUTPUT FOLDER PATH] ${folder}`,
-        `[COMPLETED] Autonomous Security Audit completed successfully.`
-      ],
-      discoveredFindings: latest?.vulnerabilities || [],
+      targetUrl: '',
+      companyName: '',
+      logs: [],
+      discoveredFindings: [],
       scanStats: {
-        requests: latest?.requests || 524,
-        tokens: latest?.tokens || 48920150,
-        durationSec: latest?.durationSec || 2280,
+        requests: 0,
+        tokens: 0,
+        durationSec: 0,
         currentAgent: 'Autonomous VAPT Agent'
       },
-      scanFinished: true,
-      activeScanId: latest?.id || "www-smeco-coop_81f4",
-      outputFolderPath: folder,
+      scanFinished: false,
+      activeScanId: '',
+      outputFolderPath: '',
       scanError: null
     };
   });

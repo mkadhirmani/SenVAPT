@@ -29,10 +29,10 @@ export default function TopHeader({
   onTriggerScan, 
   onOpenLlmSettings,
   onOpenStrixSettings,
-  companyName = "Vontier Corporation",
-  targetUrl = SCAN_METADATA.targetUrl,
-  riskLevel = SCAN_METADATA.overallRiskLevel,
-  riskScore = SCAN_METADATA.overallRiskScore
+  companyName = "",
+  targetUrl = "",
+  riskLevel = "",
+  riskScore = 0
 }) {
   const [strixConfig, setStrixConfig] = useState(() => getStrixServerConfig());
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
@@ -62,28 +62,36 @@ export default function TopHeader({
     }`}>
       {/* Left: Breadcrumbs & Dynamic Company */}
       <div className="flex items-center gap-2 text-xs font-mono min-w-0 pr-4">
-        <span className={`font-bold truncate ${theme === 'dark' ? 'text-slate-200' : 'text-slate-900'}`}>
-          {companyName}
-        </span>
-        <span className={theme === 'dark' ? 'text-slate-500' : 'text-slate-400'}>/</span>
+        {companyName && (
+          <>
+            <span className={`font-bold truncate ${theme === 'dark' ? 'text-slate-200' : 'text-slate-900'}`}>
+              {companyName}
+            </span>
+            <span className={theme === 'dark' ? 'text-slate-500' : 'text-slate-400'}>/</span>
+          </>
+        )}
         <span className="text-cyan-600 dark:text-cyan-400 font-bold uppercase truncate">{getTabTitle()}</span>
       </div>
 
       {/* Right: Action bar */}
       <div className="flex items-center gap-2.5 flex-shrink-0">
-        {/* Target URL Badge */}
-        <div className={`hidden md:flex items-center gap-2 px-3 h-9 rounded-xl border text-xs font-mono ${
-          theme === 'dark' ? 'bg-[#0D1527] border-slate-800 text-slate-300' : 'bg-slate-50 border-slate-300 text-slate-800 font-medium'
-        }`}>
-          <Globe className="w-3.5 h-3.5 text-cyan-500 flex-shrink-0" />
-          <span className="truncate max-w-[150px] font-semibold">{targetUrl.replace('https://', '')}</span>
-        </div>
+        {/* Target URL Badge (Only when target exists) */}
+        {targetUrl && (
+          <div className={`hidden md:flex items-center gap-2 px-3 h-9 rounded-xl border text-xs font-mono ${
+            theme === 'dark' ? 'bg-[#0D1527] border-slate-800 text-slate-300' : 'bg-slate-50 border-slate-300 text-slate-800 font-medium'
+          }`}>
+            <Globe className="w-3.5 h-3.5 text-cyan-500 flex-shrink-0" />
+            <span className="truncate max-w-[150px] font-semibold">{targetUrl.replace(/^https?:\/\//, '')}</span>
+          </div>
+        )}
 
-        {/* Risk Posture */}
-        <div className="flex items-center gap-1.5 px-3 h-9 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-600 dark:text-rose-400 text-xs font-mono font-bold">
-          <Activity className="w-3.5 h-3.5 text-rose-500 animate-pulse flex-shrink-0" />
-          <span>{riskLevel} ({riskScore}/10)</span>
-        </div>
+        {/* Risk Posture (Only when risk data exists) */}
+        {riskLevel && riskLevel !== 'NONE' && (
+          <div className="flex items-center gap-1.5 px-3 h-9 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-600 dark:text-rose-400 text-xs font-mono font-bold">
+            <Activity className="w-3.5 h-3.5 text-rose-500 animate-pulse flex-shrink-0" />
+            <span>{riskLevel} {riskScore > 0 ? `(${riskScore}/10)` : ''}</span>
+          </div>
+        )}
 
         {/* SSH Server Settings Button (Admin or Permitted) */}
         {(isAdmin || checkUserPermission(currentUser, 'manage_settings')) && (

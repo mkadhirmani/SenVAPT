@@ -25,8 +25,8 @@ export default function Chatbot({
   isFullPage = false, 
   onClose,
   onOpenLlmSettings,
-  companyName = "Vontier Corporation",
-  targetUrl = "https://www.vontier.com/",
+  companyName = "",
+  targetUrl = "",
   vulnerabilities = []
 }) {
   const [llmConfig, setLlmConfig] = useState(() => getLlmConfig());
@@ -34,7 +34,7 @@ export default function Chatbot({
     {
       id: 'msg-init',
       sender: 'bot',
-      text: `Hello! I am your **AI Security Assistant** powered by RAG architecture and LLM reasoning. I have analyzed all confirmed security findings for **${companyName}** (${targetUrl}). How can I assist you today?`,
+      text: `Hello! I am your **AI Security Assistant** powered by RAG architecture and LLM reasoning.${targetUrl ? ` I have analyzed all confirmed security findings for **${companyName}** (${targetUrl}).` : ' Ready to assist with security audits, findings analysis, and remediation guidance.'} How can I assist you today?`,
       bulletPoints: [
         "Ask: *'What is the highest risk finding for our company?'*",
         "Ask: *'Summarize all findings in simple words'*",
