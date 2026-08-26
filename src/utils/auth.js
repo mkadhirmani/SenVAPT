@@ -70,60 +70,6 @@ export const DEFAULT_USERS = [
       manage_users: false,
       load_custom_folder: false
     }
-  },
-  {
-    id: 'user1',
-    username: 'user1',
-    email: 'user1@sennovate.com',
-    password: 'user123',
-    altPassword: 'User1@2026!',
-    name: 'User 1',
-    role: 'user',
-    title: 'Standard User',
-    createdAt: '2026-08-10 09:30:00',
-    lastLogin: '2026-08-21 11:45:00',
-    isOnline: false,
-    scansCount: 0,
-    assignedTargets: ['Emcochem Inc', 'Smeco Inc', 'Vontier Corporation'],
-    permissions: {
-      run_scans: true,
-      view_findings: true,
-      attack_graph: true,
-      ai_assistant: true,
-      export_reports: true,
-      view_tokens: false,
-      view_terminal: false,
-      manage_settings: false,
-      manage_users: false,
-      load_custom_folder: false
-    }
-  },
-  {
-    id: 'user2',
-    username: 'user2',
-    email: 'user2@sennovate.com',
-    password: 'user234',
-    altPassword: 'User2@2026!',
-    name: 'User 2',
-    role: 'user',
-    title: 'Standard User',
-    createdAt: '2026-08-15 14:20:00',
-    lastLogin: '2026-08-20 16:10:00',
-    isOnline: false,
-    scansCount: 0,
-    assignedTargets: ['General Compliance Audit'],
-    permissions: {
-      run_scans: true,
-      view_findings: true,
-      attack_graph: true,
-      ai_assistant: true,
-      export_reports: true,
-      view_tokens: false,
-      view_terminal: false,
-      manage_settings: false,
-      manage_users: false,
-      load_custom_folder: false
-    }
   }
 ];
 
@@ -156,7 +102,7 @@ export function getUsersList() {
     if (raw) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        list = parsed;
+        list = parsed.filter(u => u && u.username !== 'sales' && u.username !== 'user1' && u.username !== 'user2');
       }
     }
 

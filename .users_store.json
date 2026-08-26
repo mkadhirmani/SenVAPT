@@ -38,7 +38,9 @@
     "lastLogin": "2026-08-26 09:30:00",
     "isOnline": true,
     "scansCount": 0,
-    "assignedTargets": ["General Compliance & Security Audit"],
+    "assignedTargets": [
+      "General Compliance & Security Audit"
+    ],
     "permissions": {
       "run_scans": true,
       "view_findings": true,

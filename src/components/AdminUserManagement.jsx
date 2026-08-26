@@ -39,7 +39,6 @@ import {
   updateUserPermissions, 
   createNewUser, 
   deleteUser,
-  updateUserPassword,
   ALL_PERMISSIONS, 
   getActiveSessionCount 
 } from '../utils/auth';
@@ -55,9 +54,6 @@ export default function AdminUserManagement({
   const [selectedUserId, setSelectedUserId] = useState('user');
   const [isAddUserOpen, setIsAddUserOpen] = useState(false);
   const [showNewUserPassword, setShowNewUserPassword] = useState(true);
-  const [passwordModalUser, setPasswordModalUser] = useState(null);
-  const [newPasswordValue, setNewPasswordValue] = useState('');
-  const [showPasswordChangeVal, setShowPasswordChangeVal] = useState(true);
   const [statusMessage, setStatusMessage] = useState(null);
 
   // New user form state
@@ -230,25 +226,6 @@ export default function AdminUserManagement({
               }}
             />
           </label>
-
-          {/* Change Admin Password Button */}
-          <button
-            onClick={() => {
-              const adminUser = users.find(u => u.username === 'admin') || users[0];
-              setPasswordModalUser(adminUser);
-              setNewPasswordValue('');
-              setShowPasswordChangeVal(true);
-            }}
-            className={`flex items-center justify-center gap-1.5 px-3.5 h-10 rounded-xl border text-xs font-mono font-bold transition-all cursor-pointer ${
-              theme === 'dark' 
-                ? 'bg-[#0E172B] hover:bg-[#152342] text-amber-300 border-amber-500/40 hover:border-amber-400' 
-                : 'bg-amber-50 hover:bg-amber-100 text-amber-900 border-amber-300'
-            }`}
-            title="Change Administrator Password"
-          >
-            <Key className="w-3.5 h-3.5 text-amber-400" />
-            <span>Change Admin Password</span>
-          </button>
 
           <button
             onClick={() => setIsAddUserOpen(true)}
@@ -474,19 +451,6 @@ export default function AdminUserManagement({
                     {/* Actions */}
                     <td className="py-3.5 px-4 text-right" onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center justify-end gap-1.5">
-                        <button
-                          onClick={() => {
-                            setPasswordModalUser(user);
-                            setNewPasswordValue('');
-                            setShowPasswordChangeVal(true);
-                          }}
-                          className="px-2.5 py-1 rounded-lg text-xs font-bold font-sans flex items-center gap-1 bg-amber-500/15 text-amber-300 hover:bg-amber-500/25 border border-amber-500/30 transition-all cursor-pointer"
-                          title={`Change password for ${user.username}`}
-                        >
-                          <Key className="w-3 h-3 text-amber-400" />
-                          <span>Password</span>
-                        </button>
-
                         <button
                           onClick={() => setSelectedUserId(user.id)}
                           className={`px-2.5 py-1 rounded-lg text-xs font-bold font-sans flex items-center gap-1 transition-all ${
@@ -768,111 +732,6 @@ export default function AdminUserManagement({
                   className="px-4 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs font-sans transition-all cursor-pointer"
                 >
                   Create User
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Change Password Modal */}
-      {passwordModalUser && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-fadeIn">
-          <div className={`w-full max-w-md rounded-2xl border shadow-2xl overflow-hidden ${
-            theme === 'dark' ? 'bg-[#0A1121] border-slate-700 text-white' : 'bg-white border-slate-300 text-slate-900'
-          }`}>
-            <div className="p-5 border-b border-slate-800 flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <div className="p-2 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/30">
-                  <Key className="w-4 h-4" />
-                </div>
-                <div>
-                  <h3 className="font-bold text-sm">Change User Password</h3>
-                  <p className="text-[11px] text-slate-400 font-mono">
-                    Account: <strong className="text-cyan-400">{passwordModalUser.username}</strong> ({passwordModalUser.role})
-                  </p>
-                </div>
-              </div>
-              <button
-                onClick={() => setPasswordModalUser(null)}
-                className="p-1 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <form onSubmit={(e) => {
-              e.preventDefault();
-              if (!newPasswordValue.trim()) {
-                showFeedback('Please enter a new password.');
-                return;
-              }
-              try {
-                const updated = updateUserPassword(passwordModalUser.id, newPasswordValue.trim());
-                setUsers(updated);
-                showFeedback(`Password updated successfully for "${passwordModalUser.username}"!`);
-                setPasswordModalUser(null);
-                setNewPasswordValue('');
-              } catch (err) {
-                showFeedback(`Error: ${err.message}`);
-              }
-            }} className="p-6 space-y-4 font-sans text-xs">
-              <div className="space-y-1.5">
-                <label className="font-mono font-bold text-slate-400 uppercase text-[10px]">Target Account:</label>
-                <input
-                  type="text"
-                  disabled
-                  value={`${passwordModalUser.name || passwordModalUser.username} (${passwordModalUser.email})`}
-                  className="w-full px-3.5 py-2.5 rounded-xl font-mono text-xs bg-slate-900/60 border border-slate-800 text-slate-400 cursor-not-allowed"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="font-mono font-bold text-slate-300 flex items-center justify-between text-[11px]">
-                  <span>New Password:</span>
-                  <span className="text-[10px] text-cyan-400 font-normal">Visible (toggle with eye icon)</span>
-                </label>
-                <div className="relative">
-                  <input
-                    type={showPasswordChangeVal ? 'text' : 'password'}
-                    required
-                    value={newPasswordValue}
-                    onChange={(e) => setNewPasswordValue(e.target.value)}
-                    placeholder="Enter new password..."
-                    autoFocus
-                    className={`w-full px-3.5 py-2.5 pr-10 rounded-xl font-mono text-xs border focus:outline-none transition-all ${
-                      theme === 'dark'
-                        ? 'bg-[#080E1C] border-slate-700 text-white placeholder-slate-500 focus:border-cyan-400'
-                        : 'bg-slate-50 border-slate-300 text-slate-900 placeholder-slate-400 focus:border-cyan-500'
-                    }`}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPasswordChangeVal(!showPasswordChangeVal)}
-                    className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-white cursor-pointer"
-                  >
-                    {showPasswordChangeVal ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4 text-cyan-400" />}
-                  </button>
-                </div>
-              </div>
-
-              <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-[11px] font-mono leading-relaxed">
-                <strong>Instant Effect:</strong> The new password is saved to local storage, synced to the backend server, and active immediately.
-              </div>
-
-              <div className="pt-3 border-t border-slate-800 flex items-center justify-end gap-2.5">
-                <button
-                  type="button"
-                  onClick={() => setPasswordModalUser(null)}
-                  className="px-4 py-2 rounded-xl text-slate-400 hover:text-white font-mono cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold font-sans shadow-md cursor-pointer transition-all"
-                >
-                  Save New Password
                 </button>
               </div>
             </form>
