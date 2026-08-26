@@ -1100,6 +1100,9 @@ export default function ScanHud({
         isScanning: true,
         scanFinished: false,
         scanError: null,
+        discoveredFindings: [],
+        activeScanId: null,
+        outputFolderPath: '',
         targetUrl: targetUrl,
         companyName: companyName,
         logs: [
