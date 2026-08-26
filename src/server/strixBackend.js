@@ -1210,6 +1210,7 @@ export async function fetchN8nScanResultsProxy(payload) {
       inProgress: false,
       scanFinished: true,
       zipPath: zipPath,
+      zipBase64: isZip ? buffer.toString('base64') : undefined,
       zipSize: buffer.length,
       zipSizeFormatted: `${(buffer.length / 1024).toFixed(1)} KB`,
       extractedPath: bestExtractDir,
@@ -1371,11 +1372,13 @@ export async function testN8nFetchWebhookProxy(payload) {
       lineCount: lineCount || undefined,
       contentType: contentType,
       target: norm.raw,
+      filename: isZip ? `${norm.folderName}-scan.zip` : (path.basename(norm.raw) || 'scan_result.txt'),
+      base64Data: buffer.toString('base64'),
       savedLocalPath: savedLocalPath || undefined,
       preview: textPreview || undefined,
       message: isZip 
-        ? `Successfully fetched and extracted folder from server root: ~/Downloads/${norm.folderName}/ (${(buffer.length / 1024).toFixed(1)} KB).`
-        : `Successfully fetched from server root for "${norm.raw}" (${buffer.length >= 1024 ? `${(buffer.length / 1024).toFixed(1)} KB` : `${buffer.length} bytes`}).`,
+        ? `Successfully fetched and downloaded ZIP archive from server: ${norm.folderName}-scan.zip (${(buffer.length / 1024).toFixed(1)} KB).`
+        : `Successfully fetched from server for "${norm.raw}" (${buffer.length >= 1024 ? `${(buffer.length / 1024).toFixed(1)} KB` : `${buffer.length} bytes`}).`,
       details: jsonSummary || undefined
     };
   } catch (err) {

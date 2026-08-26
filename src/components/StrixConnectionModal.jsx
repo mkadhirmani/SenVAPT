@@ -17,7 +17,8 @@ import {
   Sparkles, 
   Zap,
   Webhook,
-  Radio
+  Radio,
+  Download
 } from 'lucide-react';
 import { 
   getStrixServerConfig, 
@@ -101,6 +102,30 @@ export default function StrixConnectionModal({ isOpen, onClose, onConnected, the
     }
   };
 
+  const triggerDownload = (base64Data, filename) => {
+    try {
+      const byteCharacters = atob(base64Data);
+      const byteNumbers = new Array(byteCharacters.length);
+      for (let i = 0; i < byteCharacters.length; i++) {
+        byteNumbers[i] = byteCharacters.charCodeAt(i);
+      }
+      const byteArray = new Uint8Array(byteNumbers);
+      const blob = new Blob([byteArray], { type: 'application/octet-stream' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename || 'scan_results.zip';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      return true;
+    } catch (e) {
+      console.error('Download error:', e);
+      return false;
+    }
+  };
+
   const handleTestFetchWebhook = async () => {
     setTestingFetch(true);
     setFetchTestResult(null);
@@ -117,6 +142,9 @@ export default function StrixConnectionModal({ isOpen, onClose, onConnected, the
         token: config.n8nToken
       });
       setFetchTestResult(res);
+      if (res && res.success && res.base64Data) {
+        triggerDownload(res.base64Data, res.filename);
+      }
     } catch (err) {
       setFetchTestResult({
         success: false,
@@ -450,13 +478,20 @@ export default function StrixConnectionModal({ isOpen, onClose, onConnected, the
                     </div>
 
                     {fetchTestResult.sizeFormatted && (
-                      <div className="text-[10px] text-slate-300 flex flex-wrap gap-x-4 gap-y-1 pt-0.5 border-t border-slate-800/80">
-                        <span>Payload Size: <strong className="text-cyan-300">{fetchTestResult.sizeFormatted}</strong></span>
-                        {fetchTestResult.lineCount && <span>Lines: <strong className="text-amber-300">{fetchTestResult.lineCount}</strong></span>}
-                        {fetchTestResult.savedLocalPath && (
-                          <span className="text-emerald-400 font-sans">
-                            Saved locally: <code>{fetchTestResult.savedLocalPath}</code>
-                          </span>
+                      <div className="text-[10px] text-slate-300 flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-800/80">
+                        <div className="flex items-center gap-3">
+                          <span>Payload Size: <strong className="text-cyan-300">{fetchTestResult.sizeFormatted}</strong></span>
+                          {fetchTestResult.lineCount && <span>Lines: <strong className="text-amber-300">{fetchTestResult.lineCount}</strong></span>}
+                        </div>
+                        {fetchTestResult.base64Data && (
+                          <button
+                            type="button"
+                            onClick={() => triggerDownload(fetchTestResult.base64Data, fetchTestResult.filename)}
+                            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-[10px] cursor-pointer shadow-sm transition-all"
+                          >
+                            <Download className="w-3 h-3" />
+                            <span>Download {fetchTestResult.filename || 'File'} to Laptop</span>
+                          </button>
                         )}
                       </div>
                     )}

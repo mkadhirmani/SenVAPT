@@ -555,7 +555,30 @@ export default function ScanHud({
       });
 
       if (results) {
-        appendLog(`[n8n FETCH SUCCESS] Downloaded ZIP archive (${results.zipSizeFormatted}) from server to ~/Downloads!`);
+        appendLog(`[n8n FETCH SUCCESS] Downloaded ZIP archive (${results.zipSizeFormatted}) from server!`);
+        
+        // Trigger browser download directly to laptop ~/Downloads folder
+        if (results.zipBase64) {
+          try {
+            const byteCharacters = atob(results.zipBase64);
+            const byteNumbers = new Array(byteCharacters.length);
+            for (let i = 0; i < byteCharacters.length; i++) {
+              byteNumbers[i] = byteCharacters.charCodeAt(i);
+            }
+            const byteArray = new Uint8Array(byteNumbers);
+            const blob = new Blob([byteArray], { type: 'application/zip' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${results.folderName || 'scan'}.zip`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            appendLog(`[LAPTOP DOWNLOAD] Saved "${results.folderName}.zip" directly to your Laptop Downloads!`);
+          } catch (_) {}
+        }
+        
         appendLog(`[INVENTORY] Extracted and parsed 7 files from: ${results.folderName}`);
 
         const vulns = results.vulnerabilities || [];
