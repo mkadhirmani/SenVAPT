@@ -848,8 +848,10 @@ function normalizeQueryAndDomain(input) {
  * to the exact 7-file folder once the audit completes.
  */
 function resolveStrixOutputFolderFromExtract(extractDir, minStartTimeMs = 0, targetDomain = '', previousRunId = null) {
-  // 1. Search for all log files (scan.log, strix.log, *.log) anywhere in the extracted tree
-  const logFiles = [];
+  // 1. Search for all log files, strictly prioritizing root/target scan.log over nested strix.log
+  const mainScanLogs = [];
+  const otherLogs = [];
+
   const findLogs = (dir, depth = 0) => {
     if (depth > 8) return;
     try {
@@ -860,14 +862,19 @@ function resolveStrixOutputFolderFromExtract(extractDir, minStartTimeMs = 0, tar
           const st = fs.statSync(full);
           if (st.isDirectory()) {
             findLogs(full, depth + 1);
-          } else if (item === 'scan.log' || item === 'strix.log' || item.endsWith('.log')) {
-            logFiles.push(full);
+          } else if (item === 'scan.log') {
+            mainScanLogs.push(full);
+          } else if (item === 'strix.log' || item.endsWith('.log')) {
+            otherLogs.push(full);
           }
         } catch (_) {}
       }
     } catch (_) {}
   };
   findLogs(extractDir);
+
+  // Strictly use main scan.log if available
+  const logFiles = mainScanLogs.length > 0 ? mainScanLogs : otherLogs;
 
   // 2. Find all candidate directories in extractDir that contain Strix files
   const candidateDirs = [];
