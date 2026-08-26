@@ -1172,6 +1172,7 @@ export default function ScanHud({
         // Background Polling for scan results ZIP via n8n fetch webhook
         if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
         let pollAttempts = 0;
+        let baselineRunId = null;
 
         pollIntervalRef.current = setInterval(async () => {
           pollAttempts++;
@@ -1182,15 +1183,33 @@ export default function ScanHud({
               credential: effCred,
               authType: serverConfig.n8nAuthType || 'basic',
               scanStartTime: startTime,
-              requireFresh: true
+              requireFresh: true,
+              previousRunId: baselineRunId
             });
+
+            // Capture the baseline run ID (from previous scan) on the first poll
+            if (results?.baselineRunId && !baselineRunId) {
+              baselineRunId = results.baselineRunId;
+              appendLog(`[SERVER MONITOR] Connected to Strix agent. Live monitoring /root/${cleanDomain}-scan/scan.log...`);
+            }
+
+            // Stream real-time live logs from the remote server's scan.log
+            if (results?.liveLogLines && Array.isArray(results.liveLogLines) && results.liveLogLines.length > 0) {
+              setLogs(prev => {
+                const newLogs = [...prev];
+                for (const line of results.liveLogLines) {
+                  if (!newLogs.includes(line)) newLogs.push(line);
+                }
+                return newLogs;
+              });
+            }
 
             // If the server scan is still running or results are not finalized yet, continue polling
             if (results && (results.inProgress === true || results.isScanning === true || !results.folderName)) {
-              if (pollAttempts % 2 === 0) {
+              if (pollAttempts % 3 === 0) {
                 const elapsedMin = Math.floor(pollAttempts * 7 / 60);
                 const elapsedSec = (pollAttempts * 7) % 60;
-                appendLog(`[SERVER AUDITING] Strix AI engine is actively testing ${cleanDomain}... (Elapsed: ${elapsedMin > 0 ? `${elapsedMin}m ` : ''}${elapsedSec}s)`);
+                appendLog(`[LIVE AUDIT] Strix AI testing ${cleanDomain}... (Elapsed: ${elapsedMin > 0 ? `${elapsedMin}m ` : ''}${elapsedSec}s)`);
               }
               return;
             }
