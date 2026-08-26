@@ -24,8 +24,8 @@ import {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const PORT = process.env.PORT || 8080;
-const HOST = process.env.HOST || '0.0.0.0';
+const PORT = parseInt(process.env.PORT || '8080', 10);
+const HOST = '0.0.0.0';
 const DIST_DIR = path.join(__dirname, 'dist');
 const SCANS_CACHE_FILE = path.join(__dirname, '.scans_cache.json');
 const LLM_CONFIG_FILE = path.join(__dirname, '.llm_config.json');
@@ -195,7 +195,14 @@ const server = http.createServer(async (req, res) => {
     return res.end(JSON.stringify({ status: 'ok', uptime: process.uptime(), timestamp: new Date().toISOString() }));
   }
 
-  // 2. Server Scan History Sync
+  // 0. Cloud Run & Container Health Check Endpoint
+  if (pathname === '/healthz' || pathname === '/health' || pathname === '/_health') {
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    res.statusCode = 200;
+    return res.end('OK');
+  }
+
+  // 1. Downloaded Scan Files Listing Routery Sync
   if (pathname === '/api/scans/get-history') {
     res.setHeader('Content-Type', 'application/json');
     res.statusCode = 200;
@@ -566,6 +573,10 @@ const server = http.createServer(async (req, res) => {
 
   res.statusCode = 404;
   res.end('Not Found');
+});
+
+server.on('error', (err) => {
+  console.error('Server startup or connection error:', err);
 });
 
 server.listen(PORT, HOST, () => {
