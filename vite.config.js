@@ -187,6 +187,53 @@ function strixBackendPlugin() {
         });
       });
 
+      // 3.5 Global Users Store Get & Save Routes (Persisted in .users_store.json)
+      const USERS_STORE_FILE = path.resolve(process.cwd(), '.users_store.json');
+
+      const getGlobalUsers = () => {
+        try {
+          if (fs.existsSync(USERS_STORE_FILE)) {
+            return JSON.parse(fs.readFileSync(USERS_STORE_FILE, 'utf-8'));
+          }
+        } catch (e) {}
+        return null;
+      };
+
+      const saveGlobalUsers = (users) => {
+        try {
+          fs.writeFileSync(USERS_STORE_FILE, JSON.stringify(users, null, 2), 'utf-8');
+        } catch (e) {}
+      };
+
+      server.middlewares.use('/api/users/get-users', (req, res) => {
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.setHeader('Content-Type', 'application/json');
+        res.statusCode = 200;
+        res.end(JSON.stringify({ success: true, users: getGlobalUsers() }));
+      });
+
+      server.middlewares.use('/api/users/save-users', (req, res) => {
+        let body = '';
+        req.on('data', chunk => { body += chunk; });
+        req.on('end', () => {
+          try {
+            const data = JSON.parse(body || '{}');
+            const users = Array.isArray(data) ? data : data.users;
+            if (Array.isArray(users)) {
+              saveGlobalUsers(users);
+            }
+            res.setHeader('Access-Control-Allow-Origin', '*');
+            res.setHeader('Content-Type', 'application/json');
+            res.statusCode = 200;
+            res.end(JSON.stringify({ success: true, count: users ? users.length : 0 }));
+          } catch (e) {
+            res.setHeader('Content-Type', 'application/json');
+            res.statusCode = 400;
+            res.end(JSON.stringify({ success: false, error: e.message }));
+          }
+        });
+      });
+
       // 4. Test SSH Connection
       server.middlewares.use('/api/strix/test-ssh', async (req, res) => {
         if (req.method !== 'POST') {

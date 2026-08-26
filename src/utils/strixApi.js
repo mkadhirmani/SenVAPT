@@ -55,19 +55,11 @@ export async function fetchStrixServerConfig() {
     if (res.ok) {
       const data = await res.json();
       const local = getStrixServerConfig();
-      const serverHasHost = data.config && data.config.host && data.config.host.trim() !== '';
-      const localHasHost = local && local.host && local.host.trim() !== '';
+      const serverConfig = data.config;
 
       let merged = { ...local };
-      if (serverHasHost) {
-        merged = { ...local, ...data.config };
-      } else if (localHasHost) {
-        // Upload existing local config to backend so it persists across server restarts
-        fetch('/api/strix/save-config', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(local)
-        }).catch(() => {});
+      if (serverConfig && typeof serverConfig === 'object') {
+        merged = { ...local, ...serverConfig };
       }
 
       localStorage.setItem(STRIX_CONFIG_KEY, JSON.stringify(merged));

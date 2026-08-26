@@ -90,6 +90,29 @@ function saveGlobalLlmConfig(conf) {
   } catch (e) {}
 }
 
+// Global Users Store Helper
+const USERS_STORE_FILE = path.join(__dirname, '.users_store.json');
+
+function getGlobalUsersStore() {
+  try {
+    if (fs.existsSync(USERS_STORE_FILE)) {
+      const data = JSON.parse(fs.readFileSync(USERS_STORE_FILE, 'utf-8'));
+      if (Array.isArray(data)) return data;
+      if (data && Array.isArray(data.users)) return data.users;
+    }
+  } catch (e) {}
+  return null;
+}
+
+function saveGlobalUsersStore(users) {
+  try {
+    fs.writeFileSync(USERS_STORE_FILE, JSON.stringify(users, null, 2), 'utf-8');
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
 // Helper to parse JSON body
 function parseJsonBody(req) {
   return new Promise((resolve, reject) => {
@@ -208,6 +231,28 @@ const server = http.createServer(async (req, res) => {
       res.setHeader('Content-Type', 'application/json');
       res.statusCode = 200;
       return res.end(JSON.stringify({ success: true, config: conf }));
+    } catch (e) {
+      res.setHeader('Content-Type', 'application/json');
+      res.statusCode = 400;
+      return res.end(JSON.stringify({ success: false, error: e.message }));
+    }
+  // 5.5 Users Store Routes
+  if (pathname === '/api/users/get-users') {
+    res.setHeader('Content-Type', 'application/json');
+    res.statusCode = 200;
+    return res.end(JSON.stringify({ success: true, users: getGlobalUsersStore() }));
+  }
+
+  if (pathname === '/api/users/save-users') {
+    try {
+      const data = await parseJsonBody(req);
+      const users = Array.isArray(data) ? data : data.users;
+      if (Array.isArray(users)) {
+        saveGlobalUsersStore(users);
+      }
+      res.setHeader('Content-Type', 'application/json');
+      res.statusCode = 200;
+      return res.end(JSON.stringify({ success: true, count: users ? users.length : 0 }));
     } catch (e) {
       res.setHeader('Content-Type', 'application/json');
       res.statusCode = 400;

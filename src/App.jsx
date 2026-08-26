@@ -29,7 +29,8 @@ import {
   getCurrentUser, 
   setCurrentUser, 
   logoutUser, 
-  checkUserPermission 
+  checkUserPermission,
+  fetchGlobalUsersList
 } from './utils/auth';
 import { initializeKnowledgeBase } from './utils/ragEngine';
 import { fetchAllRemoteScans, fetchStrixServerConfig } from './utils/strixApi';
@@ -223,13 +224,14 @@ export default function App() {
     setTheme(prev => (prev === 'dark' ? 'light' : 'dark'));
   };
 
-  // Auto-sync server config, LLM config, and scans on initial load
+  // Auto-sync server config, LLM config, users, and scans on initial load
   useEffect(() => {
     async function syncOnMount() {
       try {
         await Promise.all([
           fetchStrixServerConfig(),
-          fetchGlobalLlmConfig()
+          fetchGlobalLlmConfig(),
+          fetchGlobalUsersList()
         ]);
         const serverScans = await syncScanHistoryWithServer();
         if (serverScans && serverScans.length > 0) {
@@ -240,7 +242,7 @@ export default function App() {
           handleSyncAllServerScans(remoteRuns);
         }
       } catch (err) {
-        console.warn('Auto-sync scans from server note:', err.message);
+        console.warn('Auto-sync server state note:', err.message);
       }
     }
     syncOnMount();
@@ -424,9 +426,14 @@ export default function App() {
   const handleLoginSuccess = async (user) => {
     setAuthUser(user);
     
-    // Sync latest persistent scans from server on login
+    // Sync latest persistent configurations and scans from server on login
     let history = getStoredScanHistory();
     try {
+      await Promise.all([
+        fetchStrixServerConfig(),
+        fetchGlobalLlmConfig(),
+        fetchGlobalUsersList()
+      ]);
       const serverScans = await syncScanHistoryWithServer();
       if (serverScans && serverScans.length > 0) {
         history = serverScans;

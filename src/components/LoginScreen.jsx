@@ -13,7 +13,7 @@ import {
   Radar,
   Shield
 } from 'lucide-react';
-import { authenticateUser } from '../utils/auth';
+import { authenticateUser, fetchGlobalUsersList } from '../utils/auth';
 
 export default function LoginScreen({ onLoginSuccess, theme = 'dark' }) {
   const [selectedRole, setSelectedRole] = useState('user');
@@ -23,6 +23,11 @@ export default function LoginScreen({ onLoginSuccess, theme = 'dark' }) {
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
+  // Sync users on login screen mount
+  React.useEffect(() => {
+    fetchGlobalUsersList().catch(() => {});
+  }, []);
+
   const handleRoleSelect = (role) => {
     setSelectedRole(role);
     setError('');
@@ -30,7 +35,7 @@ export default function LoginScreen({ onLoginSuccess, theme = 'dark' }) {
     setPassword('');
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e?.preventDefault();
     if (!username.trim() || !password.trim()) {
       setError('Please enter both your username and password.');
@@ -39,18 +44,18 @@ export default function LoginScreen({ onLoginSuccess, theme = 'dark' }) {
     setError('');
     setIsLoading(true);
 
-    setTimeout(() => {
-      try {
-        const user = authenticateUser(username, password, selectedRole);
-        setIsLoading(false);
-        if (onLoginSuccess) {
-          onLoginSuccess(user);
-        }
-      } catch (err) {
-        setIsLoading(false);
-        setError(err.message || 'Authentication failed. Please check your credentials.');
+    try {
+      // Sync fresh users from backend file store
+      await fetchGlobalUsersList().catch(() => {});
+      const user = authenticateUser(username, password, selectedRole);
+      setIsLoading(false);
+      if (onLoginSuccess) {
+        onLoginSuccess(user);
       }
-    }, 250);
+    } catch (err) {
+      setIsLoading(false);
+      setError(err.message || 'Authentication failed. Please check your credentials.');
+    }
   };
 
   return (

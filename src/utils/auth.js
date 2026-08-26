@@ -128,6 +128,25 @@ export const DEFAULT_USERS = [
 ];
 
 /**
+ * Fetch users list from backend server (.users_store.json) and synchronize with localStorage
+ */
+export async function fetchGlobalUsersList() {
+  try {
+    const res = await fetch('/api/users/get-users');
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.success && Array.isArray(data.users) && data.users.length > 0) {
+        localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(data.users));
+        return data.users;
+      }
+    }
+  } catch (e) {
+    console.warn('Note syncing global users from server:', e);
+  }
+  return getUsersList();
+}
+
+/**
  * Get all users from storage or fallback to defaults
  */
 export function getUsersList() {
@@ -140,7 +159,7 @@ export function getUsersList() {
         list = parsed;
       }
     }
-    
+
     // Ensure default 'admin' and 'user' accounts exist
     const hasAdmin = list.some(u => u.username === 'admin');
     const hasUser = list.some(u => u.username === 'user');
@@ -163,11 +182,18 @@ export function getUsersList() {
 }
 
 /**
- * Save users list to localStorage
+ * Save users list to localStorage and sync to backend server
  */
 export function saveUsersList(users) {
   try {
     localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(users));
+
+    // Persist to server store (.users_store.json)
+    fetch('/api/users/save-users', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ users })
+    }).catch(err => console.warn('Note syncing users to backend:', err));
   } catch (e) {
     console.error('Error saving users:', e);
   }
@@ -207,16 +233,16 @@ export function setCurrentUser(user) {
         return u;
       });
       saveUsersList(updatedList);
-      
+
       const freshUser = updatedList.find(u => u.id === user.id || u.username === user.username) || user;
       sessionStorage.setItem(CURRENT_USER_KEY, JSON.stringify(freshUser));
-      try { localStorage.removeItem(CURRENT_USER_KEY); } catch (_) {}
-      
+      try { localStorage.removeItem(CURRENT_USER_KEY); } catch (_) { }
+
       trackSessionLogin(freshUser.id);
       return freshUser;
     } else {
       sessionStorage.removeItem(CURRENT_USER_KEY);
-      try { localStorage.removeItem(CURRENT_USER_KEY); } catch (_) {}
+      try { localStorage.removeItem(CURRENT_USER_KEY); } catch (_) { }
     }
   } catch (e) {
     console.error('Error setting current user:', e);
@@ -236,7 +262,7 @@ export function logoutUser() {
     saveUsersList(updated);
   }
   sessionStorage.removeItem(CURRENT_USER_KEY);
-  try { localStorage.removeItem(CURRENT_USER_KEY); } catch (_) {}
+  try { localStorage.removeItem(CURRENT_USER_KEY); } catch (_) { }
 }
 export function authenticateUser(usernameOrEmail, password, selectedRole = null) {
   const users = getUsersList();
@@ -247,7 +273,7 @@ export function authenticateUser(usernameOrEmail, password, selectedRole = null)
     throw new Error('Please enter both username and password.');
   }
 
-  const matched = users.find(u => 
+  const matched = users.find(u =>
     (u.username.toLowerCase() === trimmedInput || u.email.toLowerCase() === trimmedInput) &&
     (u.password === trimmedPass || u.altPassword === trimmedPass)
   );
@@ -361,7 +387,7 @@ function trackSessionLogin(userId) {
       sessions.push(userId);
     }
     localStorage.setItem(SESSIONS_STORAGE_KEY, JSON.stringify(sessions));
-  } catch (e) {}
+  } catch (e) { }
 }
 
 function trackSessionLogout(userId) {
@@ -369,7 +395,7 @@ function trackSessionLogout(userId) {
     let sessions = JSON.parse(localStorage.getItem(SESSIONS_STORAGE_KEY) || '[]');
     sessions = sessions.filter(id => id !== userId);
     localStorage.setItem(SESSIONS_STORAGE_KEY, JSON.stringify(sessions));
-  } catch (e) {}
+  } catch (e) { }
 }
 
 export function getActiveSessionCount() {
