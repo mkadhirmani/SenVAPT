@@ -319,6 +319,45 @@ export function updateUserPermissions(userId, newPermissions) {
 }
 
 /**
+ * Update password for any user or admin
+ */
+export function updateUserPassword(userIdOrUsername, newPassword) {
+  if (!newPassword || !newPassword.trim()) {
+    throw new Error('New password cannot be empty.');
+  }
+
+  const users = getUsersList();
+  const trimmed = newPassword.trim();
+  let found = false;
+
+  const updated = users.map(u => {
+    if (u.id === userIdOrUsername || u.username.toLowerCase() === userIdOrUsername.toLowerCase()) {
+      found = true;
+      return {
+        ...u,
+        password: trimmed,
+        altPassword: trimmed
+      };
+    }
+    return u;
+  });
+
+  if (!found) {
+    throw new Error(`User "${userIdOrUsername}" not found.`);
+  }
+
+  saveUsersList(updated);
+
+  const current = getCurrentUser();
+  if (current && (current.id === userIdOrUsername || current.username.toLowerCase() === userIdOrUsername.toLowerCase())) {
+    const updatedCurrent = updated.find(u => u.id === current.id || u.username.toLowerCase() === current.username.toLowerCase());
+    sessionStorage.setItem(CURRENT_USER_KEY, JSON.stringify(updatedCurrent));
+  }
+
+  return updated;
+}
+
+/**
  * Add a new user
  */
 export function createNewUser(userData) {
