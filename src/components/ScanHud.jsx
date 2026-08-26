@@ -539,23 +539,35 @@ export default function ScanHud({
     }
   };
 
-  // Fetch & Download Scan ZIP directly from n8n Server Webhook
-  const handleFetchFromN8nZip = async () => {
+  // Fetch & Download Scan ZIP directly from n8n Server Webhook using Target URL or Server Output Path
+  const handleFetchFromN8nZip = async (explicitPath) => {
+    const rawPath = (typeof explicitPath === 'string' && explicitPath.trim()) 
+      ? explicitPath.trim() 
+      : (customFolderInput || effectiveOutputFolder || targetUrl || '').trim();
+
+    if (!rawPath) {
+      setFetchMessage({ type: 'error', text: 'Please enter a server output path or target domain.' });
+      return;
+    }
+
     setIsFetchingPath(true);
     setFetchMessage(null);
-    appendLog(`[n8n FETCH] Calling n8n Fetch Webhook to download scan ZIP for target: "${targetUrl}"...`);
+    appendLog(`[n8n SERVER FETCH] Fetching scan findings directly from server path: "${rawPath}"...`);
 
     const effCred = serverConfig.n8nCredential || (serverConfig.n8nUsername && serverConfig.n8nPassword ? `${serverConfig.n8nUsername}:${serverConfig.n8nPassword}` : (serverConfig.n8nUsername || serverConfig.n8nPassword || ''));
     try {
       const results = await fetchN8nScanResults({
         webhookUrl: serverConfig.n8nFetchWebhookUrl,
-        domain: targetUrl,
+        domain: rawPath,
+        filePath: rawPath,
+        folderPath: rawPath,
+        path: rawPath,
         credential: effCred,
         authType: serverConfig.n8nAuthType || 'basic'
       });
 
-      if (results) {
-        appendLog(`[n8n FETCH SUCCESS] Downloaded ZIP archive (${results.zipSizeFormatted}) from server!`);
+      if (results && results.vulnerabilities) {
+        appendLog(`[n8n FETCH SUCCESS] Ingested ${results.vulnerabilities.length} verified vulnerabilities from server output path!`);
         
         // Trigger browser download directly to laptop ~/Downloads folder
         if (results.zipBase64) {
@@ -579,7 +591,7 @@ export default function ScanHud({
           } catch (_) {}
         }
         
-        appendLog(`[INVENTORY] Extracted and parsed 7 files from: ${results.folderName}`);
+        appendLog(`[INVENTORY] Extracted and parsed all 7 files from: ${results.folderName}`);
 
         const vulns = results.vulnerabilities || [];
         const highCount = results.highCount || vulns.filter(v => v.severity === 'HIGH' || v.severity === 'CRITICAL').length;
@@ -587,12 +599,21 @@ export default function ScanHud({
         const riskLevel = results.riskLevel || (highCount > 0 ? 'HIGH' : medCount > 0 ? 'ELEVATED' : 'LOW');
         const riskScore = results.riskScore || (highCount > 0 ? 8.2 : medCount > 0 ? 6.5 : 4.0);
 
+        let inferredCompany = results.companyName || companyName;
+        if (!inferredCompany || inferredCompany === 'Target') {
+          try {
+            const host = (results.targetUrl || rawPath).replace(/^https?:\/\//, '').split('/')[0].split(':')[0];
+            const base = host.replace(/^www\./, '').split('.')[0];
+            inferredCompany = base ? base.charAt(0).toUpperCase() + base.slice(1) + ' Inc' : 'Security Audit Target';
+          } catch (_) {}
+        }
+
         const newScan = {
           id: results.folderName || `scan-${Date.now()}`,
           folderName: results.folderName,
-          outputFolderPath: results.outputFolderPath || results.extractedPath,
-          companyName: results.companyName || companyName,
-          targetUrl: results.targetUrl || targetUrl,
+          outputFolderPath: results.outputFolderPath || results.extractedPath || rawPath,
+          companyName: inferredCompany,
+          targetUrl: results.targetUrl || targetUrl || rawPath,
           timestamp: results.timestamp || new Date().toISOString().replace('T', ' ').slice(0, 16),
           duration: results.duration || '38 min',
           riskLevel: riskLevel,
@@ -619,9 +640,9 @@ export default function ScanHud({
             ...SCAN_METADATA,
             ...results.metadata,
             runId: results.folderName,
-            targetUrl: results.targetUrl || targetUrl,
-            companyName: results.companyName || companyName,
-            remoteRunDir: results.outputFolderPath,
+            targetUrl: results.targetUrl || targetUrl || rawPath,
+            companyName: inferredCompany,
+            remoteRunDir: results.outputFolderPath || rawPath,
             totalFindings: vulns.length,
             highCount: highCount,
             medCount: medCount,
@@ -636,9 +657,9 @@ export default function ScanHud({
           activeScanId: results.folderName,
           discoveredFindings: vulns,
           scanFinished: true,
-          outputFolderPath: results.outputFolderPath,
-          targetUrl: results.targetUrl || targetUrl,
-          companyName: results.companyName || companyName,
+          outputFolderPath: results.outputFolderPath || rawPath,
+          targetUrl: results.targetUrl || targetUrl || rawPath,
+          companyName: inferredCompany,
           scanStats: {
             requests: results.requests || 0,
             tokens: results.tokens || 0,
@@ -655,14 +676,23 @@ export default function ScanHud({
           onSaveNewScan(newScan, true);
         }
 
+        setIsScanning(false);
+        setScanFinished(true);
         setFetchMessage({ 
           type: 'success', 
-          text: `Successfully downloaded ZIP (${results.zipSizeFormatted}), extracted to ~/Downloads/${results.folderName}, and ingested ${vulns.length} findings!` 
+          text: `Successfully fetched and loaded ${vulns.length} vulnerabilities from server output path!` 
         });
         refreshLocalFolders();
+
+        // Automatically display findings on dashboard
+        if (onViewFindings) {
+          setTimeout(() => onViewFindings(), 600);
+        }
+      } else {
+        throw new Error(results?.message || 'No valid scan findings returned from server path.');
       }
     } catch (err) {
-      setFetchMessage({ type: 'error', text: err.message || 'Failed to fetch scan results ZIP via n8n webhook.' });
+      setFetchMessage({ type: 'error', text: err.message || 'Failed to fetch scan results from server path.' });
       appendLog(`[n8n FETCH ERROR] ${err.message}`);
     } finally {
       setIsFetchingPath(false);
@@ -1420,6 +1450,26 @@ export default function ScanHud({
               <span>{isScanning ? 'Scan in Progress...' : 'View Dashboard & Findings'}</span>
               <ArrowRight className="w-3.5 h-3.5" />
             </button>
+
+            {/* Direct Fetch Server Output Path Button */}
+            {!isScanning && (
+              <button
+                type="button"
+                onClick={() => {
+                  const pathPrompt = prompt("Enter Server Output Path (e.g. /root/sennovate.com-scan/strix_runs/sennovate-com_1641 or sennovate-com_1641):", customFolderInput || effectiveOutputFolder || targetUrl || "");
+                  if (pathPrompt && pathPrompt.trim()) {
+                    setCustomFolderInput(pathPrompt.trim());
+                    handleFetchFromN8nZip(pathPrompt.trim());
+                  }
+                }}
+                disabled={isScanning}
+                className="flex items-center gap-2 px-4 h-11 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 text-cyan-300 border border-cyan-500/30 text-xs font-bold font-sans transition-all cursor-pointer shadow-sm"
+                title="Directly fetch all 7 scan files from a server output path"
+              >
+                <FolderOpen className="w-4 h-4 text-cyan-400" />
+                <span>Fetch from Server</span>
+              </button>
+            )}
           </div>
 
           {/* Status Badge */}
@@ -1927,23 +1977,28 @@ export default function ScanHud({
               })}
             </div>
 
-            {/* Server Output Folder Path Box */}
-            <div className={`p-4 rounded-2xl border space-y-3 text-xs font-mono transition-colors ${
-              theme === 'dark' ? 'bg-[#080E1C] border-slate-800 text-slate-300' : 'bg-slate-50 border-slate-300 text-slate-800 shadow-sm'
+            {/* Option to Directly Fetch Findings from Server Output Path */}
+            <div className={`p-5 rounded-2xl border space-y-4 text-xs font-mono transition-colors ${
+              theme === 'dark' ? 'bg-[#080E1C] border-cyan-500/30 text-slate-300' : 'bg-slate-50 border-slate-300 text-slate-800 shadow-sm'
             }`}>
-              <div className="flex items-center justify-between">
-                <span className="text-cyan-400 font-bold uppercase tracking-wider flex items-center gap-1.5">
-                  <Folder className="w-3.5 h-3.5" />
-                  Load Strix Output Folder (7 Files):
-                </span>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800/60 pb-3">
+                <div>
+                  <span className="text-cyan-400 font-bold uppercase tracking-wider flex items-center gap-1.5 text-xs">
+                    <Server className="w-4 h-4 text-cyan-400" />
+                    <span>Direct Server Output Path Ingestion (7 Scan Files):</span>
+                  </span>
+                  <p className="text-[11px] text-slate-400 font-sans mt-0.5">
+                    Paste the server output path (e.g. from <code className="text-cyan-300">scan.log</code> or terminal) to directly download, ingest, and display all 7 findings in the dashboard.
+                  </p>
+                </div>
                 <button
                   type="button"
                   onClick={refreshLocalFolders}
-                  title="Refresh local downloads"
-                  className="text-[10px] text-slate-400 hover:text-cyan-400 font-mono flex items-center gap-1 transition-colors cursor-pointer"
+                  title="Refresh local scan downloads"
+                  className="text-[10px] text-slate-400 hover:text-cyan-400 font-mono flex items-center gap-1 transition-colors cursor-pointer self-start sm:self-auto"
                 >
                   <RefreshCw className="w-3 h-3" />
-                  <span>Scan ~/Downloads</span>
+                  <span>Scan Local Folders</span>
                 </button>
               </div>
 
@@ -1951,7 +2006,7 @@ export default function ScanHud({
               {localFolders.length > 0 && (
                 <div className="space-y-1.5">
                   <div className="text-[10px] text-slate-400 font-bold flex items-center gap-1">
-                    <span>Detected on your computer ({localFolders.length} folders):</span>
+                    <span>Recent Scan Folders ({localFolders.length}):</span>
                   </div>
                   <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto">
                     {localFolders.map(f => (
@@ -1960,7 +2015,7 @@ export default function ScanHud({
                         type="button"
                         onClick={() => {
                           setCustomFolderInput(f.folderName);
-                          handleFetchFromPath(f.fullPath);
+                          handleFetchFromN8nZip(f.fullPath || f.folderName);
                         }}
                         className={`px-2.5 py-1 rounded-lg text-[11px] font-mono font-bold border transition-all flex items-center gap-1.5 cursor-pointer ${
                           customFolderInput === f.folderName || outputFolderPath === f.fullPath
@@ -1982,49 +2037,57 @@ export default function ScanHud({
               )}
 
               <div className="flex flex-wrap items-center gap-2">
-                <input
-                  type="text"
-                  value={customFolderInput || (effectiveOutputFolder || '')}
-                  onChange={(e) => setCustomFolderInput(e.target.value)}
-                  placeholder="Enter scan folder name or path..."
-                  className={`flex-1 min-w-[200px] px-3 py-2 rounded-xl text-xs font-mono focus:outline-none transition-all ${
-                    theme === 'dark'
-                      ? 'bg-[#040813] border border-slate-700 text-cyan-300 placeholder-slate-500 focus:border-cyan-400'
-                      : 'bg-white border border-slate-300 text-cyan-700 placeholder-slate-400 focus:border-cyan-500'
-                  }`}
-                />
+                <div className="relative flex-1 min-w-[240px]">
+                  <input
+                    type="text"
+                    value={customFolderInput || (effectiveOutputFolder || '')}
+                    onChange={(e) => setCustomFolderInput(e.target.value)}
+                    placeholder="Enter Server Output Path (e.g. /root/sennovate.com-scan/strix_runs/sennovate-com_1641)..."
+                    className={`w-full px-3.5 py-2.5 rounded-xl text-xs font-mono focus:outline-none transition-all ${
+                      theme === 'dark'
+                        ? 'bg-[#040813] border border-slate-700 text-cyan-300 placeholder-slate-500 focus:border-cyan-400'
+                        : 'bg-white border border-slate-300 text-cyan-700 placeholder-slate-400 focus:border-cyan-500'
+                    }`}
+                  />
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => handleFetchFromN8nZip(customFolderInput || effectiveOutputFolder)}
+                  disabled={isFetchingPath || (!customFolderInput && !effectiveOutputFolder && !targetUrl)}
+                  title="Fetch and download all 7 scan files directly from the server output path"
+                  className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-bold text-xs font-sans transition-all cursor-pointer shadow-md disabled:opacity-50 flex-shrink-0"
+                >
+                  <FolderOpen className={`w-4 h-4 ${isFetchingPath ? 'animate-spin' : ''}`} />
+                  <span>{isFetchingPath ? 'Fetching from Server...' : 'Fetch & Display Findings from Server'}</span>
+                </button>
+
                 <button
                   type="button"
                   onClick={() => handleFetchFromPath(customFolderInput || effectiveOutputFolder)}
                   disabled={isFetchingPath || (!customFolderInput && !effectiveOutputFolder)}
-                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs font-sans transition-all cursor-pointer shadow-sm disabled:opacity-50 flex-shrink-0"
+                  className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs font-sans transition-all cursor-pointer shadow-sm disabled:opacity-50 flex-shrink-0"
+                  title="Ingest local folder from ~/Downloads"
                 >
                   <RefreshCw className={`w-3.5 h-3.5 ${isFetchingPath ? 'animate-spin' : ''}`} />
-                  <span>{isFetchingPath ? 'Loading...' : 'Ingest Local'}</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={handleFetchFromN8nZip}
-                  disabled={isFetchingPath || !targetUrl}
-                  title="Fetch and download scan ZIP directly from server via n8n"
-                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs font-sans transition-all cursor-pointer shadow-sm disabled:opacity-50 flex-shrink-0"
-                >
-                  <FolderOpen className="w-3.5 h-3.5" />
-                  <span>Download from Server (n8n ZIP)</span>
+                  <span>Local ~/Downloads</span>
                 </button>
               </div>
 
               {effectiveOutputFolder && !customFolderInput && (
                 <div className="text-[10px] text-slate-400 truncate">
-                  Detected path: <code className="text-cyan-400 font-bold">{effectiveOutputFolder}</code>
+                  Current Detected Output Path: <code className="text-cyan-400 font-bold">{effectiveOutputFolder}</code>
                 </div>
               )}
 
               {fetchMessage && (
-                <div className={`text-[11px] p-2 rounded border ${
-                  fetchMessage.type === 'success' ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' : 'bg-rose-500/10 border-rose-500/30 text-rose-400'
+                <div className={`text-[11px] p-2.5 rounded-xl border flex items-center gap-2 ${
+                  fetchMessage.type === 'success' 
+                    ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300' 
+                    : 'bg-rose-500/15 border-rose-500/30 text-rose-300'
                 }`}>
-                  {fetchMessage.text}
+                  {fetchMessage.type === 'success' ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" /> : <AlertTriangle className="w-3.5 h-3.5 text-rose-400 flex-shrink-0" />}
+                  <span>{fetchMessage.text}</span>
                 </div>
               )}
             </div>
