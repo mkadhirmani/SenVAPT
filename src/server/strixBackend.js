@@ -865,9 +865,10 @@ function normalizeQueryAndDomain(input) {
 
 /**
  * Smart output folder resolver that dynamically parses candidate scan directories,
- * filters by target domain and minimum scan start timestamp, and ensures OLD previous runs
- * are NEVER returned while a new scan is underway.
- function resolveStrixOutputFolderFromExtract(extractDir, minStartTimeMs = 0, targetDomain = '') {
+ * filters by target domain, reads scan.log for completed Strix output paths, and navigates
+ * to the exact 7-file folder once the audit completes.
+ */
+function resolveStrixOutputFolderFromExtract(extractDir, minStartTimeMs = 0, targetDomain = '') {
   // 1. Search for all log files (scan.log, strix.log, *.log) anywhere in the extracted tree
   const logFiles = [];
   const findLogs = (dir, depth = 0) => {
@@ -964,64 +965,70 @@ function normalizeQueryAndDomain(input) {
   };
   findScanFolders(extractDir);
 
-  // 3. Analyze log files for the LATEST scan session
+  // 3. Analyze log files to check whether the latest run is completed and locate its output folder
   let latestRunOutputFolder = null;
-  let latestRunIsCompleted = false;
-  let latestRunIsActive = false;
+  let latestRunFullPath = null;
+  let isLogCompleted = false;
+  let isLogActive = false;
+
+  const compPatterns = [
+    'Penetration test completed',
+    'Scan completed',
+    'Saved final penetration test report to',
+    'Essential scan data saved to'
+  ];
+  const initPatterns = [
+    'Penetration test initiated',
+    'Starting penetration test',
+    'Launching autonomous scan'
+  ];
 
   for (const logPath of logFiles) {
     try {
       const content = fs.readFileSync(logPath, 'utf8');
       if (!content || content.trim().length === 0) continue;
 
-      // Split log into sessions if multiple scans were appended into the same log file
-      const sessionDelimiters = /(?:Penetration test initiated|Target\s+[a-zA-Z0-9\.\-]+|\─{3,}\s*STRIX\s*\─{3,})/i;
-      const chunks = content.split(sessionDelimiters);
-      const lastSessionChunk = chunks.length > 1 ? chunks[chunks.length - 1] : content;
-
-      // Check completion status in the latest session
-      if (lastSessionChunk.includes('Penetration test completed') ||
-          lastSessionChunk.includes('Scan completed') ||
-          lastSessionChunk.includes('Saved final penetration test report to') ||
-          lastSessionChunk.includes('strix view ')) {
-        latestRunIsCompleted = true;
-        latestRunIsActive = false;
-      } else {
-        latestRunIsActive = true;
+      let lastCompIdx = -1;
+      for (const p of compPatterns) {
+        const idx = content.lastIndexOf(p);
+        if (idx > lastCompIdx) lastCompIdx = idx;
       }
 
-      // Regex matching Output line in Strix banner box in the latest chunk
-      const outMatch = lastSessionChunk.match(/Output\s+([^\s\r\n│]+)/i) ||
-                        lastSessionChunk.match(/run_dir=['"]?([^\s\r\n'"]+)['"]?/i) ||
-                        lastSessionChunk.match(/\[OUTPUT FOLDER PATH\]\s*([^\s\r\n]+)/i) ||
-                        lastSessionChunk.match(/(?:Essential scan data saved to|Saved final penetration test report to):\s*([^\s\r\n]+)/i) ||
-                        lastSessionChunk.match(/strix_runs\/([a-zA-Z0-9_\-]+)/i) ||
-                        lastSessionChunk.match(/strix view\s+([a-zA-Z0-9_\-]+)/i);
+      let lastInitIdx = -1;
+      for (const p of initPatterns) {
+        const idx = content.lastIndexOf(p);
+        if (idx > lastInitIdx) lastInitIdx = idx;
+      }
 
-      if (outMatch && outMatch[1]) {
-        const rawPart = outMatch[1].trim().replace(/[│'"\(\)]/g, '');
-        latestRunOutputFolder = path.basename(rawPart);
+      if (lastCompIdx !== -1 && (lastInitIdx === -1 || lastCompIdx > lastInitIdx)) {
+        isLogCompleted = true;
+        isLogActive = false;
+      } else if (lastInitIdx !== -1 && lastInitIdx > lastCompIdx) {
+        isLogActive = true;
+      }
+
+      if (lastCompIdx !== -1) {
+        const compSlice = content.slice(lastCompIdx);
+        const outMatch = compSlice.match(/Output\s+(\/[^\s\r\n│]+)/i) ||
+                          compSlice.match(/Output\s+([a-zA-Z0-9_\.\-\/]+\/strix_runs\/[^\s\r\n│]+)/i) ||
+                          compSlice.match(/run_dir=['"]?([^\s\r\n'"]+)['"]?/i) ||
+                          compSlice.match(/\[OUTPUT FOLDER PATH\]\s*([^\s\r\n]+)/i) ||
+                          compSlice.match(/(?:Essential scan data saved to|Saved final penetration test report to):\s*([^\s\r\n]+)/i) ||
+                          compSlice.match(/strix view\s+([a-zA-Z0-9_\-]+)/i) ||
+                          compSlice.match(/strix_runs\/([a-zA-Z0-9_\-]+)/i);
+        
+        if (outMatch && outMatch[1]) {
+          latestRunFullPath = outMatch[1].trim().replace(/[│'"\(\)]/g, '');
+          latestRunOutputFolder = latestRunFullPath.split('/').filter(Boolean).pop();
+        }
       }
     } catch (_) {}
   }
 
-  // 4. ACTIVE SCAN MODE (when minStartTimeMs > 0, i.e. user launched a fresh scan)
-  if (minStartTimeMs > 0) {
-    // If log indicates the latest session is still actively testing, do NOT return old runs!
-    if (latestRunIsActive && !latestRunIsCompleted) {
-      return {
-        bestDir: null,
-        folderName: null,
-        isScanning: true,
-        inProgress: true,
-        scanFinished: false,
-        freshFound: false,
-        message: 'Active penetration test is in progress on remote server. Waiting for fresh results...'
-      };
-    }
-
-    // If latest session in scan.log has completed and identified an output folder:
-    if (latestRunIsCompleted && latestRunOutputFolder) {
+  // 4. If log indicates the latest scan is completed:
+  if (isLogCompleted) {
+    if (latestRunOutputFolder) {
+      // Look for the exact run directory extracted from scan.log
       const matched = candidateDirs.find(c =>
         c.name.toLowerCase() === latestRunOutputFolder.toLowerCase() ||
         c.dir.toLowerCase().includes(latestRunOutputFolder.toLowerCase())
@@ -1030,28 +1037,36 @@ function normalizeQueryAndDomain(input) {
         return {
           bestDir: matched.dir,
           folderName: matched.name,
+          outputFullPath: latestRunFullPath,
           isScanning: false,
           inProgress: false,
           scanFinished: true,
           freshFound: true
         };
       }
-    }
 
-    // Look for candidates that were created or modified after minStartTimeMs (- 60s buffer)
-    const minThreshold = minStartTimeMs - 60000;
-    const freshCandidates = candidateDirs.filter(c => {
-      const isFresh = c.startTimeMs >= minThreshold || c.mtime >= minThreshold;
-      return isFresh && c.targetMatch;
-    });
-
-    if (freshCandidates.length > 0) {
-      freshCandidates.sort((a, b) => Math.max(b.startTimeMs, b.mtime) - Math.max(a.startTimeMs, a.mtime));
-      const newestFresh = freshCandidates[0];
-      if (newestFresh.isFinalized || !latestRunIsActive) {
+      // Check direct path inside extractDir
+      const directSearch = (dir, depth = 0) => {
+        if (depth > 8) return null;
+        try {
+          const items = fs.readdirSync(dir);
+          for (const item of items) {
+            const sub = path.join(dir, item);
+            if (item.toLowerCase() === latestRunOutputFolder.toLowerCase()) return sub;
+            if (fs.statSync(sub).isDirectory()) {
+              const res = directSearch(sub, depth + 1);
+              if (res) return res;
+            }
+          }
+        } catch (_) {}
+        return null;
+      };
+      const foundSub = directSearch(extractDir);
+      if (foundSub) {
         return {
-          bestDir: newestFresh.dir,
-          folderName: newestFresh.name,
+          bestDir: foundSub,
+          folderName: latestRunOutputFolder,
+          outputFullPath: latestRunFullPath,
           isScanning: false,
           inProgress: false,
           scanFinished: true,
@@ -1060,28 +1075,15 @@ function normalizeQueryAndDomain(input) {
       }
     }
 
-    // No completed fresh scan found yet for this active scan session
-    return {
-      bestDir: null,
-      folderName: null,
-      isScanning: true,
-      inProgress: true,
-      scanFinished: false,
-      freshFound: false,
-      message: 'Scan is currently in progress on remote server. Waiting for fresh results...'
-    };
-  }
-
-  // 5. STATIC / MANUAL FETCH MODE (when minStartTimeMs === 0, e.g. User manually loaded path or uploaded)
-  if (latestRunOutputFolder) {
-    const matched = candidateDirs.find(c =>
-      c.name.toLowerCase() === latestRunOutputFolder.toLowerCase() ||
-      c.dir.toLowerCase().includes(latestRunOutputFolder.toLowerCase())
-    );
-    if (matched) {
+    // If candidate dirs exist, pick the newest matching domain candidate
+    if (candidateDirs.length > 0) {
+      const matchedDomain = candidateDirs.filter(c => c.targetMatch);
+      const listToPick = matchedDomain.length > 0 ? matchedDomain : candidateDirs;
+      listToPick.sort((a, b) => Math.max(b.startTimeMs, b.mtime) - Math.max(a.startTimeMs, a.mtime));
       return {
-        bestDir: matched.dir,
-        folderName: matched.name,
+        bestDir: listToPick[0].dir,
+        folderName: listToPick[0].name,
+        outputFullPath: latestRunFullPath,
         isScanning: false,
         inProgress: false,
         scanFinished: true,
@@ -1090,18 +1092,47 @@ function normalizeQueryAndDomain(input) {
     }
   }
 
+  // 5. If scan log explicitly shows the scan is STILL ACTIVE / IN PROGRESS:
+  if (isLogActive) {
+    return {
+      bestDir: null,
+      folderName: null,
+      isScanning: true,
+      inProgress: true,
+      scanFinished: false,
+      freshFound: false,
+      message: 'Active penetration test is in progress on remote server. Waiting for completion...'
+    };
+  }
+
+  // 6. If candidate directories exist and no active scan is underway
   if (candidateDirs.length > 0) {
     const matchedDomain = candidateDirs.filter(c => c.targetMatch);
     const listToPick = matchedDomain.length > 0 ? matchedDomain : candidateDirs;
     listToPick.sort((a, b) => Math.max(b.startTimeMs, b.mtime) - Math.max(a.startTimeMs, a.mtime));
     const best = listToPick[0];
+    if (best.isFinalized || minStartTimeMs === 0) {
+      return {
+        bestDir: best.dir,
+        folderName: best.name,
+        isScanning: false,
+        inProgress: false,
+        scanFinished: true,
+        freshFound: true
+      };
+    }
+  }
+
+  // Default fallback when scan is still executing
+  if (minStartTimeMs > 0) {
     return {
-      bestDir: best.dir,
-      folderName: best.name,
-      isScanning: false,
-      inProgress: false,
-      scanFinished: true,
-      freshFound: true
+      bestDir: null,
+      folderName: null,
+      isScanning: true,
+      inProgress: true,
+      scanFinished: false,
+      freshFound: false,
+      message: 'Scan is currently in progress on remote server. Waiting for fresh results...'
     };
   }
 
