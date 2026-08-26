@@ -822,30 +822,42 @@ function normalizeQueryAndDomain(input) {
   let folderName = '';
   let domain = '';
 
+  // 1. Detect target domain if embedded in path, e.g. root/testaspnet.vulnweb.com-scan/... or testaspnet-vulnweb-com_66bf
+  const scanDirMatch = raw.match(/([a-zA-Z0-9_\-\.]+\.[a-zA-Z0-9]+)-scan/i) || 
+                       raw.match(/([a-zA-Z0-9_\-\.]+\.(?:com|org|net|coop|io|in|gov|edu|ai|app|dev|biz|info|cc|me|tech|xyz|site|online))/i);
+  if (scanDirMatch) {
+    domain = scanDirMatch[1].toLowerCase();
+  }
+
   if (cleanPath.startsWith('/')) {
     const parts = cleanPath.split('/').filter(Boolean);
     folderName = parts[parts.length - 1] || 'scan';
-    // If folderName contains domain-like patterns: e.g. www-smeco-coop_81f4 or smeco-scan
-    if (folderName.includes('.')) {
-      domain = folderName;
-    } else if (folderName.includes('-')) {
-      const base = folderName.replace(/^www-/, '').replace(/[-_](scan|runs?|[0-9a-f]{4,})$/i, '').replace(/-/g, '.');
-      domain = base.includes('.') ? base : `${base}.com`;
-    } else {
-      domain = `${folderName}.com`;
+    if (!domain) {
+      if (folderName.includes('.')) {
+        domain = folderName;
+      } else if (folderName.includes('-')) {
+        const base = folderName.replace(/^www-/, '').replace(/[-_](scan|runs?|[0-9a-f]{4,})$/i, '').replace(/-/g, '.');
+        domain = base.includes('.') ? base : `${base}.com`;
+      } else {
+        domain = `${folderName}.com`;
+      }
     }
   } else {
     let clean = raw.replace(/^https?:\/\//i, '').split('/')[0].split('?')[0].split(':')[0];
     if (clean.startsWith('www.')) clean = clean.slice(4);
-    if (clean.includes('.')) {
-      domain = clean;
-      folderName = `www-${clean.replace(/[^a-zA-Z0-9]/g, '-')}`;
+    if (!domain) {
+      if (clean.includes('.')) {
+        domain = clean;
+        folderName = `www-${clean.replace(/[^a-zA-Z0-9]/g, '-')}`;
+      } else {
+        domain = clean.replace(/[-_](scan|runs?|[0-9a-f]{4,})$/i, '');
+        if (!domain.includes('.')) domain = `${domain}.com`;
+        folderName = clean;
+      }
     } else {
-      domain = clean.replace(/[-_](scan|runs?|[0-9a-f]{4,})$/i, '');
-      if (!domain.includes('.')) domain = `${domain}.com`;
-      folderName = clean;
+      folderName = `www-${domain.replace(/[^a-zA-Z0-9]/g, '-')}`;
     }
-    cleanPath = `/root/${folderName}`;
+    cleanPath = `/root/${domain}-scan`;
   }
 
   return { raw, cleanPath, folderName, domain };
@@ -1308,6 +1320,44 @@ export async function fetchN8nScanResultsProxy(payload) {
     }
     throw err;
   }
+}
+
+/**
+ * Handle scan archive (.zip) upload directly from user's downloads folder
+ */
+export async function uploadScanZipProxy(payload) {
+  const { base64Data, filename } = payload;
+  if (!base64Data) throw new Error('No file data received.');
+
+  const buffer = Buffer.from(base64Data, 'base64');
+  const safeName = (filename || `upload-${Date.now()}`).replace(/[^a-zA-Z0-9_\-\.]/g, '_').replace(/\.zip$/i, '');
+  const targetDir = path.join(process.cwd(), 'downloaded_scans');
+  if (!fs.existsSync(targetDir)) fs.mkdirSync(targetDir, { recursive: true });
+
+  const zipPath = path.join(targetDir, `${safeName}.zip`);
+  fs.writeFileSync(zipPath, buffer);
+
+  const extractDir = path.join(targetDir, `${safeName}_extracted_${Date.now().toString(36)}`);
+  if (!fs.existsSync(extractDir)) fs.mkdirSync(extractDir, { recursive: true });
+
+  try {
+    execSync(`unzip -o "${zipPath}" -d "${extractDir}"`, { stdio: 'pipe' });
+  } catch (e) {
+    console.warn('Unzip warning:', e.message);
+  }
+
+  const resolved = resolveStrixOutputFolderFromExtract(extractDir, 0, '');
+  const bestDir = resolved.bestDir || extractDir;
+  const parsed = parseLocalStrixFolder(bestDir);
+
+  return {
+    success: true,
+    extractedPath: bestDir,
+    folderName: resolved.folderName || safeName,
+    zipSize: buffer.length,
+    zipSizeFormatted: `${(buffer.length / 1024).toFixed(1)} KB`,
+    ...parsed
+  };
 }
 
 /**

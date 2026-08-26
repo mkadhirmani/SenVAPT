@@ -13,6 +13,7 @@ import {
   listLocalScanFolders,
   triggerN8nScanProxy,
   fetchN8nScanResultsProxy,
+  uploadScanZipProxy,
   testN8nFetchWebhookProxy,
   fetchServerFileProxy,
   getGlobalServerConfig,
@@ -566,6 +567,30 @@ function strixBackendPlugin() {
           try {
             const payload = JSON.parse(body || '{}');
             const result = await fetchN8nScanResultsProxy(payload);
+            res.setHeader('Content-Type', 'application/json');
+            res.statusCode = 200;
+            res.end(JSON.stringify(result));
+          } catch (err) {
+            res.setHeader('Content-Type', 'application/json');
+            res.statusCode = 500;
+            res.end(JSON.stringify({ success: false, error: err.message }));
+          }
+        });
+      });
+
+      // 12.5 Upload and Ingest Scan Archive (.ZIP) from Downloads
+      server.middlewares.use('/api/strix/upload-scan-zip', async (req, res) => {
+        if (req.method !== 'POST') {
+          res.statusCode = 405;
+          return res.end('Method Not Allowed');
+        }
+
+        let body = '';
+        req.on('data', chunk => { body += chunk; });
+        req.on('end', async () => {
+          try {
+            const payload = JSON.parse(body || '{}');
+            const result = await uploadScanZipProxy(payload);
             res.setHeader('Content-Type', 'application/json');
             res.statusCode = 200;
             res.end(JSON.stringify(result));

@@ -16,6 +16,7 @@ import {
   LayoutDashboard, 
   Folder, 
   FolderOpen,
+  Upload,
   Clock, 
   Shield,
   DollarSign,
@@ -32,6 +33,7 @@ import {
   listLocalScanFoldersApi,
   triggerN8nScan,
   fetchN8nScanResults,
+  uploadScanZipApi,
   getStrixServerConfig,
   fetchStrixServerConfig,
   sendStrixInput 
@@ -696,6 +698,118 @@ export default function ScanHud({
       appendLog(`[n8n FETCH ERROR] ${err.message}`);
     } finally {
       setIsFetchingPath(false);
+    }
+  };
+
+  // Handle uploading and parsing a scan ZIP archive from user's Downloads
+  const handleUploadScanZip = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsFetchingPath(true);
+    setFetchMessage(null);
+    appendLog(`[UPLOAD] Processing "${file.name}" (${(file.size / 1024).toFixed(1)} KB) from Downloads...`);
+
+    try {
+      const results = await uploadScanZipApi(file);
+      if (results && results.vulnerabilities) {
+        appendLog(`[UPLOAD SUCCESS] Ingested ${results.vulnerabilities.length} findings from "${file.name}"!`);
+
+        const vulns = results.vulnerabilities || [];
+        const highCount = results.highCount || vulns.filter(v => v.severity === 'HIGH' || v.severity === 'CRITICAL').length;
+        const medCount = results.medCount || vulns.filter(v => v.severity === 'MEDIUM').length;
+        const riskLevel = results.riskLevel || (highCount > 0 ? 'HIGH' : medCount > 0 ? 'ELEVATED' : 'LOW');
+        const riskScore = results.riskScore || (highCount > 0 ? 8.2 : medCount > 0 ? 6.5 : 4.0);
+
+        let inferredCompany = results.companyName || companyName;
+        if (!inferredCompany || inferredCompany === 'Target') {
+          try {
+            const host = (results.targetUrl || file.name).replace(/^https?:\/\//, '').split('/')[0].split(':')[0];
+            const base = host.replace(/^www\./, '').split('.')[0];
+            inferredCompany = base ? base.charAt(0).toUpperCase() + base.slice(1) + ' Inc' : 'Security Audit Target';
+          } catch (_) {}
+        }
+
+        const newScan = {
+          id: results.folderName || `scan-${Date.now()}`,
+          folderName: results.folderName,
+          outputFolderPath: results.outputFolderPath || results.extractedPath || file.name,
+          companyName: inferredCompany,
+          targetUrl: results.targetUrl || targetUrl || (file.name.replace(/\.zip$/i, '')),
+          timestamp: results.timestamp || new Date().toISOString().replace('T', ' ').slice(0, 16),
+          duration: results.duration || '35 min',
+          riskLevel: riskLevel,
+          riskScore: riskScore,
+          findingsCount: vulns.length,
+          highCount: highCount,
+          medCount: medCount,
+          lowCount: results.lowCount || 0,
+          tokens: results.tokens || 0,
+          requests: results.requests || 0,
+          cost: results.cost || 0,
+          createdBy: currentUser?.username || 'user',
+          scannedBy: currentUser?.username || 'user',
+          scannedByName: currentUser?.name || (currentUser?.role === 'admin' ? 'Administrator' : 'User'),
+          userRole: currentUser?.role === 'admin' ? 'Administrator' : 'User',
+          logs: results.strixLog ? results.strixLog.split('\n') : logs,
+          vulnerabilities: vulns,
+          reportMarkdown: results.reportMarkdown || '',
+          csvData: results.csvData || '',
+          sarifData: results.sarifData || null,
+          vulnerabilitiesJson: results.vulnerabilitiesJson || null,
+          subdomains: results.subdomains || [],
+          metadata: {
+            ...SCAN_METADATA,
+            ...results.metadata,
+            runId: results.folderName,
+            targetUrl: results.targetUrl || targetUrl || file.name,
+            companyName: inferredCompany,
+            remoteRunDir: results.outputFolderPath,
+            totalFindings: vulns.length,
+            highCount: highCount,
+            medCount: medCount,
+            createdBy: currentUser?.username || 'user',
+            scannedBy: currentUser?.username || 'user',
+            scannedByName: currentUser?.name || (currentUser?.role === 'admin' ? 'Administrator' : 'User'),
+            userRole: currentUser?.role === 'admin' ? 'Administrator' : 'User'
+          }
+        };
+
+        updateScannerState({
+          activeScanId: results.folderName,
+          discoveredFindings: vulns,
+          scanFinished: true,
+          outputFolderPath: results.outputFolderPath,
+          targetUrl: results.targetUrl || targetUrl || file.name,
+          companyName: inferredCompany
+        });
+
+        if (onSaveNewScan) {
+          onSaveNewScan(newScan, true);
+        }
+
+        setIsScanning(false);
+        setScanFinished(true);
+        setFetchMessage({
+          type: 'success',
+          text: `Successfully uploaded and ingested ${vulns.length} vulnerabilities from "${file.name}"!`
+        });
+
+        if (onViewFindings) {
+          setTimeout(() => onViewFindings(), 600);
+        }
+      } else {
+        throw new Error(results?.message || 'No valid scan findings in the uploaded archive.');
+      }
+    } catch (err) {
+      appendLog(`[UPLOAD ERROR] ${err.message}`);
+      setFetchMessage({
+        type: 'error',
+        text: `Upload Failed: ${err.message}`
+      });
+    } finally {
+      setIsFetchingPath(false);
+      e.target.value = '';
     }
   };
 
@@ -1450,26 +1564,6 @@ export default function ScanHud({
               <span>{isScanning ? 'Scan in Progress...' : 'View Dashboard & Findings'}</span>
               <ArrowRight className="w-3.5 h-3.5" />
             </button>
-
-            {/* Direct Fetch Server Output Path Button */}
-            {!isScanning && (
-              <button
-                type="button"
-                onClick={() => {
-                  const pathPrompt = prompt("Enter Server Output Path (e.g. /root/sennovate.com-scan/strix_runs/sennovate-com_1641 or sennovate-com_1641):", customFolderInput || effectiveOutputFolder || targetUrl || "");
-                  if (pathPrompt && pathPrompt.trim()) {
-                    setCustomFolderInput(pathPrompt.trim());
-                    handleFetchFromN8nZip(pathPrompt.trim());
-                  }
-                }}
-                disabled={isScanning}
-                className="flex items-center gap-2 px-4 h-11 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 text-cyan-300 border border-cyan-500/30 text-xs font-bold font-sans transition-all cursor-pointer shadow-sm"
-                title="Directly fetch all 7 scan files from a server output path"
-              >
-                <FolderOpen className="w-4 h-4 text-cyan-400" />
-                <span>Fetch from Server</span>
-              </button>
-            )}
           </div>
 
           {/* Status Badge */}
@@ -1977,36 +2071,48 @@ export default function ScanHud({
               })}
             </div>
 
-            {/* Option to Directly Fetch Findings from Server Output Path */}
+            {/* Option to Upload Scan Archive (.ZIP) or Ingest Server Output Path */}
             <div className={`p-5 rounded-2xl border space-y-4 text-xs font-mono transition-colors ${
               theme === 'dark' ? 'bg-[#080E1C] border-cyan-500/30 text-slate-300' : 'bg-slate-50 border-slate-300 text-slate-800 shadow-sm'
             }`}>
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800/60 pb-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800/60 pb-3">
                 <div>
                   <span className="text-cyan-400 font-bold uppercase tracking-wider flex items-center gap-1.5 text-xs">
                     <Server className="w-4 h-4 text-cyan-400" />
-                    <span>Direct Server Output Path Ingestion (7 Scan Files):</span>
+                    <span>Upload Scan File (.ZIP) from Downloads or Fetch from Server:</span>
                   </span>
                   <p className="text-[11px] text-slate-400 font-sans mt-0.5">
-                    Paste the server output path (e.g. from <code className="text-cyan-300">scan.log</code> or terminal) to directly download, ingest, and display all 7 findings in the dashboard.
+                    Upload a completed scan archive from your laptop Downloads, or enter the server output path to directly visualize all 7 findings in the dashboard.
                   </p>
                 </div>
-                <button
-                  type="button"
-                  onClick={refreshLocalFolders}
-                  title="Refresh local scan downloads"
-                  className="text-[10px] text-slate-400 hover:text-cyan-400 font-mono flex items-center gap-1 transition-colors cursor-pointer self-start sm:self-auto"
-                >
-                  <RefreshCw className="w-3 h-3" />
-                  <span>Scan Local Folders</span>
-                </button>
+                
+                {/* Upload from Downloads Button */}
+                <label className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-bold text-xs font-sans transition-all cursor-pointer shadow-md flex-shrink-0">
+                  <Upload className="w-4 h-4" />
+                  <span>Upload .ZIP from Downloads</span>
+                  <input
+                    type="file"
+                    accept=".zip"
+                    onChange={handleUploadScanZip}
+                    className="hidden"
+                  />
+                </label>
               </div>
 
               {/* Detected local scan folders quick-select chips */}
               {localFolders.length > 0 && (
                 <div className="space-y-1.5">
-                  <div className="text-[10px] text-slate-400 font-bold flex items-center gap-1">
-                    <span>Recent Scan Folders ({localFolders.length}):</span>
+                  <div className="text-[10px] text-slate-400 font-bold flex items-center justify-between">
+                    <span>Recent Scan Folders on Laptop ({localFolders.length}):</span>
+                    <button
+                      type="button"
+                      onClick={refreshLocalFolders}
+                      title="Refresh local scan downloads"
+                      className="text-[10px] text-slate-400 hover:text-cyan-400 font-mono flex items-center gap-1 transition-colors cursor-pointer"
+                    >
+                      <RefreshCw className="w-3 h-3" />
+                      <span>Refresh</span>
+                    </button>
                   </div>
                   <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto">
                     {localFolders.map(f => (
@@ -2059,7 +2165,7 @@ export default function ScanHud({
                   className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-bold text-xs font-sans transition-all cursor-pointer shadow-md disabled:opacity-50 flex-shrink-0"
                 >
                   <FolderOpen className={`w-4 h-4 ${isFetchingPath ? 'animate-spin' : ''}`} />
-                  <span>{isFetchingPath ? 'Fetching from Server...' : 'Fetch & Display Findings from Server'}</span>
+                  <span>{isFetchingPath ? 'Fetching from Server...' : 'Fetch from Server Path'}</span>
                 </button>
 
                 <button

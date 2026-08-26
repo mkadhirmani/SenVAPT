@@ -366,4 +366,36 @@ export async function fetchServerFile(params) {
   return data;
 }
 
+/**
+ * Upload and parse a scan ZIP archive from the user's laptop downloads
+ */
+export async function uploadScanZipApi(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      try {
+        const base64Data = e.target.result.split(',')[1];
+        const res = await fetch('/api/strix/upload-scan-zip', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            filename: file.name,
+            base64Data
+          })
+        });
+
+        const data = await res.json();
+        if (!res.ok || !data.success) {
+          throw new Error(data.error || 'Failed to parse uploaded scan ZIP.');
+        }
+        resolve(data);
+      } catch (err) {
+        reject(err);
+      }
+    };
+    reader.onerror = (err) => reject(err);
+    reader.readAsDataURL(file);
+  });
+}
+
 

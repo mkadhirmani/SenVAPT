@@ -15,6 +15,7 @@ import {
   listLocalScanFolders,
   triggerN8nScanProxy,
   fetchN8nScanResultsProxy,
+  uploadScanZipProxy,
   testN8nFetchWebhookProxy,
   fetchServerFileProxy,
   getGlobalServerConfig,
@@ -491,6 +492,21 @@ const server = http.createServer(async (req, res) => {
     try {
       const payload = await parseJsonBody(req);
       const result = await fetchN8nScanResultsProxy(payload);
+      res.setHeader('Content-Type', 'application/json');
+      res.statusCode = 200;
+      return res.end(JSON.stringify(result));
+    } catch (err) {
+      res.setHeader('Content-Type', 'application/json');
+      res.statusCode = 500;
+      return res.end(JSON.stringify({ success: false, error: err.message }));
+    }
+  }
+
+  // 15.5 Upload Scan ZIP from user downloads
+  if (pathname === '/api/strix/upload-scan-zip') {
+    try {
+      const payload = await parseJsonBody(req);
+      const result = await uploadScanZipProxy(payload);
       res.setHeader('Content-Type', 'application/json');
       res.statusCode = 200;
       return res.end(JSON.stringify(result));
