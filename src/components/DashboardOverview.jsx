@@ -20,7 +20,8 @@ import {
   Building, 
   History, 
   MessageSquare,
-  UserCheck
+  UserCheck,
+  Radar
 } from 'lucide-react';
 import { SCAN_METADATA, POSITIVE_CONTROLS } from '../data/scanData';
 import { checkUserPermission } from '../utils/auth';
