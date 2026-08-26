@@ -535,7 +535,9 @@ const server = http.createServer(async (req, res) => {
   // STATIC ASSETS & SPA ROUTING
   // ==========================================
   if (req.method === 'GET' || req.method === 'HEAD') {
-    let filePath = path.join(DIST_DIR, pathname);
+    let cleanPath = pathname;
+    try { cleanPath = decodeURIComponent(pathname); } catch (_) {}
+    let filePath = path.join(DIST_DIR, cleanPath);
 
     // Prevent directory traversal
     if (!filePath.startsWith(DIST_DIR)) {
@@ -543,7 +545,7 @@ const server = http.createServer(async (req, res) => {
       return res.end('Forbidden');
     }
 
-    // Check if the requested file exists
+    // Check if the requested file exists in dist
     fs.stat(filePath, (err, stats) => {
       if (!err && stats.isFile()) {
         const ext = path.extname(filePath).toLowerCase();
@@ -554,18 +556,31 @@ const server = http.createServer(async (req, res) => {
         return fs.createReadStream(filePath).pipe(res);
       }
 
-      // If file not found or is directory, fallback to index.html for Single Page App client-side routing
-      const indexFile = path.join(DIST_DIR, 'index.html');
-      fs.stat(indexFile, (idxErr, idxStats) => {
-        if (!idxErr && idxStats.isFile()) {
-          res.setHeader('Content-Type', 'text/html; charset=utf-8');
-          res.setHeader('Cache-Control', 'no-cache');
+      // Fallback check in public folder
+      const publicPath = path.join(__dirname, 'public', cleanPath);
+      fs.stat(publicPath, (pErr, pStats) => {
+        if (!pErr && pStats.isFile()) {
+          const ext = path.extname(publicPath).toLowerCase();
+          const contentType = MIME_TYPES[ext] || 'application/octet-stream';
+          res.setHeader('Content-Type', contentType);
+          res.setHeader('Cache-Control', ext === '.html' ? 'no-cache' : 'public, max-age=31536000');
           res.statusCode = 200;
-          return fs.createReadStream(indexFile).pipe(res);
+          return fs.createReadStream(publicPath).pipe(res);
         }
 
-        res.statusCode = 404;
-        res.end('Not Found - Build frontend with npm run build');
+        // If file not found or is directory, fallback to index.html for Single Page App client-side routing
+        const indexFile = path.join(DIST_DIR, 'index.html');
+        fs.stat(indexFile, (idxErr, idxStats) => {
+          if (!idxErr && idxStats.isFile()) {
+            res.setHeader('Content-Type', 'text/html; charset=utf-8');
+            res.setHeader('Cache-Control', 'no-cache');
+            res.statusCode = 200;
+            return fs.createReadStream(indexFile).pipe(res);
+          }
+
+          res.statusCode = 404;
+          res.end('Not Found - Build frontend with npm run build');
+        });
       });
     });
     return;

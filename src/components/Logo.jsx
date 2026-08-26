@@ -11,12 +11,18 @@ export default function Logo({ theme = 'dark', size = 'md', iconOnly = false, cl
     );
   }
 
-  const logoSrc = theme === 'dark' ? '/logo/Logo White.png' : '/logo/Logo dark.jpg';
+  const logoSrc = theme === 'dark' ? '/logo/logo-white.png' : '/logo/logo-dark.jpg';
+  const fallbackSrc = theme === 'dark' ? '/logo/Logo White.png' : '/logo/Logo dark.jpg';
 
   return (
     <div className={`flex items-center gap-2 select-none ${className}`}>
       <img
         src={logoSrc}
+        onError={(e) => {
+          if (e.currentTarget.src !== fallbackSrc) {
+            e.currentTarget.src = fallbackSrc;
+          }
+        }}
         alt="Sennovate Inc."
         className={`${
           size === 'sm' ? 'h-7' : size === 'lg' ? 'h-11' : 'h-8'
