@@ -3,8 +3,8 @@
     "id": "admin",
     "username": "admin",
     "email": "admin@sennovate.com",
-    "password": "admin123",
-    "altPassword": "Admin@2026!",
+    "password": "@A198vapt",
+    "altPassword": "@A198vapt",
     "name": "Administrator",
     "role": "admin",
     "title": "Administrator",
@@ -29,8 +29,8 @@
     "id": "user",
     "username": "user",
     "email": "user@sennovate.com",
-    "password": "user123",
-    "altPassword": "User@2026!",
+    "password": "@user1vapt",
+    "altPassword": "@user1vapt",
     "name": "User",
     "role": "user",
     "title": "Standard User",
@@ -38,7 +38,9 @@
     "lastLogin": "2026-08-26 09:30:00",
     "isOnline": true,
     "scansCount": 0,
-    "assignedTargets": ["General Compliance & Security Audit"],
+    "assignedTargets": [
+      "General Compliance & Security Audit"
+    ],
     "permissions": {
       "run_scans": true,
       "view_findings": true,
