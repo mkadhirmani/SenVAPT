@@ -19,7 +19,8 @@ import {
   Clock, 
   Shield,
   DollarSign,
-  AlertTriangle
+  AlertTriangle,
+  User
 } from 'lucide-react';
 import { SCAN_METADATA } from '../data/scanData';
 import { 
@@ -1258,9 +1259,19 @@ export default function ScanHud({
             </p>
           </div>
 
-          {/* SSH Server Settings Trigger (Admin Only) */}
-          {isAdmin && (
-            <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2.5 flex-wrap">
+            {/* Logged in User / Operator Badge */}
+            <div className={`px-3 py-1.5 rounded-xl border text-xs font-mono font-bold flex items-center gap-2 ${
+              isAdmin
+                ? 'bg-cyan-500/15 border-cyan-500/40 text-cyan-400'
+                : 'bg-emerald-500/15 border-emerald-500/40 text-emerald-400'
+            }`}>
+              <User className="w-3.5 h-3.5" />
+              <span>Operator: <strong className="uppercase">{currentUser?.username || (isAdmin ? 'admin' : 'user')}</strong></span>
+            </div>
+
+            {/* SSH Server Settings Trigger (Admin Only) */}
+            {isAdmin && (
               <button
                 onClick={onOpenStrixSettings}
                 className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-mono font-bold transition-all border ${
@@ -1276,8 +1287,8 @@ export default function ScanHud({
                   {serverConfig.host ? `SSH: ${serverConfig.username || 'root'}@${serverConfig.host}` : 'Configure Remote SSH Server'}
                 </span>
               </button>
-            </div>
-          )}
+            )}
+          </div>
         </div>
 
         {/* Inputs */}

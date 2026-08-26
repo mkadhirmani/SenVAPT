@@ -20,6 +20,7 @@ import {
   RefreshCw, 
   ArrowRight,
   Eye,
+  EyeOff,
   Server,
   Layers,
   Sparkles,
@@ -48,6 +49,7 @@ export default function AdminUserManagement({
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedUserId, setSelectedUserId] = useState('user');
   const [isAddUserOpen, setIsAddUserOpen] = useState(false);
+  const [showNewUserPassword, setShowNewUserPassword] = useState(true);
   const [statusMessage, setStatusMessage] = useState(null);
 
   // New user form state
@@ -604,15 +606,34 @@ export default function AdminUserManagement({
               </div>
 
               <div className="space-y-1">
-                <label className="text-xs font-mono font-bold text-slate-300 uppercase">Password</label>
-                <input
-                  type="password"
-                  required
-                  value={newUserData.password}
-                  onChange={(e) => setNewUserData({ ...newUserData, password: e.target.value })}
-                  placeholder="Enter secure password"
-                  className="w-full px-3 py-2 rounded-xl font-mono text-xs border border-slate-700 bg-[#080E1C] text-white focus:outline-none focus:border-cyan-400"
-                />
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-mono font-bold text-slate-300 uppercase">Password</label>
+                  <button
+                    type="button"
+                    onClick={() => setShowNewUserPassword(!showNewUserPassword)}
+                    className="text-[11px] font-mono text-cyan-400 hover:text-cyan-300 flex items-center gap-1 cursor-pointer"
+                  >
+                    {showNewUserPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                    <span>{showNewUserPassword ? 'Hide' : 'Show'}</span>
+                  </button>
+                </div>
+                <div className="relative">
+                  <input
+                    type={showNewUserPassword ? "text" : "password"}
+                    required
+                    value={newUserData.password}
+                    onChange={(e) => setNewUserData({ ...newUserData, password: e.target.value })}
+                    placeholder="Enter secure password"
+                    className="w-full pl-3 pr-10 py-2 rounded-xl font-mono text-xs border border-slate-700 bg-[#080E1C] text-white focus:outline-none focus:border-cyan-400"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowNewUserPassword(!showNewUserPassword)}
+                    className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-cyan-400 cursor-pointer"
+                  >
+                    {showNewUserPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
               </div>
 
               <div className="space-y-1">

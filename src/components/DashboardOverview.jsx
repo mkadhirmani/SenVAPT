@@ -21,7 +21,9 @@ import {
   History, 
   MessageSquare,
   UserCheck,
-  Radar
+  Radar,
+  User,
+  Shield
 } from 'lucide-react';
 import { SCAN_METADATA, POSITIVE_CONTROLS } from '../data/scanData';
 import { checkUserPermission } from '../utils/auth';
@@ -31,7 +33,7 @@ export default function DashboardOverview({
   metadata = SCAN_METADATA,
   activeScan,
   currentUser,
-  companyName = "Vontier Corporation",
+  companyName = "",
   scanHistory = [],
   activeScanId = '',
   onSelectScan, 
@@ -52,8 +54,8 @@ export default function DashboardOverview({
   const medVulns = vulnerabilities.filter(v => v.severity === 'MEDIUM');
   const topVuln = vulnerabilities[0] || null;
 
-  const targetUrl = currentTarget.targetUrl || metadata.targetUrl || (isEmco ? "https://www.emcochem.com/" : (isSmeco ? "https://www.smeco.coop/" : "https://www.vontier.com/"));
-  const riskScore = currentTarget.riskScore || metadata.overallRiskScore || topVuln?.cvss || (highVulns.length > 0 ? 8.2 : (medVulns.length > 0 ? 6.5 : 4.0));
+  const targetUrl = currentTarget.targetUrl || metadata.targetUrl || "";
+  const riskScore = currentTarget.riskScore || metadata.overallRiskScore || topVuln?.cvss || (highVulns.length > 0 ? 8.2 : (medVulns.length > 0 ? 6.5 : 0));
   const riskLevel = currentTarget.riskLevel || metadata.overallRiskLevel || (riskScore >= 7.0 ? 'HIGH' : (riskScore >= 4.0 ? 'ELEVATED' : 'LOW'));
 
   const rawTokens = typeof currentTarget.tokens === 'number' 
@@ -68,10 +70,10 @@ export default function DashboardOverview({
     ? currentTarget.requests
     : (typeof metadata.requests === 'number' ? metadata.requests : (currentTarget.metadata?.requests || 0));
 
-  const scannedBy = currentTarget.scannedBy || 'user';
-  const scannedByName = currentTarget.scannedByName && !currentTarget.scannedByName.includes('Alex Rivera') ? currentTarget.scannedByName : (scannedBy === 'admin' ? 'Administrator' : 'User');
+  const scannedBy = currentTarget.scannedBy || (currentUser?.username || 'user');
+  const scannedByName = currentTarget.scannedByName && !currentTarget.scannedByName.includes('Alex Rivera') ? currentTarget.scannedByName : (scannedBy === 'admin' ? 'Administrator' : scannedBy);
 
-  // Get active target base domain (e.g. emcochem.com, smeco.coop, vontier.com)
+  // Get active target base domain
   const getTargetBaseDomain = (url) => {
     if (!url || typeof url !== 'string') return '';
     try {
@@ -85,7 +87,7 @@ export default function DashboardOverview({
 
   const activeBaseDomain = getTargetBaseDomain(targetUrl);
 
-  // Extract tested domains and subdomains from findings.sarif, findings, and metadata
+  // Extract tested domains and subdomains
   const testedSubdomainsList = currentTarget.metadata?.testedSubdomains || currentTarget.subdomains || metadata?.testedSubdomains || metadata?.subdomains || [];
   const rawAssetList = [
     ...vulnerabilities.map(v => {
@@ -105,7 +107,6 @@ export default function DashboardOverview({
     })()
   ].filter(Boolean);
 
-  // Strictly filter assets that match the active target domain only
   const uniqueAssets = Array.from(new Set(
     rawAssetList.filter(asset => {
       if (!activeBaseDomain) return true;
@@ -118,6 +119,34 @@ export default function DashboardOverview({
   if (!hasScans) {
     return (
       <div className="space-y-6 max-w-7xl mx-auto pb-12">
+        {/* Logged in User Bar */}
+        <div className={`p-4 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs font-mono transition-colors ${
+          theme === 'dark' ? 'bg-[#0B1120] border-slate-800 text-slate-300' : 'bg-white border-slate-300 text-slate-800 shadow-sm'
+        }`}>
+          <div className="flex items-center gap-2.5 flex-wrap">
+            <div className={`w-7 h-7 rounded-xl flex items-center justify-center font-bold text-xs ${
+              isAdmin ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/40' : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
+            }`}>
+              {isAdmin ? <Shield className="w-4 h-4" /> : <User className="w-4 h-4" />}
+            </div>
+            <div>
+              <span className="text-slate-400 text-[11px]">Logged in as: </span>
+              <strong className={`font-black text-sm uppercase tracking-wider ${isAdmin ? 'text-cyan-400' : 'text-emerald-400'}`}>
+                {currentUser?.username || (isAdmin ? 'admin' : 'user')}
+              </strong>
+              <span className="ml-2 px-2 py-0.5 rounded-full text-[10px] font-bold border bg-slate-800/80 border-slate-700 text-slate-300">
+                {isAdmin ? 'Administrator' : 'Standard User'}
+              </span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 text-[11px] text-emerald-500 font-bold">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+            <span>Active Authenticated Session</span>
+          </div>
+        </div>
+
+        {/* Welcome Empty State Card */}
         <div className={`p-8 sm:p-14 rounded-3xl border text-center space-y-6 transition-colors shadow-sm ${
           theme === 'dark' ? 'bg-[#090F1E] border-slate-800' : 'bg-white border-slate-200'
         }`}>
@@ -126,10 +155,10 @@ export default function DashboardOverview({
           </div>
           <div className="space-y-2 max-w-lg mx-auto">
             <h2 className={`text-2xl sm:text-3xl font-extrabold ${theme === 'dark' ? 'text-white' : 'text-slate-950'}`}>
-              No Security Scans Run Yet
+              Welcome, <span className="text-cyan-400 uppercase">{currentUser?.username || 'User'}</span>!
             </h2>
             <p className={`text-xs sm:text-sm leading-relaxed ${theme === 'dark' ? 'text-slate-400' : 'text-slate-600'}`}>
-              Welcome to the Autonomous VAPT Portal. You haven't performed any security audits on your account yet. Launch an AI-driven penetration test to discover vulnerabilities, attack paths, and remediation plans.
+              You are signed in as <strong className="text-cyan-400 uppercase">{currentUser?.username || 'User'}</strong> ({isAdmin ? 'Administrator' : 'Standard User'}). You haven't performed any security audits on your account yet. Launch an AI-driven penetration test to discover vulnerabilities, attack paths, and remediation plans.
             </p>
           </div>
           <div className="pt-2">
@@ -162,6 +191,33 @@ export default function DashboardOverview({
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-12">
+      {/* User Login Header Bar */}
+      <div className={`p-3.5 px-5 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs font-mono transition-colors ${
+        theme === 'dark' ? 'bg-[#0B1120] border-slate-800 text-slate-300' : 'bg-white border-slate-300 text-slate-800 shadow-sm'
+      }`}>
+        <div className="flex items-center gap-2.5 flex-wrap">
+          <div className={`w-6 h-6 rounded-lg flex items-center justify-center font-bold text-xs ${
+            isAdmin ? 'bg-cyan-500/20 text-cyan-400' : 'bg-emerald-500/20 text-emerald-400'
+          }`}>
+            {isAdmin ? <Shield className="w-3.5 h-3.5" /> : <User className="w-3.5 h-3.5" />}
+          </div>
+          <div>
+            <span className="text-slate-400 text-[11px]">Logged in as: </span>
+            <strong className={`font-black text-sm uppercase tracking-wider ${isAdmin ? 'text-cyan-400' : 'text-emerald-400'}`}>
+              {currentUser?.username || (isAdmin ? 'admin' : 'user')}
+            </strong>
+            <span className="ml-2 px-2 py-0.5 rounded-full text-[10px] font-bold border bg-slate-800/80 border-slate-700 text-slate-300">
+              {isAdmin ? 'Administrator' : 'Standard User'}
+            </span>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 text-[11px] text-emerald-500 font-bold">
+          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+          <span>Active Session</span>
+        </div>
+      </div>
+
       {/* Scan Session Switcher Banner */}
       {scanHistory.length > 0 && (
         <div className={`p-4 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-4 text-xs font-mono transition-colors ${
@@ -172,13 +228,19 @@ export default function DashboardOverview({
               <History className="w-4 h-4" />
               Active Target Scan:
             </span>
-            <span className={`font-bold truncate text-sm ${theme === 'dark' ? 'text-white' : 'text-slate-950'}`}>
-              {companyName}
-            </span>
-            <span className={theme === 'dark' ? 'text-slate-500' : 'text-slate-400'}>&bull;</span>
-            <span className={`truncate hidden sm:inline ${theme === 'dark' ? 'text-slate-400' : 'text-slate-600'}`}>
-              {targetUrl}
-            </span>
+            {companyName && (
+              <span className={`font-bold truncate text-sm ${theme === 'dark' ? 'text-white' : 'text-slate-950'}`}>
+                {companyName}
+              </span>
+            )}
+            {companyName && targetUrl && (
+              <span className={theme === 'dark' ? 'text-slate-500' : 'text-slate-400'}>&bull;</span>
+            )}
+            {targetUrl && (
+              <span className={`truncate hidden sm:inline ${theme === 'dark' ? 'text-slate-400' : 'text-slate-600'}`}>
+                {targetUrl}
+              </span>
+            )}
             
             {/* Scanned By Attribution Badge (Admin Visible) */}
             {isAdmin && (
