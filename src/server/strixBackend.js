@@ -546,15 +546,51 @@ export function parseLocalStrixFolder(folderPath) {
     } catch (e) {}
   }
 
-  // 4. strix.log - logs
-  const logPath = path.join(resolvedPath, 'strix.log');
-  if (fs.existsSync(logPath)) {
-    try {
-      const logContent = fs.readFileSync(logPath, 'utf8');
-      const lines = logContent.split('\n');
-      raw.strix_log = lines.slice(-500).join('\n');
-      raw.log_tail = lines.slice(-100).join('\n');
-    } catch (e) {}
+  // 4. strix.log or scan.log
+  let logCandidatePaths = [
+    path.join(resolvedPath, 'strix.log'),
+    path.join(resolvedPath, 'scan.log'),
+    path.join(resolvedPath, '..', 'scan.log'),
+    path.join(resolvedPath, '..', '..', 'scan.log'),
+    path.join(resolvedPath, '..', 'strix.log'),
+    path.join(resolvedPath, '..', '..', 'strix.log')
+  ];
+
+  let parsedLogTokens = 0;
+  let parsedLogCost = 0;
+
+  for (const lPath of logCandidatePaths) {
+    if (fs.existsSync(lPath)) {
+      try {
+        const logContent = fs.readFileSync(lPath, 'utf8');
+        const lines = logContent.split('\n');
+        if (!raw.strix_log) {
+          raw.strix_log = lines.slice(-500).join('\n');
+          raw.log_tail = lines.slice(-100).join('\n');
+        }
+
+        // Parse token counts from Strix banner box:
+        // "Input Tokens 27.6M  ·  Cached Tokens 25.4M  ·  Output Tokens 214.3K  ·  Cost $0.6982"
+        const parseMultiplier = (str) => {
+          if (!str) return 0;
+          const num = parseFloat(str);
+          if (str.toUpperCase().includes('M')) return Math.round(num * 1000000);
+          if (str.toUpperCase().includes('K')) return Math.round(num * 1000);
+          if (str.toUpperCase().includes('G')) return Math.round(num * 1000000000);
+          return Math.round(num) || 0;
+        };
+
+        const inTokenMatch = logContent.match(/Input Tokens\s*([\d\.]+\s*[kKMGT]?)/i);
+        const cachedTokenMatch = logContent.match(/Cached Tokens\s*([\d\.]+\s*[kKMGT]?)/i);
+        const outTokenMatch = logContent.match(/Output Tokens\s*([\d\.]+\s*[kKMGT]?)/i);
+        const costMatch = logContent.match(/Cost\s*\$?([\d\.]+)/i);
+
+        if (inTokenMatch) parsedLogTokens += parseMultiplier(inTokenMatch[1]);
+        if (cachedTokenMatch) parsedLogTokens += parseMultiplier(cachedTokenMatch[1]);
+        if (outTokenMatch) parsedLogTokens += parseMultiplier(outTokenMatch[1]);
+        if (costMatch && !parsedLogCost) parsedLogCost = parseFloat(costMatch[1]) || 0;
+      } catch (e) {}
+    }
   }
 
   // 5. vulnerabilities/*.md files
@@ -617,7 +653,7 @@ export function parseLocalStrixFolder(folderPath) {
     }
   }
 
-  const totalTokens = runData.llm_usage?.total_tokens || (runData.llm_usage?.input_tokens ? (runData.llm_usage.input_tokens + (runData.llm_usage.output_tokens || 0)) : 0);
+  const totalTokens = runData.llm_usage?.total_tokens || (runData.llm_usage?.input_tokens ? (runData.llm_usage.input_tokens + (runData.llm_usage.output_tokens || 0)) : (parsedLogTokens || 0));
   const inputTokens = runData.llm_usage?.input_tokens || 0;
   const outputTokens = runData.llm_usage?.output_tokens || 0;
   const requests = runData.llm_usage?.requests || 0;
@@ -628,6 +664,8 @@ export function parseLocalStrixFolder(folderPath) {
     calculatedCost = runData.llm_usage.cost;
   } else if (typeof runData.cost === 'number' && runData.cost > 0) {
     calculatedCost = runData.cost;
+  } else if (parsedLogCost > 0) {
+    calculatedCost = parsedLogCost;
   } else if (Array.isArray(runData.llm_usage?.agents) && runData.llm_usage.agents.length > 0) {
     const agentCostSum = runData.llm_usage.agents.reduce((sum, a) => sum + (typeof a.cost === 'number' ? a.cost : 0), 0);
     if (agentCostSum > 0) calculatedCost = agentCostSum;
@@ -822,7 +860,7 @@ function resolveStrixOutputFolderFromExtract(extractDir, minStartTimeMs = 0, tar
   // 1. Search for all log files (scan.log, strix.log, *.log) anywhere in the extracted tree
   const logFiles = [];
   const findLogs = (dir, depth = 0) => {
-    if (depth > 6) return;
+    if (depth > 8) return;
     try {
       const items = fs.readdirSync(dir);
       for (const item of items) {
@@ -841,26 +879,37 @@ function resolveStrixOutputFolderFromExtract(extractDir, minStartTimeMs = 0, tar
   findLogs(extractDir);
 
   let targetRunFolderName = null;
+  let targetRunFullPath = null;
+  let scanLogCompleted = false;
   let scanLogIndicatesActive = false;
 
-  // 2. Dynamically parse log files for the Strix banner box output field
+  // 2. Parse log files for Strix completion box:
+  // "Penetration test completed" and "Output  /root/.../strix_runs/<run_id>"
   for (const logPath of logFiles) {
     try {
       const content = fs.readFileSync(logPath, 'utf8');
-      if (content.includes('Penetration test initiated') && !content.includes('Saved final penetration test report to') && !content.includes('Scan completed')) {
+      if (content.includes('Penetration test completed') || 
+          content.includes('Scan completed') || 
+          content.includes('Saved final penetration test report to') ||
+          content.includes('strix view ')) {
+        scanLogCompleted = true;
+        scanLogIndicatesActive = false;
+      } else if (content.includes('Penetration test initiated')) {
         scanLogIndicatesActive = true;
       }
-      
+
+      // Regex matching Output line in Strix banner box: e.g. "Output  /root/sennovate.com-scan/strix_runs/sennovate-com_1641"
       const outMatch = content.match(/Output\s+([^\s\r\n│]+)/i) ||
                         content.match(/run_dir=['"]?([^\s\r\n'"]+)['"]?/i) ||
                         content.match(/\[OUTPUT FOLDER PATH\]\s*([^\s\r\n]+)/i) ||
                         content.match(/(?:Essential scan data saved to|Saved final penetration test report to):\s*([^\s\r\n]+)/i) ||
-                        content.match(/strix_runs\/([a-zA-Z0-9_\-]+)/i);
-      
+                        content.match(/strix_runs\/([a-zA-Z0-9_\-]+)/i) ||
+                        content.match(/strix view\s+([a-zA-Z0-9_\-]+)/i);
+
       if (outMatch && outMatch[1]) {
         const rawPart = outMatch[1].trim().replace(/[│'"\(\)]/g, '');
+        targetRunFullPath = rawPart;
         targetRunFolderName = path.basename(rawPart);
-        break;
       }
     } catch (_) {}
   }
@@ -868,7 +917,7 @@ function resolveStrixOutputFolderFromExtract(extractDir, minStartTimeMs = 0, tar
   // 3. Find all candidate directories in extractDir that contain Strix files
   const candidateDirs = [];
   const findScanFolders = (dir, depth = 0) => {
-    if (depth > 6) return;
+    if (depth > 8) return;
     try {
       const items = fs.readdirSync(dir);
       const isScanFolder = items.includes('run.json') || items.includes('findings.sarif') || 
@@ -880,7 +929,7 @@ function resolveStrixOutputFolderFromExtract(extractDir, minStartTimeMs = 0, tar
         let runJson = null;
         let startTimeMs = 0;
         let endTimeMs = 0;
-        let isFinalized = false;
+        let isFinalized = scanLogCompleted;
         let targetMatch = true;
 
         try { 
@@ -896,27 +945,22 @@ function resolveStrixOutputFolderFromExtract(extractDir, minStartTimeMs = 0, tar
           const reportPath = path.join(dir, 'penetration_test_report.md');
           if (fs.existsSync(reportPath)) {
             const reportStat = fs.statSync(reportPath);
-            if (reportStat.size > 50) isFinalized = true;
+            if (reportStat.size > 20) isFinalized = true;
             if (!startTimeMs && reportStat.mtimeMs) startTimeMs = reportStat.mtimeMs;
           }
           const sarifPath = path.join(dir, 'findings.sarif');
-          if (fs.existsSync(sarifPath) && fs.statSync(sarifPath).size > 50) {
-            isFinalized = true;
-          }
+          if (fs.existsSync(sarifPath) && fs.statSync(sarifPath).size > 20) isFinalized = true;
           const csvPath = path.join(dir, 'vulnerabilities.csv');
-          if (fs.existsSync(csvPath) && fs.statSync(csvPath).size > 20) {
-            isFinalized = true;
-          }
+          if (fs.existsSync(csvPath) && fs.statSync(csvPath).size > 10) isFinalized = true;
           const vulnsDir = path.join(dir, 'vulnerabilities');
-          if (fs.existsSync(vulnsDir) && fs.readdirSync(vulnsDir).length > 0) {
-            isFinalized = true;
-          }
+          if (fs.existsSync(vulnsDir) && fs.readdirSync(vulnsDir).length > 0) isFinalized = true;
         } catch (_) {}
 
         if (targetDomain) {
           const cleanTarget = targetDomain.toLowerCase().replace(/[^a-z0-9]/g, '');
           const dirName = path.basename(dir).toLowerCase().replace(/[^a-z0-9]/g, '');
-          if (!dirName.includes(cleanTarget) && cleanTarget.length > 3) {
+          const fullPathStr = dir.toLowerCase().replace(/[^a-z0-9]/g, '');
+          if (!dirName.includes(cleanTarget) && !fullPathStr.includes(cleanTarget) && cleanTarget.length > 3) {
             targetMatch = false;
           }
         }
@@ -945,83 +989,94 @@ function resolveStrixOutputFolderFromExtract(extractDir, minStartTimeMs = 0, tar
   };
   findScanFolders(extractDir);
 
-  // 4. Strict Fresh Scan Filtering (When minStartTimeMs > 0 from a live scan trigger)
-  if (minStartTimeMs > 0) {
-    const minThreshold = minStartTimeMs - 90000; // 90-second buffer for server clock differences
+  // 4. If targetRunFolderName was explicitly extracted from scan.log (e.g. "sennovate-com_1641")
+  if (targetRunFolderName) {
+    const matched = candidateDirs.find(c => 
+      c.name.toLowerCase() === targetRunFolderName.toLowerCase() || 
+      c.dir.toLowerCase().includes(targetRunFolderName.toLowerCase())
+    );
+    if (matched) {
+      return { 
+        bestDir: matched.dir, 
+        folderName: matched.name, 
+        isScanning: false, 
+        inProgress: false, 
+        scanFinished: true,
+        freshFound: true 
+      };
+    }
+  }
 
-    // Find runs that were started or modified AFTER minThreshold
+  // 5. If scan.log explicitly shows "Penetration test completed", pick the best candidate
+  if (scanLogCompleted && candidateDirs.length > 0) {
+    const matchedDomain = candidateDirs.filter(c => c.targetMatch);
+    const listToPick = matchedDomain.length > 0 ? matchedDomain : candidateDirs;
+    listToPick.sort((a, b) => Math.max(b.startTimeMs, b.mtime) - Math.max(a.startTimeMs, a.mtime));
+    return { 
+      bestDir: listToPick[0].dir, 
+      folderName: listToPick[0].name, 
+      isScanning: false, 
+      inProgress: false, 
+      scanFinished: true,
+      freshFound: true 
+    };
+  }
+
+  // 6. Fresh Scan Filtering
+  if (minStartTimeMs > 0) {
+    const minThreshold = minStartTimeMs - 300000; // 5-minute buffer
+
     const freshCandidates = candidateDirs.filter(c => {
       const isFresh = c.startTimeMs >= minThreshold || c.mtime >= minThreshold;
       return isFresh && c.targetMatch;
     });
 
-    if (freshCandidates.length === 0) {
-      // If no fresh scan directory found yet, check if ANY candidate matches the target domain
-      const anyDomainMatch = candidateDirs.filter(c => c.targetMatch);
-      if (anyDomainMatch.length > 0) {
-        anyDomainMatch.sort((a, b) => Math.max(b.startTimeMs, b.mtime) - Math.max(a.startTimeMs, a.mtime));
-        const latest = anyDomainMatch[0];
-        if (latest.isFinalized || latest.fileCount >= 3) {
-          return { 
-            bestDir: latest.dir, 
-            folderName: latest.name, 
-            isScanning: false, 
-            inProgress: false, 
-            freshFound: true 
-          };
-        }
+    if (freshCandidates.length > 0) {
+      freshCandidates.sort((a, b) => Math.max(b.startTimeMs, b.mtime) - Math.max(a.startTimeMs, a.mtime));
+      const newestFresh = freshCandidates[0];
+      if (newestFresh.isFinalized || newestFresh.fileCount >= 2 || !scanLogIndicatesActive) {
+        return { 
+          bestDir: newestFresh.dir, 
+          folderName: newestFresh.name, 
+          isScanning: false, 
+          inProgress: false, 
+          scanFinished: true,
+          freshFound: true 
+        };
       }
-
-      return { 
-        bestDir: null, 
-        folderName: null, 
-        isScanning: true, 
-        inProgress: true, 
-        freshFound: false,
-        message: 'Scan is currently in progress on remote server. Waiting for fresh results...' 
-      };
     }
-
-    // Sort fresh runs by start/mtime descending (newest first)
-    freshCandidates.sort((a, b) => Math.max(b.startTimeMs, b.mtime) - Math.max(a.startTimeMs, a.mtime));
-    const newestFresh = freshCandidates[0];
-
-    // Check if the newest fresh run has finalized or has findings files ready
-    if (!newestFresh.isFinalized && scanLogIndicatesActive && newestFresh.fileCount < 3) {
-      return {
-        bestDir: null,
-        folderName: newestFresh.name,
-        isScanning: true,
-        inProgress: true,
-        freshFound: false,
-        message: `Fresh scan ${newestFresh.name} is actively writing findings...`
-      };
-    }
-
-    return { 
-      bestDir: newestFresh.dir, 
-      folderName: newestFresh.name, 
-      isScanning: false, 
-      inProgress: false, 
-      freshFound: true 
-    };
   }
 
-  // 5. Fallback for manual archive inspection (when minStartTimeMs is not set)
-  if (targetRunFolderName) {
-    const matched = candidateDirs.find(c => c.name.toLowerCase() === targetRunFolderName.toLowerCase() || c.dir.toLowerCase().includes(targetRunFolderName.toLowerCase()));
-    if (matched) return { bestDir: matched.dir, folderName: matched.name, isScanning: false, inProgress: false, freshFound: true };
-  }
-
-  // Sort candidate directories by startTime / mtime descending
+  // 7. General Candidate Fallback (Pick latest matching domain)
   if (candidateDirs.length > 0) {
     const matchedDomain = candidateDirs.filter(c => c.targetMatch);
     const listToPick = matchedDomain.length > 0 ? matchedDomain : candidateDirs;
     listToPick.sort((a, b) => Math.max(b.startTimeMs, b.mtime) - Math.max(a.startTimeMs, a.mtime));
-    return { bestDir: listToPick[0].dir, folderName: listToPick[0].name, isScanning: false, inProgress: false, freshFound: true };
+    const best = listToPick[0];
+    if (best.isFinalized || best.fileCount >= 2 || !scanLogIndicatesActive) {
+      return { 
+        bestDir: best.dir, 
+        folderName: best.name, 
+        isScanning: false, 
+        inProgress: false, 
+        scanFinished: true,
+        freshFound: true 
+      };
+    }
   }
 
-  return { bestDir: extractDir, folderName: path.basename(extractDir), isScanning: false, inProgress: false, freshFound: true };
+  if (scanLogIndicatesActive) {
+    return { 
+      bestDir: null, 
+      folderName: null, 
+      isScanning: true, 
+      inProgress: true, 
+      freshFound: false,
+      message: 'Scan is currently in progress on remote server. Waiting for fresh results...' 
+    };
+  }
+
+  return { bestDir: extractDir, folderName: path.basename(extractDir), isScanning: false, inProgress: false, scanFinished: true, freshFound: true };
 }
 
 /**
