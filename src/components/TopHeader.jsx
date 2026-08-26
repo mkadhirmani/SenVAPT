@@ -163,12 +163,15 @@ export default function TopHeader({
               }`}>
                 {isAdmin ? <Shield className="w-3 h-3" /> : <User className="w-3 h-3" />}
               </div>
-              <span className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded border ${
+              <span className={`text-xs font-mono font-bold px-2 py-0.5 rounded border uppercase tracking-wider flex items-center gap-1.5 ${
                 isAdmin
                   ? 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30'
                   : 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
               }`}>
-                {isAdmin ? 'ADMIN' : 'USER'}
+                <span className="truncate max-w-[100px]">{currentUser.username || (isAdmin ? 'admin' : 'user')}</span>
+                <span className="opacity-70 text-[9px] font-sans font-normal uppercase">
+                  ({isAdmin ? 'Admin' : 'User'})
+                </span>
               </span>
               <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
             </button>
@@ -176,18 +179,23 @@ export default function TopHeader({
             {/* Dropdown Menu */}
             {isUserMenuOpen && (
               <div 
-                className={`absolute right-0 mt-2 w-52 p-2 rounded-2xl border shadow-xl z-50 animate-fadeIn ${
+                className={`absolute right-0 mt-2 w-56 p-2 rounded-2xl border shadow-xl z-50 animate-fadeIn ${
                   theme === 'dark' ? 'bg-[#0B1120] border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900 shadow-slate-300'
                 }`}
                 onMouseLeave={() => setIsUserMenuOpen(false)}
               >
                 <div className="p-2.5 border-b border-slate-800 mb-1">
-                  <div className="text-xs font-bold font-mono text-cyan-400 uppercase tracking-wider">
-                    {isAdmin ? 'Administrator' : 'Standard User'}
+                  <div className="text-xs font-bold font-mono text-cyan-400 uppercase tracking-wider truncate">
+                    {currentUser.username || currentUser.name || (isAdmin ? 'admin' : 'user')}
                   </div>
                   <div className="text-[10px] font-mono text-slate-400 mt-0.5">
-                    {isAdmin ? 'Full Root Privileges' : 'Client Safe View'}
+                    {isAdmin ? 'Administrator (Full Root Privileges)' : 'Standard User Account'}
                   </div>
+                  {currentUser.email && (
+                    <div className="text-[10px] font-mono text-slate-500 truncate mt-0.5">
+                      {currentUser.email}
+                    </div>
+                  )}
                 </div>
 
                 {isAdmin && (

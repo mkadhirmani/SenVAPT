@@ -320,12 +320,14 @@ export default function Sidebar({
                 {isAdmin ? <Shield className="w-4 h-4" /> : <User className="w-4 h-4" />}
               </div>
               <div className="min-w-0">
-                <div className={`text-xs font-bold font-mono uppercase tracking-wider ${theme === 'dark' ? 'text-slate-200' : 'text-slate-900'}`}>
-                  {isAdmin ? 'Admin' : 'User'}
+                <div className={`text-xs font-bold font-mono uppercase tracking-wider truncate max-w-[130px] ${theme === 'dark' ? 'text-slate-200' : 'text-slate-900'}`}>
+                  {currentUser.username || (isAdmin ? 'Admin' : 'User')}
                 </div>
                 <div className="flex items-center gap-1.5">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                  <span className="text-[10px] font-mono text-slate-500">Active Session</span>
+                  <span className="text-[10px] font-mono text-slate-500">
+                    {isAdmin ? 'Administrator' : 'Standard User'}
+                  </span>
                 </div>
               </div>
             </div>
