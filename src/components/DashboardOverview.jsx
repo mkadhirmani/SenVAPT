@@ -50,12 +50,14 @@ export default function DashboardOverview({
   const isEmco = currentTarget.id?.includes('emcochem') || currentTarget.targetUrl?.includes('emcochem') || metadata.targetUrl?.includes('emcochem');
   const isSmeco = currentTarget.id?.includes('smeco') || currentTarget.targetUrl?.includes('smeco') || metadata.targetUrl?.includes('smeco');
 
-  const highVulns = vulnerabilities.filter(v => v.severity === 'HIGH' || v.severity === 'CRITICAL');
+  const critVulns = vulnerabilities.filter(v => v.severity === 'CRITICAL');
+  const highVulns = vulnerabilities.filter(v => v.severity === 'HIGH');
   const medVulns = vulnerabilities.filter(v => v.severity === 'MEDIUM');
+  const lowVulns = vulnerabilities.filter(v => v.severity === 'LOW');
   const topVuln = vulnerabilities[0] || null;
 
   const targetUrl = currentTarget.targetUrl || metadata.targetUrl || "";
-  const riskScore = currentTarget.riskScore || metadata.overallRiskScore || topVuln?.cvss || (highVulns.length > 0 ? 8.2 : (medVulns.length > 0 ? 6.5 : 0));
+  const riskScore = currentTarget.riskScore || metadata.overallRiskScore || topVuln?.cvss || (critVulns.length > 0 ? 9.2 : highVulns.length > 0 ? 8.2 : (medVulns.length > 0 ? 6.5 : 0));
   const riskLevel = currentTarget.riskLevel || metadata.overallRiskLevel || (riskScore >= 7.0 ? 'HIGH' : (riskScore >= 4.0 ? 'ELEVATED' : 'LOW'));
 
   const rawTokens = typeof currentTarget.tokens === 'number' 
@@ -357,10 +359,16 @@ export default function DashboardOverview({
           <div className={`text-3xl font-black font-mono ${theme === 'dark' ? 'text-white' : 'text-slate-950'}`}>
             {vulnerabilities.length}
           </div>
-          <div className="text-[11px] font-mono flex items-center gap-1.5 font-bold">
-            <span className="text-rose-600 dark:text-rose-400">{highVulns.length} High</span>
+          <div className="text-[11px] font-mono flex items-center gap-1.5 font-bold flex-wrap">
+            {critVulns.length > 0 && (
+              <>
+                <span className="text-red-500 font-black">{critVulns.length} Critical</span>
+                <span className="text-slate-400">&bull;</span>
+              </>
+            )}
+            <span className="text-orange-500 dark:text-orange-400">{highVulns.length} High</span>
             <span className="text-slate-400">&bull;</span>
-            <span className="text-amber-600 dark:text-amber-400">{medVulns.length} Med</span>
+            <span className="text-amber-500 dark:text-amber-400">{medVulns.length} Med</span>
           </div>
         </div>
 
@@ -468,7 +476,10 @@ export default function DashboardOverview({
 
           <div className="space-y-2.5">
             {vulnerabilities.map((vuln) => {
+              const isCritical = vuln.severity === 'CRITICAL';
               const isHigh = vuln.severity === 'HIGH';
+              const isMedium = vuln.severity === 'MEDIUM';
+
               return (
                 <div
                   key={vuln.id}
@@ -481,9 +492,13 @@ export default function DashboardOverview({
                 >
                   <div className="flex items-center gap-3 min-w-0">
                     <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded flex-shrink-0 w-16 text-center ${
-                      isHigh
-                        ? 'bg-rose-500/20 text-rose-600 dark:text-rose-400 border border-rose-500/30'
-                        : 'bg-amber-500/20 text-amber-700 dark:text-amber-400 border border-amber-500/30'
+                      isCritical
+                        ? 'bg-red-500/20 text-red-500 dark:text-red-400 border border-red-500/40 font-black'
+                        : isHigh
+                        ? 'bg-orange-500/20 text-orange-600 dark:text-orange-400 border border-orange-500/30'
+                        : isMedium
+                        ? 'bg-amber-500/20 text-amber-700 dark:text-amber-400 border border-amber-500/30'
+                        : 'bg-sky-500/20 text-sky-700 dark:text-sky-400 border border-sky-500/30'
                     }`}>
                       {vuln.severity}
                     </span>
@@ -502,7 +517,13 @@ export default function DashboardOverview({
                   </div>
 
                   <div className="flex items-center gap-3 font-mono text-xs flex-shrink-0 ml-3">
-                    <span className={`font-bold ${isHigh ? 'text-rose-600 dark:text-rose-400' : 'text-amber-600 dark:text-amber-400'}`}>
+                    <span className={`font-bold ${
+                      isCritical 
+                        ? 'text-red-500 dark:text-red-400 font-black' 
+                        : isHigh 
+                        ? 'text-orange-600 dark:text-orange-400' 
+                        : 'text-amber-600 dark:text-amber-400'
+                    }`}>
                       CVSS {vuln.cvss}
                     </span>
                     <div className={`h-7 px-2.5 rounded-lg flex items-center gap-1 text-[11px] font-sans font-bold border transition-colors ${

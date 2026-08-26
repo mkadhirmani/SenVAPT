@@ -813,6 +813,258 @@ export default function ScanHud({
     }
   };
 
+  // Handle uploading and parsing a scan directory / folder directly in browser
+  const handleUploadScanFolder = async (e) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+
+    setIsFetchingPath(true);
+    setFetchMessage(null);
+
+    const folderName = files[0].webkitRelativePath ? files[0].webkitRelativePath.split('/')[0] : 'scan-folder';
+    appendLog(`[FOLDER UPLOAD] Reading ${files.length} files from folder "${folderName}"...`);
+
+    try {
+      const readFileAsText = (file) => {
+        return new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = (event) => resolve(event.target.result);
+          reader.onerror = (err) => reject(err);
+          reader.readAsText(file);
+        });
+      };
+
+      let runJson = {};
+      let sarifJson = null;
+      let vulnsJson = null;
+      let reportMd = '';
+      let csvContent = '';
+      let logTail = '';
+      const vulnMdFiles = {};
+
+      for (const file of files) {
+        const name = file.name.toLowerCase();
+        const relPath = (file.webkitRelativePath || file.name).toLowerCase();
+
+        if (name === 'run.json') {
+          try { runJson = JSON.parse(await readFileAsText(file)); } catch (err) {}
+        } else if (name === 'findings.sarif') {
+          try { sarifJson = JSON.parse(await readFileAsText(file)); } catch (err) {}
+        } else if (name === 'vulnerabilities.json') {
+          try { vulnsJson = JSON.parse(await readFileAsText(file)); } catch (err) {}
+        } else if (name === 'penetration_test_report.md') {
+          try { reportMd = await readFileAsText(file); } catch (err) {}
+        } else if (name === 'vulnerabilities.csv') {
+          try { csvContent = await readFileAsText(file); } catch (err) {}
+        } else if (name === 'strix.log' || name === 'scan.log') {
+          try { logTail = await readFileAsText(file); } catch (err) {}
+        } else if (relPath.includes('vulnerabilities/') || (name.startsWith('vuln-') && name.endsWith('.md'))) {
+          try { vulnMdFiles[file.name] = await readFileAsText(file); } catch (err) {}
+        }
+      }
+
+      const parseMdFinding = (content, filename) => {
+        const defaultId = filename ? filename.replace(/\.[^/.]+$/, '') : `vuln-${Date.now()}`;
+        const v = {
+          id: defaultId,
+          title: '',
+          severity: 'MEDIUM',
+          cvss: 5.5,
+          cwe: 'CWE-200',
+          endpoint: '/',
+          target: targetUrl || 'https://target.com',
+          description: '',
+          impact: '',
+          technicalAnalysis: '',
+          pocDescription: '',
+          reproduction: '',
+          remediation: '',
+          remediationSteps: [],
+          evidence: ''
+        };
+
+        const lines = content.split('\n');
+        let currentSection = 'header';
+        let sectionContent = [];
+
+        const flush = () => {
+          if (!currentSection) return;
+          const text = sectionContent.join('\n').trim();
+          if (currentSection === 'header') {
+            const idM = text.match(/\*\*ID:\*\*\s*(.+)/i) || text.match(/ID:\s*([a-zA-Z0-9_-]+)/i);
+            if (idM) v.id = idM[1].trim();
+            const tM = text.match(/\*\*Title:\*\*\s*(.+)/i) || text.match(/^#\s+(.+)/m) || text.match(/Title:\s*(.+)/i);
+            if (tM) v.title = tM[1].trim();
+            const sM = text.match(/\*\*Severity:\*\*\s*(.+)/i) || text.match(/Severity:\s*([A-Z]+)/i);
+            if (sM) v.severity = sM[1].trim().toUpperCase();
+            const cM = text.match(/\*\*CVSS:\*\*\s*([\d\.]+)/i) || text.match(/CVSS:?\s*([\d\.]+)/i);
+            if (cM) v.cvss = parseFloat(cM[1]);
+            const cwM = text.match(/\*\*CWE:\*\*\s*(.+)/i) || text.match(/CWE:?\s*(CWE-\d+)/i);
+            if (cwM) v.cwe = cwM[1].trim();
+            const epM = text.match(/\*\*Endpoint:\*\*\s*(.+)/i) || text.match(/Endpoint:?\s*([^\s]+)/i);
+            if (epM) v.endpoint = epM[1].trim();
+            const tgM = text.match(/\*\*Target:\*\*\s*(.+)/i) || text.match(/\*\*URL:\*\*\s*(.+)/i);
+            if (tgM) v.target = tgM[1].trim();
+          } else if (currentSection.includes('desc')) {
+            v.description = text;
+          } else if (currentSection.includes('impact')) {
+            v.impact = text;
+          } else if (currentSection.includes('tech') || currentSection.includes('analysis')) {
+            v.technicalAnalysis = text;
+          } else if (currentSection.includes('poc') || currentSection.includes('proof')) {
+            v.pocDescription = text;
+            const codeM = text.match(/```(?:bash|sh|python|javascript|http)?\n([\s\S]+?)```/);
+            if (codeM) v.reproduction = codeM[1].trim();
+          } else if (currentSection.includes('remed') || currentSection.includes('recommend')) {
+            v.remediation = text;
+            const steps = text.split('\n').filter(l => /^\s*(?:\d+\.|\-|\*)\s+/.test(l)).map(l => l.replace(/^\s*(?:\d+\.|\-|\*)\s+/, '').trim());
+            if (steps.length > 0) v.remediationSteps = steps;
+          }
+          sectionContent = [];
+        };
+
+        for (const line of lines) {
+          const hM = line.match(/^##+\s+(.+)$/i);
+          if (hM) {
+            flush();
+            currentSection = hM[1].trim().toLowerCase();
+            continue;
+          }
+          sectionContent.push(line);
+        }
+        flush();
+
+        if (!v.title) {
+          const firstNonEmpty = lines.find(l => l.trim().length > 0) || 'Discovered Vulnerability';
+          v.title = firstNonEmpty.replace(/^[#\s*-]+/, '').trim();
+        }
+        return v;
+      };
+
+      const findingsMap = new Map();
+      for (const [fname, fcontent] of Object.entries(vulnMdFiles)) {
+        if (fcontent && fcontent.trim().length > 10) {
+          const parsed = parseMdFinding(fcontent, fname);
+          findingsMap.set(parsed.id, parsed);
+        }
+      }
+
+      if (Array.isArray(vulnsJson)) {
+        vulnsJson.forEach((v, i) => {
+          const id = v.id || `vuln-000${i + 1}`;
+          if (!findingsMap.has(id)) {
+            findingsMap.set(id, {
+              id: id,
+              title: v.title || v.name || 'Discovered Vulnerability',
+              severity: (v.severity || 'MEDIUM').toUpperCase(),
+              cvss: parseFloat(v.cvss || v.cvss_score) || 5.5,
+              cwe: v.cwe || 'CWE-200',
+              target: v.target || targetUrl || 'https://target.com',
+              endpoint: v.endpoint || v.path || '/',
+              description: v.description || '',
+              impact: v.impact || '',
+              technicalAnalysis: v.technical_analysis || v.technicalAnalysis || v.description || '',
+              reproduction: v.reproduction || v.poc_script_code || '',
+              remediation: v.remediation || 'Apply security patches.'
+            });
+          }
+        });
+      }
+
+      const parsedVulns = Array.from(findingsMap.values());
+      const highCount = parsedVulns.filter(v => v.severity === 'HIGH' || v.severity === 'CRITICAL').length;
+      const medCount = parsedVulns.filter(v => v.severity === 'MEDIUM').length;
+      const riskLevel = highCount > 0 ? 'HIGH' : (medCount > 0 ? 'ELEVATED' : 'LOW');
+      const riskScore = highCount > 0 ? 8.2 : 6.5;
+
+      const detectedDomain = runJson?.target || targetUrl || folderName.replace(/^www-/, '').replace(/[-_](scan|runs?|[0-9a-f]{4,})$/i, '').replace(/-/g, '.');
+
+      let inferredCompany = companyName;
+      if (!inferredCompany || inferredCompany === 'Target') {
+        try {
+          const base = (detectedDomain || '').replace(/^https?:\/\//, '').split('.')[0];
+          inferredCompany = base ? base.charAt(0).toUpperCase() + base.slice(1) + ' Inc' : 'Security Audit Target';
+        } catch (_) {}
+      }
+
+      const newScan = {
+        id: folderName || `scan-${Date.now()}`,
+        folderName: folderName,
+        outputFolderPath: folderName,
+        companyName: inferredCompany,
+        targetUrl: detectedDomain,
+        timestamp: new Date().toISOString().replace('T', ' ').slice(0, 16),
+        duration: '35 min',
+        riskLevel: riskLevel,
+        riskScore: riskScore,
+        findingsCount: parsedVulns.length,
+        highCount: highCount,
+        medCount: medCount,
+        lowCount: 0,
+        tokens: runJson?.total_tokens || runJson?.tokens || 0,
+        requests: runJson?.requests || 0,
+        cost: runJson?.cost || 0,
+        createdBy: currentUser?.username || 'user',
+        scannedBy: currentUser?.username || 'user',
+        scannedByName: currentUser?.name || (currentUser?.role === 'admin' ? 'Administrator' : 'User'),
+        userRole: currentUser?.role === 'admin' ? 'Administrator' : 'User',
+        logs: logTail ? logTail.split('\n') : logs,
+        vulnerabilities: parsedVulns,
+        reportMarkdown: reportMd,
+        csvData: csvContent,
+        sarifData: sarifJson,
+        vulnerabilitiesJson: vulnsJson,
+        subdomains: [],
+        metadata: {
+          ...SCAN_METADATA,
+          runId: folderName,
+          targetUrl: detectedDomain,
+          companyName: inferredCompany,
+          totalFindings: parsedVulns.length,
+          highCount: highCount,
+          medCount: medCount,
+          createdBy: currentUser?.username || 'user',
+          scannedBy: currentUser?.username || 'user',
+          scannedByName: currentUser?.name || (currentUser?.role === 'admin' ? 'Administrator' : 'User'),
+          userRole: currentUser?.role === 'admin' ? 'Administrator' : 'User'
+        }
+      };
+
+      updateScannerState({
+        activeScanId: folderName,
+        discoveredFindings: parsedVulns,
+        scanFinished: true,
+        outputFolderPath: folderName,
+        targetUrl: detectedDomain,
+        companyName: inferredCompany
+      });
+
+      if (onSaveNewScan) {
+        onSaveNewScan(newScan, true);
+      }
+
+      setIsScanning(false);
+      setScanFinished(true);
+      setFetchMessage({
+        type: 'success',
+        text: `Successfully ingested folder "${folderName}" with ${parsedVulns.length} findings!`
+      });
+
+      if (onViewFindings) {
+        setTimeout(() => onViewFindings(), 600);
+      }
+    } catch (err) {
+      appendLog(`[FOLDER UPLOAD ERROR] ${err.message}`);
+      setFetchMessage({
+        type: 'error',
+        text: `Folder Ingestion Failed: ${err.message}`
+      });
+    } finally {
+      setIsFetchingPath(false);
+      e.target.value = '';
+    }
+  };
+
   // Launch Strix Scan Flow over n8n Webhook or Real SSH Connection
   const handleStartRealScan = async (e) => {
     if (!targetUrl || isScanning) return;
@@ -2086,17 +2338,32 @@ export default function ScanHud({
                   </p>
                 </div>
                 
-                {/* Upload from Downloads Button */}
-                <label className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-bold text-xs font-sans transition-all cursor-pointer shadow-md flex-shrink-0">
-                  <Upload className="w-4 h-4" />
-                  <span>Upload .ZIP from Downloads</span>
-                  <input
-                    type="file"
-                    accept=".zip"
-                    onChange={handleUploadScanZip}
-                    className="hidden"
-                  />
-                </label>
+                {/* Upload from Downloads Buttons */}
+                <div className="flex items-center gap-2 flex-wrap">
+                  <label className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-bold text-xs font-sans transition-all cursor-pointer shadow-md flex-shrink-0">
+                    <Upload className="w-4 h-4" />
+                    <span>Upload .ZIP</span>
+                    <input
+                      type="file"
+                      accept=".zip"
+                      onChange={handleUploadScanZip}
+                      className="hidden"
+                    />
+                  </label>
+
+                  <label className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-400 hover:to-blue-400 text-slate-950 font-bold text-xs font-sans transition-all cursor-pointer shadow-md flex-shrink-0">
+                    <Folder className="w-4 h-4" />
+                    <span>Upload Folder (7 Files)</span>
+                    <input
+                      type="file"
+                      webkitdirectory=""
+                      directory=""
+                      multiple
+                      onChange={handleUploadScanFolder}
+                      className="hidden"
+                    />
+                  </label>
+                </div>
               </div>
 
               {/* Detected local scan folders quick-select chips */}

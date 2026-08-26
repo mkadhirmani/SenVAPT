@@ -594,9 +594,11 @@ export default function AdminUserManagement({
                             <div className="space-y-1 min-w-0 flex-1">
                               <div className="flex items-center gap-2">
                                 <span className={`text-[9px] font-mono font-bold px-1.5 py-0.5 rounded ${
-                                  vuln.severity === 'HIGH' || vuln.severity === 'CRITICAL'
-                                    ? 'bg-rose-500/20 text-rose-400'
-                                    : 'bg-amber-500/20 text-amber-400'
+                                  vuln.severity === 'CRITICAL'
+                                    ? 'bg-red-500/20 text-red-400 border border-red-500/40 font-black'
+                                    : vuln.severity === 'HIGH'
+                                    ? 'bg-orange-500/20 text-orange-400 border border-orange-500/30'
+                                    : 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
                                 }`}>
                                   {vuln.severity} ({vuln.cvss})
                                 </span>

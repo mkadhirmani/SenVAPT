@@ -496,7 +496,11 @@ Include:
                   <td className="p-2.5 font-bold text-slate-900">{v.title}</td>
                   <td className="p-2.5 font-mono">
                     <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                      v.severity === 'HIGH' ? 'bg-rose-100 text-rose-800' : 'bg-amber-100 text-amber-800'
+                      v.severity === 'CRITICAL' 
+                        ? 'bg-red-100 text-red-900 border border-red-300 font-black' 
+                        : v.severity === 'HIGH' 
+                        ? 'bg-orange-100 text-orange-900 border border-orange-200' 
+                        : 'bg-amber-100 text-amber-900 border border-amber-200'
                     }`}>
                       {v.severity}
                     </span>
@@ -543,7 +547,11 @@ Include:
                         Finding #{index + 1}: {vuln.id}
                       </span>
                       <span className={`text-xs font-mono font-bold px-2.5 py-0.5 rounded-lg ${
-                        isHigh ? 'bg-rose-100 text-rose-800 border border-rose-200' : 'bg-amber-100 text-amber-800 border border-amber-200'
+                        vuln.severity === 'CRITICAL' 
+                          ? 'bg-red-100 text-red-900 border border-red-300 font-black' 
+                          : vuln.severity === 'HIGH' 
+                          ? 'bg-orange-100 text-orange-900 border border-orange-200' 
+                          : 'bg-amber-100 text-amber-900 border border-amber-200'
                       }`}>
                         {vuln.severity} &bull; CVSS {vuln.cvss}
                       </span>
