@@ -339,14 +339,16 @@ export function resolveLocalScanPath(inputPath) {
   // 2. Search common locations for folder name or relative path
   const bname = path.basename(clean);
   const searchDirs = [
+    path.join(process.cwd(), 'downloaded_scans', bname),
+    path.join(process.cwd(), 'downloaded_scans'),
+    path.join(process.cwd(), bname),
+    path.join(process.cwd(), 'downloads', bname),
+    path.join(process.cwd(), 'strix_runs', bname),
     path.join(os.homedir(), 'Downloads', bname),
     path.join(os.homedir(), 'Downloads', 'strix_runs', bname),
     path.join(os.homedir(), 'Desktop', bname),
     path.join(os.homedir(), 'Desktop', 'strix_runs', bname),
-    path.join(os.homedir(), 'strix_runs', bname),
-    path.join(process.cwd(), bname),
-    path.join(process.cwd(), 'strix_runs', bname),
-    path.join(process.cwd(), 'downloads', bname)
+    path.join(os.homedir(), 'strix_runs', bname)
   ];
 
   for (const candidate of searchDirs) {
@@ -381,14 +383,15 @@ export function resolveLocalScanPath(inputPath) {
 export function listLocalScanFolders() {
   const candidates = [];
   const searchDirs = [
+    path.join(process.cwd(), 'downloaded_scans'),
+    path.join(process.cwd(), 'downloads'),
+    path.join(process.cwd(), 'strix_runs'),
+    path.join(process.cwd()),
     path.join(os.homedir(), 'Downloads'),
     path.join(os.homedir(), 'Downloads', 'strix_runs'),
     path.join(os.homedir(), 'Desktop'),
     path.join(os.homedir(), 'Desktop', 'strix_runs'),
-    path.join(os.homedir(), 'strix_runs'),
-    path.join(process.cwd()),
-    path.join(process.cwd(), 'downloads'),
-    path.join(process.cwd(), 'strix_runs')
+    path.join(os.homedir(), 'strix_runs')
   ];
 
   const seenPaths = new Set();
@@ -1059,17 +1062,6 @@ export async function fetchN8nScanResultsProxy(payload) {
       throw new Error(`n8n Fetch Webhook returned 0 bytes for "${norm.raw}". Please verify that the folder or files exist at ${norm.cleanPath} on the server.`);
     }
 
-    // Clean up any stale 0-byte file in ~/Downloads with the same folder name
-    const userExtractedPath = path.join(os.homedir(), 'Downloads', norm.folderName);
-    if (fs.existsSync(userExtractedPath)) {
-      try {
-        const stat = fs.statSync(userExtractedPath);
-        if (!stat.isDirectory() && stat.size === 0) {
-          fs.unlinkSync(userExtractedPath);
-        }
-      } catch (_) {}
-    }
-
     // Check if the response is JSON (either error OR file contents bundle from server)
     const textStart = buffer.slice(0, 120).toString('utf-8').trim();
     if (textStart.startsWith('{')) {
@@ -1083,22 +1075,15 @@ export async function fetchN8nScanResultsProxy(payload) {
         const raw = parsedJson.data || parsedJson.raw || parsedJson;
         const targetDir = path.join(process.cwd(), 'downloaded_scans', norm.folderName);
 
-        // Ensure directories exist as real folders
+        // Ensure directories exist as real folders in server workspace only
         if (!fs.existsSync(targetDir)) fs.mkdirSync(targetDir, { recursive: true });
-        try {
-          if (fs.existsSync(userExtractedPath) && !fs.statSync(userExtractedPath).isDirectory()) {
-            fs.unlinkSync(userExtractedPath);
-          }
-          if (!fs.existsSync(userExtractedPath)) fs.mkdirSync(userExtractedPath, { recursive: true });
-        } catch (_) {}
 
-        // Write individual files to disk in ~/Downloads/<folderName> and workspace
+        // Write individual files to server disk in downloaded_scans/<folderName>
         const writeScanFile = (filename, content) => {
           if (content === undefined || content === null) return;
           const text = typeof content === 'string' ? content : JSON.stringify(content, null, 2);
           try {
             fs.writeFileSync(path.join(targetDir, filename), text, 'utf-8');
-            fs.writeFileSync(path.join(userExtractedPath, filename), text, 'utf-8');
           } catch (_) {}
         };
 
@@ -1113,9 +1098,7 @@ export async function fetchN8nScanResultsProxy(payload) {
         const vulnsObj = raw.vulnerabilities || parsedJson.vulnerabilities;
         if (vulnsObj && typeof vulnsObj === 'object') {
           const vTargetDir = path.join(targetDir, 'vulnerabilities');
-          const vUserDir = path.join(userExtractedPath, 'vulnerabilities');
           if (!fs.existsSync(vTargetDir)) fs.mkdirSync(vTargetDir, { recursive: true });
-          try { if (!fs.existsSync(vUserDir)) fs.mkdirSync(vUserDir, { recursive: true }); } catch (_) {}
 
           if (Array.isArray(vulnsObj)) {
             vulnsObj.forEach((v, idx) => {
@@ -1123,7 +1106,6 @@ export async function fetchN8nScanResultsProxy(payload) {
               const vText = typeof v === 'string' ? v : (v.content || JSON.stringify(v, null, 2));
               try {
                 fs.writeFileSync(path.join(vTargetDir, fname), vText, 'utf-8');
-                fs.writeFileSync(path.join(vUserDir, fname), vText, 'utf-8');
               } catch (_) {}
             });
           } else {
@@ -1132,7 +1114,6 @@ export async function fetchN8nScanResultsProxy(payload) {
               const vText = typeof vContent === 'string' ? vContent : JSON.stringify(vContent, null, 2);
               try {
                 fs.writeFileSync(path.join(vTargetDir, safeFname), vText, 'utf-8');
-                fs.writeFileSync(path.join(vUserDir, safeFname), vText, 'utf-8');
               } catch (_) {}
             }
           }
@@ -1140,13 +1121,22 @@ export async function fetchN8nScanResultsProxy(payload) {
 
         // Parse the generated local files
         const parsed = parseLocalStrixFolder(targetDir);
+        
+        // Auto-persist to .scans_cache.json
+        try {
+            const cachePath = path.join(process.cwd(), '.scans_cache.json');
+            let cache = {};
+            if (fs.existsSync(cachePath)) cache = JSON.parse(fs.readFileSync(cachePath, 'utf8'));
+            cache[norm.folderName] = { timestamp: Date.now(), path: targetDir };
+            fs.writeFileSync(cachePath, JSON.stringify(cache, null, 2));
+        } catch (_) {}
+
         return {
           success: true,
           zipPath: null,
           zipSize: buffer.length,
           zipSizeFormatted: `${(buffer.length / 1024).toFixed(1)} KB`,
           extractedPath: targetDir,
-          userDownloadsPath: userExtractedPath,
           folderName: norm.folderName,
           ...parsed
         };
@@ -1155,19 +1145,13 @@ export async function fetchN8nScanResultsProxy(payload) {
       }
     }
 
-    // Binary ZIP Archive Handling: Save ZIP to downloaded_scans and ~/Downloads
+    // Binary ZIP Archive Handling: Save ZIP exclusively to downloaded_scans in server workspace
     const zipName = `${norm.folderName}-scan.zip`;
     const targetDir = path.join(process.cwd(), 'downloaded_scans');
     if (!fs.existsSync(targetDir)) fs.mkdirSync(targetDir, { recursive: true });
 
     const zipPath = path.join(targetDir, zipName);
     fs.writeFileSync(zipPath, buffer);
-
-    // Save ZIP copy in ~/Downloads
-    try {
-      const userZipPath = path.join(os.homedir(), 'Downloads', zipName);
-      fs.writeFileSync(userZipPath, buffer);
-    } catch (_) {}
 
     // Extract the ZIP archive into extracted workspace directory
     const extractDir = path.join(targetDir, `${norm.folderName}_extracted_${Date.now().toString(36)}`);
@@ -1198,30 +1182,19 @@ export async function fetchN8nScanResultsProxy(payload) {
 
     const bestExtractDir = resolvedResult.bestDir || extractDir;
     const finalFolderName = resolvedResult.folderName || norm.folderName;
-    const finalUserPath = path.join(os.homedir(), 'Downloads', finalFolderName);
-
-    // Copy extracted folder into real ~/Downloads/<finalFolderName> DIRECTORY
-    try {
-      if (fs.existsSync(finalUserPath) && !fs.statSync(finalUserPath).isDirectory()) {
-        fs.unlinkSync(finalUserPath);
-      }
-      if (!fs.existsSync(finalUserPath)) fs.mkdirSync(finalUserPath, { recursive: true });
-      execSync(`cp -R "${bestExtractDir}/"* "${finalUserPath}/" 2>/dev/null || true`);
-    } catch (_) {}
-
-    // Also copy to user's requested folder name if different (e.g. www-sennovate-com)
-    if (userExtractedPath !== finalUserPath) {
-      try {
-        if (fs.existsSync(userExtractedPath) && !fs.statSync(userExtractedPath).isDirectory()) {
-          fs.unlinkSync(userExtractedPath);
-        }
-        if (!fs.existsSync(userExtractedPath)) fs.mkdirSync(userExtractedPath, { recursive: true });
-        execSync(`cp -R "${bestExtractDir}/"* "${userExtractedPath}/" 2>/dev/null || true`);
-      } catch (_) {}
-    }
 
     // Parse the extracted 7 files from the active fresh scan
     const parsed = parseLocalStrixFolder(bestExtractDir);
+    
+    // Auto-persist to .scans_cache.json
+    try {
+        const cachePath = path.join(process.cwd(), '.scans_cache.json');
+        let cache = {};
+        if (fs.existsSync(cachePath)) cache = JSON.parse(fs.readFileSync(cachePath, 'utf8'));
+        cache[finalFolderName] = { timestamp: Date.now(), path: bestExtractDir };
+        fs.writeFileSync(cachePath, JSON.stringify(cache, null, 2));
+    } catch (_) {}
+
     return {
       success: true,
       inProgress: false,
@@ -1230,7 +1203,6 @@ export async function fetchN8nScanResultsProxy(payload) {
       zipSize: buffer.length,
       zipSizeFormatted: `${(buffer.length / 1024).toFixed(1)} KB`,
       extractedPath: bestExtractDir,
-      userDownloadsPath: finalUserPath,
       folderName: finalFolderName,
       ...parsed
     };

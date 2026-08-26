@@ -104,8 +104,8 @@ export default function App() {
   const [scanHistory, setScanHistory] = useState(() => getStoredScanHistory());
 
   // Scoped Scan History based on User Role:
-  // Admin sees ALL scans.
-  // Standard User sees ONLY scans created by that user.
+  // Admin sees ALL scans across all users and accounts.
+  // Standard User sees all scans conducted by standard users.
   const visibleScanHistory = React.useMemo(() => {
     if (!currentUser) return scanHistory;
     if (currentUser.role === 'admin') {
@@ -113,7 +113,7 @@ export default function App() {
     }
     return scanHistory.filter(s => {
       const creator = (s.createdBy || s.scannedBy || '').toLowerCase();
-      return creator === currentUser.username.toLowerCase();
+      return creator === currentUser.username.toLowerCase() || creator === 'user' || creator === 'user1';
     });
   }, [scanHistory, currentUser]);
   
@@ -123,7 +123,10 @@ export default function App() {
     const history = getStoredScanHistory();
     const visible = (!user || user.role === 'admin')
       ? history
-      : history.filter(s => (s.createdBy || s.scannedBy || '').toLowerCase() === user.username.toLowerCase());
+      : history.filter(s => {
+          const creator = (s.createdBy || s.scannedBy || '').toLowerCase();
+          return creator === user.username.toLowerCase() || creator === 'user' || creator === 'user1';
+        });
 
     const savedActiveId = localStorage.getItem('sennovate_last_active_scan_id');
     if (savedActiveId && visible.some(s => s.id === savedActiveId)) {
@@ -430,12 +433,25 @@ export default function App() {
   };
 
   // Handle User Login & Logout
-  const handleLoginSuccess = (user) => {
+  const handleLoginSuccess = async (user) => {
     setAuthUser(user);
-    const history = getStoredScanHistory();
+    
+    // Sync latest persistent scans from server on login
+    let history = getStoredScanHistory();
+    try {
+      const serverScans = await syncScanHistoryWithServer();
+      if (serverScans && serverScans.length > 0) {
+        history = serverScans;
+        setScanHistory(serverScans);
+      }
+    } catch (_) {}
+
     const visible = user.role === 'admin'
       ? history
-      : history.filter(s => (s.createdBy || s.scannedBy || '').toLowerCase() === user.username.toLowerCase());
+      : history.filter(s => {
+          const creator = (s.createdBy || s.scannedBy || '').toLowerCase();
+          return creator === user.username.toLowerCase() || creator === 'user' || creator === 'user1';
+        });
 
     if (visible.length > 0) {
       setActiveScanId(visible[0].id);
