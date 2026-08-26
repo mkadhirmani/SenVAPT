@@ -1040,7 +1040,7 @@ function resolveStrixOutputFolderFromExtract(extractDir, minStartTimeMs = 0, tar
     if (minStartTimeMs > 0) {
       const threshold = minStartTimeMs - 30000;
       const isNew = (cand.startTimeMs && cand.startTimeMs >= threshold) || (cand.mtime && cand.mtime >= threshold);
-      if (!isNew && previousRunId) {
+      if (!isNew) {
         return false;
       }
     }
@@ -1089,17 +1089,27 @@ function resolveStrixOutputFolderFromExtract(extractDir, minStartTimeMs = 0, tar
         };
         const foundSub = directSearch(extractDir);
         if (foundSub) {
-          return {
-            bestDir: foundSub,
-            folderName: latestRunOutputFolder,
-            outputFullPath: latestRunFullPath,
-            isScanning: false,
-            inProgress: false,
-            scanFinished: true,
-            freshFound: true,
-            liveLogLines,
-            strixLog: liveLogTail
-          };
+          let foundSubFresh = true;
+          try {
+            const subStat = fs.statSync(foundSub);
+            if (!isCandidateFresh({ name: latestRunOutputFolder, mtime: subStat.mtimeMs, startTimeMs: subStat.mtimeMs })) {
+              foundSubFresh = false;
+            }
+          } catch (_) {}
+
+          if (foundSubFresh) {
+            return {
+              bestDir: foundSub,
+              folderName: latestRunOutputFolder,
+              outputFullPath: latestRunFullPath,
+              isScanning: false,
+              inProgress: false,
+              scanFinished: true,
+              freshFound: true,
+              liveLogLines,
+              strixLog: liveLogTail
+            };
+          }
         }
       }
     }
