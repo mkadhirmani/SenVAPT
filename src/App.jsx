@@ -109,12 +109,12 @@ export default function App() {
   // Standard User sees all scans conducted by standard users.
   const visibleScanHistory = React.useMemo(() => {
     if (!currentUser) return scanHistory;
-    if (currentUser.role === 'admin' || currentUser.role === 'sales' || currentUser.username === 'sales123') {
+    if (currentUser.role === 'admin') {
       return scanHistory;
     }
     return scanHistory.filter(s => {
       const creator = (s.createdBy || s.scannedBy || '').toLowerCase();
-      return creator === currentUser.username.toLowerCase() || creator === 'user' || creator === 'user1';
+      return creator === currentUser.username.toLowerCase() || creator === 'user' || creator === 'user1' || creator === 'sales' || creator === 'sales123';
     });
   }, [scanHistory, currentUser]);
   
@@ -122,11 +122,11 @@ export default function App() {
   const [activeScanId, setActiveScanId] = useState(() => {
     const user = getCurrentUser();
     const history = getStoredScanHistory();
-    const visible = (!user || user.role === 'admin' || user.role === 'sales' || user.username === 'sales123')
+    const visible = (!user || user.role === 'admin')
       ? history
       : history.filter(s => {
           const creator = (s.createdBy || s.scannedBy || '').toLowerCase();
-          return creator === user.username.toLowerCase() || creator === 'user' || creator === 'user1';
+          return creator === user.username.toLowerCase() || creator === 'user' || creator === 'user1' || creator === 'sales' || creator === 'sales123';
         });
 
     const savedActiveId = localStorage.getItem('sennovate_last_active_scan_id');
