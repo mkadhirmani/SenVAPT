@@ -321,6 +321,8 @@ export default function Sidebar({
               <div className={`p-2 rounded-lg flex-shrink-0 ${
                 isAdmin 
                   ? 'bg-cyan-500/15 text-cyan-400 border border-cyan-500/30' 
+                  : currentUser?.role === 'sales'
+                  ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30'
                   : 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
               }`}>
                 {isAdmin ? <Shield className="w-4 h-4" /> : <User className="w-4 h-4" />}
@@ -330,9 +332,9 @@ export default function Sidebar({
                   {currentUser.username || (isAdmin ? 'Admin' : 'User')}
                 </div>
                 <div className="flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                  <span className={`w-1.5 h-1.5 rounded-full ${currentUser?.role === 'sales' ? 'bg-amber-400' : 'bg-emerald-500'}`}></span>
                   <span className="text-[10px] font-mono text-slate-500">
-                    {isAdmin ? 'Administrator' : 'Standard User'}
+                    {isAdmin ? 'Administrator' : currentUser?.role === 'sales' ? 'Sales Team' : 'Standard User'}
                   </span>
                 </div>
               </div>

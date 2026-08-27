@@ -70,6 +70,33 @@ export const DEFAULT_USERS = [
       manage_users: false,
       load_custom_folder: false
     }
+  },
+  {
+    id: 'sales123',
+    username: 'sales123',
+    email: 'sales@sennovate.com',
+    password: '@sales1vapt',
+    altPassword: '@sales1vapt',
+    name: 'Sales Team',
+    role: 'sales',
+    title: 'Sales & BD Specialist',
+    createdAt: '2026-08-27 10:00:00',
+    lastLogin: '2026-08-27 10:00:00',
+    isOnline: true,
+    scansCount: 0,
+    assignedTargets: ['Commercial Demos & Sales Audits'],
+    permissions: {
+      run_scans: true,
+      view_findings: true,
+      attack_graph: true,
+      ai_assistant: true,
+      export_reports: true,
+      view_tokens: true,
+      view_terminal: false,
+      manage_settings: false,
+      manage_users: false,
+      load_custom_folder: false
+    }
   }
 ];
 
@@ -102,14 +129,15 @@ export function getUsersList() {
     if (raw) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        list = parsed.filter(u => u && u.username !== 'sales' && u.username !== 'user1' && u.username !== 'user2');
+        list = parsed.filter(u => u && u.username !== 'user1' && u.username !== 'user2');
       }
     }
 
-    // Ensure default 'admin' and 'user' accounts exist
+    // Ensure default 'admin', 'user', and 'sales123' accounts exist
     const hasAdmin = list.some(u => u.username === 'admin');
     const hasUser = list.some(u => u.username === 'user');
-    if (!hasAdmin || !hasUser) {
+    const hasSales = list.some(u => u.username === 'sales123');
+    if (!hasAdmin || !hasUser || !hasSales) {
       const missing = DEFAULT_USERS.filter(du => !list.some(u => u.username === du.username));
       list = [...list, ...missing];
       saveUsersList(list);
@@ -118,7 +146,7 @@ export function getUsersList() {
     return list.map(u => ({
       ...u,
       avatar: null,
-      name: u.name || (u.role === 'admin' ? 'Administrator' : 'User')
+      name: u.name || (u.role === 'admin' ? 'Administrator' : u.role === 'sales' ? 'Sales Team' : 'User')
     }));
   } catch (e) {
     console.error('Error fetching users list:', e);

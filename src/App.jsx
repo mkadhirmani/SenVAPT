@@ -109,7 +109,7 @@ export default function App() {
   // Standard User sees all scans conducted by standard users.
   const visibleScanHistory = React.useMemo(() => {
     if (!currentUser) return scanHistory;
-    if (currentUser.role === 'admin') {
+    if (currentUser.role === 'admin' || currentUser.role === 'sales' || currentUser.username === 'sales123') {
       return scanHistory;
     }
     return scanHistory.filter(s => {
@@ -122,7 +122,7 @@ export default function App() {
   const [activeScanId, setActiveScanId] = useState(() => {
     const user = getCurrentUser();
     const history = getStoredScanHistory();
-    const visible = (!user || user.role === 'admin')
+    const visible = (!user || user.role === 'admin' || user.role === 'sales' || user.username === 'sales123')
       ? history
       : history.filter(s => {
           const creator = (s.createdBy || s.scannedBy || '').toLowerCase();

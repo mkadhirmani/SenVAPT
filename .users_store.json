@@ -53,5 +53,34 @@
       "manage_users": false,
       "load_custom_folder": false
     }
+  },
+  {
+    "id": "sales123",
+    "username": "sales123",
+    "email": "sales@sennovate.com",
+    "password": "@sales1vapt",
+    "altPassword": "@sales1vapt",
+    "name": "Sales Team",
+    "role": "sales",
+    "title": "Sales & BD Specialist",
+    "createdAt": "2026-08-27 10:00:00",
+    "lastLogin": "2026-08-27 10:00:00",
+    "isOnline": true,
+    "scansCount": 0,
+    "assignedTargets": [
+      "Commercial Demos & Sales Audits"
+    ],
+    "permissions": {
+      "run_scans": true,
+      "view_findings": true,
+      "attack_graph": true,
+      "ai_assistant": true,
+      "export_reports": true,
+      "view_tokens": true,
+      "view_terminal": false,
+      "manage_settings": false,
+      "manage_users": false,
+      "load_custom_folder": false
+    }
   }
 ]
