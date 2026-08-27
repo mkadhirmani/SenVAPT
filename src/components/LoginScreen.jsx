@@ -11,7 +11,8 @@ import {
   Eye, 
   EyeOff, 
   Radar,
-  Shield
+  Shield,
+  Sparkles
 } from 'lucide-react';
 import { authenticateUser, fetchGlobalUsersList } from '../utils/auth';
 
