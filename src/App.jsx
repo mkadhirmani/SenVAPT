@@ -106,15 +106,18 @@ export default function App() {
 
   // Scoped Scan History based on User Role:
   // Admin sees ALL scans across all users and accounts.
-  // Standard User sees all scans conducted by standard users.
+  // Each non-admin user (e.g. 'user', 'sales123', or any custom created user) ONLY sees scans they created.
   const visibleScanHistory = React.useMemo(() => {
-    if (!currentUser) return scanHistory;
-    if (currentUser.role === 'admin') {
+    if (!currentUser) return [];
+    if (currentUser.role === 'admin' || currentUser.username === 'admin') {
       return scanHistory;
     }
+    const currentUname = (currentUser.username || '').toLowerCase();
+    const currentUid = (currentUser.id || '').toLowerCase();
+
     return scanHistory.filter(s => {
       const creator = (s.createdBy || s.scannedBy || '').toLowerCase();
-      return creator === currentUser.username.toLowerCase() || creator === 'user' || creator === 'user1' || creator === 'sales' || creator === 'sales123';
+      return creator === currentUname || creator === currentUid;
     });
   }, [scanHistory, currentUser]);
   
@@ -122,11 +125,13 @@ export default function App() {
   const [activeScanId, setActiveScanId] = useState(() => {
     const user = getCurrentUser();
     const history = getStoredScanHistory();
-    const visible = (!user || user.role === 'admin')
+    const currentUname = (user?.username || '').toLowerCase();
+    const currentUid = (user?.id || '').toLowerCase();
+    const visible = (!user || user.role === 'admin' || user.username === 'admin')
       ? history
       : history.filter(s => {
           const creator = (s.createdBy || s.scannedBy || '').toLowerCase();
-          return creator === user.username.toLowerCase() || creator === 'user' || creator === 'user1' || creator === 'sales' || creator === 'sales123';
+          return creator === currentUname || creator === currentUid;
         });
 
     const savedActiveId = localStorage.getItem('sennovate_last_active_scan_id');
