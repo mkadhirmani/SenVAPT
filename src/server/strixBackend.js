@@ -2755,7 +2755,7 @@ export function extractLiveTelemetryFromLine(line) {
 export function extractOutputDirFromText(text) {
   if (!text || typeof text !== 'string') return null;
 
-  // 1. Matches direct STRIX box lines like "│  /root/senvapt.sennovate.ai-scan/strix_runs/senvapt-sennovate-ai_596c  │"
+  // 1. Matches dynamic STRIX box lines like "│  /root/<target>-scan/strix_runs/<run_id>  │"
   const mBox = text.match(/(?:\/|│\s*)(\/(?:root|home\/[^\/]+|tmp)\/[^\s\r\n│\t,)]*strix_runs\/[^\s\r\n│\t,)\/]+)/i);
   if (mBox) {
     let p = cleanScanPath(mBox[1]);

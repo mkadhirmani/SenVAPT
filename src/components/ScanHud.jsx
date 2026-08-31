@@ -287,7 +287,7 @@ export default function ScanHud({
       if (typeof line !== 'string') continue;
 
       if (latestOutputFolder === null) {
-        // Direct match for STRIX box lines like "│  /root/senvapt.sennovate.ai-scan/strix_runs/senvapt-sennovate-ai_596c  │"
+        // Dynamic match for STRIX box lines like "│  /root/<target>-scan/strix_runs/<run_id>  │"
         const mBox = line.match(/(?:\/|│\s*)(\/(?:root|home\/[^\/]+|tmp)\/[^\s\r\n│\t,)]*strix_runs\/[^\s\r\n│\t,)\/]+)/i);
         if (mBox) {
           const p = cleanScanPath(mBox[1]);
