@@ -349,9 +349,9 @@ export default function StrixConnectionModal({ isOpen, onClose, onConnected, the
                     <div className="relative">
                       <input
                         type={showN8nPassword ? 'text' : 'password'}
-                        value={config.n8nCredential !== undefined ? config.n8nCredential : (config.n8nUsername && config.n8nPassword ? `${config.n8nUsername}:${config.n8nPassword}` : (config.n8nUsername || config.n8nPassword || ''))}
+                        value={config.n8nCredential || ''}
                         onChange={(e) => setConfig({ ...config, n8nCredential: e.target.value })}
-                        placeholder="e.g. strix:a+b=c or user:password"
+                        placeholder={config.hasN8nCredential && !config.n8nCredential ? '•••••••• (Saved on Server - leave blank to keep)' : 'e.g. strix:a+b=c or user:password'}
                         className={`w-full px-3.5 py-2.5 pr-10 rounded-xl font-mono text-xs focus:outline-none transition-all ${
                           theme === 'dark'
                             ? 'bg-[#080E1C] border border-slate-700 text-white placeholder-slate-500 focus:border-cyan-400'
@@ -384,7 +384,7 @@ export default function StrixConnectionModal({ isOpen, onClose, onConnected, the
                     type="password"
                     value={config.n8nToken || ''}
                     onChange={(e) => setConfig({ ...config, n8nToken: e.target.value })}
-                    placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                    placeholder={config.hasN8nToken && !config.n8nToken ? '•••••••• (Saved on Server - leave blank to keep)' : 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'}
                     className={`w-full px-3.5 py-2.5 rounded-xl font-mono text-xs focus:outline-none transition-all ${
                       theme === 'dark'
                         ? 'bg-[#080E1C] border border-slate-700 text-white placeholder-slate-500 focus:border-cyan-400'
@@ -649,7 +649,7 @@ export default function StrixConnectionModal({ isOpen, onClose, onConnected, the
                       type={showPassword ? 'text' : 'password'}
                       value={config.password || ''}
                       onChange={(e) => setConfig({ ...config, password: e.target.value })}
-                      placeholder="Server user password"
+                      placeholder={config.hasPassword && !config.password ? '•••••••• (Saved on Server - leave blank to keep)' : 'Server user password'}
                       className={`w-full px-3.5 py-2.5 pr-10 rounded-xl font-mono text-xs focus:outline-none transition-all ${
                         theme === 'dark'
                           ? 'bg-[#080E1C] border border-slate-700 text-white placeholder-slate-500 focus:border-cyan-400'

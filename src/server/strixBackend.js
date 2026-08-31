@@ -77,24 +77,21 @@ export function getSanitizedServerConfig() {
 
 export function saveGlobalServerConfig(newConfig) {
   if (!newConfig) return globalStrixConfig;
-  const merged = { ...globalStrixConfig, ...newConfig };
-  if (!newConfig.password && globalStrixConfig.password) {
-    merged.password = globalStrixConfig.password;
-  }
-  if (!newConfig.privateKey && globalStrixConfig.privateKey) {
-    merged.privateKey = globalStrixConfig.privateKey;
-  }
-  if (!newConfig.n8nCredential && globalStrixConfig.n8nCredential) {
-    merged.n8nCredential = globalStrixConfig.n8nCredential;
-  }
-  if (!newConfig.n8nPassword && globalStrixConfig.n8nPassword) {
-    merged.n8nPassword = globalStrixConfig.n8nPassword;
-  }
-  if (!newConfig.openrouterApiKey && globalStrixConfig.openrouterApiKey) {
-    merged.openrouterApiKey = globalStrixConfig.openrouterApiKey;
-  }
-  if (!newConfig.llmApiKey && globalStrixConfig.llmApiKey) {
-    merged.llmApiKey = globalStrixConfig.llmApiKey;
+  const merged = { ...globalStrixConfig };
+
+  for (const [key, value] of Object.entries(newConfig)) {
+    if (value !== undefined && value !== null) {
+      if (typeof value === 'string' && value.trim() === '') {
+        // Do NOT overwrite existing stored secrets with empty string
+        if (['password', 'privateKey', 'n8nCredential', 'n8nPassword', 'n8nToken', 'openrouterApiKey', 'llmApiKey'].includes(key)) {
+          if (globalStrixConfig[key]) {
+            merged[key] = globalStrixConfig[key];
+            continue;
+          }
+        }
+      }
+      merged[key] = value;
+    }
   }
 
   globalStrixConfig = merged;

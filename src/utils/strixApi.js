@@ -101,10 +101,21 @@ export async function fetchStrixServerConfig() {
 
 export function saveStrixServerConfig(config) {
   try {
-    const cleaned = { ...config };
+    const local = getStrixServerConfig();
+    const cleaned = { ...local, ...(config || {}) };
     if (cleaned.command && (cleaned.command.includes('scan') || cleaned.command.includes('--output'))) {
       cleaned.command = 'strix -t "{target}" -n';
     }
+
+    // Preserve local credentials if passed empty string
+    if (!config?.password && local.password) cleaned.password = local.password;
+    if (!config?.privateKey && local.privateKey) cleaned.privateKey = local.privateKey;
+    if (!config?.n8nCredential && local.n8nCredential) cleaned.n8nCredential = local.n8nCredential;
+    if (!config?.n8nPassword && local.n8nPassword) cleaned.n8nPassword = local.n8nPassword;
+    if (!config?.n8nToken && local.n8nToken) cleaned.n8nToken = local.n8nToken;
+    if (!config?.openrouterApiKey && local.openrouterApiKey) cleaned.openrouterApiKey = local.openrouterApiKey;
+    if (!config?.llmApiKey && local.llmApiKey) cleaned.llmApiKey = local.llmApiKey;
+
     localStorage.setItem(STRIX_CONFIG_KEY, JSON.stringify(cleaned));
     
     // Sync with backend so all user sessions immediately inherit this configuration
