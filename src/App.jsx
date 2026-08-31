@@ -20,10 +20,10 @@ import {
   saveScanHistory, 
   syncScanHistoryWithServer,
   INITIAL_SCAN_HISTORY, 
-  EMCOCHEM_VULNERABILITIES, 
-  SMECO_VULNERABILITIES,
-  EMCOCHEM_ATTACK_CHAIN,
-  SMECO_ATTACK_CHAIN 
+  SAMPLE_ALPHA_VULNERABILITIES, 
+  SAMPLE_BETA_VULNERABILITIES,
+  SAMPLE_ALPHA_ATTACK_CHAIN,
+  SAMPLE_BETA_ATTACK_CHAIN 
 } from './data/scanHistoryData';
 import { 
   getCurrentUser, 
@@ -587,13 +587,13 @@ export default function App() {
     if (scan.vulnerabilities && Array.isArray(scan.vulnerabilities) && scan.vulnerabilities.length > 0) {
       return scan.vulnerabilities;
     }
-    if (scan.id === 'www-emcochem-com_406f') {
-      return EMCOCHEM_VULNERABILITIES;
+    if (scan.id === 'scan-alpha-corp_406f') {
+      return SAMPLE_ALPHA_VULNERABILITIES;
     }
-    if (scan.id === 'www-smeco-coop_81f4') {
-      return SMECO_VULNERABILITIES;
+    if (scan.id === 'scan-beta-portal_81f4') {
+      return SAMPLE_BETA_VULNERABILITIES;
     }
-    if (scan.id === 'www-vontier-com_93f0') {
+    if (scan.id === 'scan-gamma-estate_93f0') {
       return VULNERABILITIES;
     }
     return Array.isArray(scan.vulnerabilities) ? scan.vulnerabilities : [];

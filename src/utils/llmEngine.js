@@ -241,8 +241,8 @@ export async function testLlmConnection(config) {
  */
 export async function askLlmWithRag({
   userMessage,
-  companyName = "Vontier Corporation",
-  targetUrl = "https://www.vontier.com/",
+  companyName = "Target Organization",
+  targetUrl = "https://target-system.internal",
   vulnerabilities = [],
   conversationHistory = []
 }) {

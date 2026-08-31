@@ -23,10 +23,10 @@ export default function RagHub({ initialQuery = '', onSelectVulnById }) {
   const [selectedChunk, setSelectedChunk] = useState(null);
 
   const presetQueries = [
-    { title: 'C-Suite Executive Summary', q: 'Generate C-Suite Executive Summary for Vontier.com' },
+    { title: 'C-Suite Executive Summary', q: 'Generate C-Suite Executive Threat Posture Summary' },
     { title: 'DOM XSS & Redirect Exploit Chain', q: 'Explain the DOM XSS via postMessage and Open Redirect Attack Chain' },
     { title: 'DevOps Remediation Roadmap', q: 'Provide a prioritized remediation checklist for engineering and DevOps' },
-    { title: 'Information Disclosure Risks', q: 'Summarize Drupal version disclosure and Absorb LMS REST API exposure' }
+    { title: 'Information Disclosure Risks', q: 'Summarize administrative version disclosure and REST API exposure' }
   ];
 
   const handleRunQuery = (searchQuery) => {

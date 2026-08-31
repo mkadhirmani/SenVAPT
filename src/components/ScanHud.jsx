@@ -67,12 +67,12 @@ export default function ScanHud({
 
   const logs = scannerState?.logs ?? [];
   const scanStats = scannerState?.scanStats ?? {
-    requests: currentTarget.requests || (isEmco ? 488 : (isSmeco ? 524 : 0)),
-    tokens: currentTarget.tokens || (isEmco ? 44210000 : (isSmeco ? 48920000 : 0)),
-    totalTokens: currentTarget.tokens || (isEmco ? 44210000 : (isSmeco ? 48920000 : 0)),
+    requests: currentTarget.requests || (currentTarget.metadata?.requests || 0),
+    tokens: currentTarget.tokens || (currentTarget.metadata?.tokens || 0),
+    totalTokens: currentTarget.tokens || (currentTarget.metadata?.tokens || 0),
     outputTokens: currentTarget.outputTokens || 0,
-    cost: typeof currentTarget.cost === 'number' ? currentTarget.cost : (isEmco ? 6.50 : (isSmeco ? 7.19 : 0)),
-    durationSec: currentTarget.durationSec || (isEmco ? 2478 : (isSmeco ? 2292 : 0)),
+    cost: typeof currentTarget.cost === 'number' ? currentTarget.cost : (currentTarget.metadata?.cost || 0),
+    durationSec: currentTarget.durationSec || (currentTarget.metadata?.durationSec || 0),
     currentAgent: 'Autonomous VAPT Agent'
   };
   const scanFinished = scannerState?.scanFinished ?? true;

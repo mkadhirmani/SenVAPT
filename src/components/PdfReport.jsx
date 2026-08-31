@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { 
   Download, 
   Printer, 
@@ -67,7 +67,6 @@ function renderFormattedMarkdown(markdownText) {
       return;
     }
 
-    // Heading 1, 2, 3 or bold headers
     if (/^#+\s+/.test(trimmed) || /^\*\*[0-9\.\s]*[A-Z\s:]+\*\*$/.test(trimmed)) {
       flushList();
       const headingClean = cleanText(trimmed);
@@ -80,7 +79,7 @@ function renderFormattedMarkdown(markdownText) {
       const itemContent = trimmed.replace(/^[\*\-\•\d\.\)]+\s+/, '');
       const parts = itemContent.split(/(\*\*[^*]+\*\*)/g);
       currentList.push(
-        <span>
+        <span key={`item-${idx}`}>
           {parts.map((p, pIdx) => {
             if (p.startsWith('**') && p.endsWith('**')) {
               return <strong key={pIdx} className="text-slate-900 font-bold">{p.slice(2, -2)}</strong>;
@@ -120,15 +119,16 @@ export default function PdfReport({
   const [isGeneratingAiSummary, setIsGeneratingAiSummary] = useState(false);
   const [customAiSummary, setCustomAiSummary] = useState(null);
 
-  // Group and sort vulnerabilities in strict priority order (High -> Med -> Low)
+  // Group and sort vulnerabilities in strict priority order (Critical -> High -> Med -> Low)
   const sortedVulns = [...vulnerabilities].sort((a, b) => (b.cvss || 0) - (a.cvss || 0));
+  const critVulns = sortedVulns.filter(v => v.severity === 'CRITICAL');
   const highVulns = sortedVulns.filter(v => v.severity === 'HIGH');
   const medVulns = sortedVulns.filter(v => v.severity === 'MEDIUM');
   const topVuln = sortedVulns[0] || null;
 
-  const targetUrl = metadata.targetUrl || (sortedVulns[0]?.target ? new URL(sortedVulns[0].target).origin : "https://target.com");
-  const overallRiskScore = metadata.overallRiskScore || topVuln?.cvss || 8.2;
-  const overallRiskLevel = metadata.overallRiskLevel || (overallRiskScore >= 7.0 ? 'HIGH' : 'ELEVATED');
+  const targetUrl = metadata.targetUrl || (sortedVulns[0]?.target ? new URL(sortedVulns[0].target).origin : "https://target-system.internal");
+  const overallRiskScore = metadata.overallRiskScore || topVuln?.cvss || 6.8;
+  const overallRiskLevel = metadata.overallRiskLevel || (overallRiskScore >= 8.5 ? 'CRITICAL' : (overallRiskScore >= 7.0 ? 'HIGH' : 'ELEVATED'));
 
   // Trigger Live LLM RAG Synthesis for Executive Summary
   const handleGenerateAiSummary = async () => {
@@ -137,7 +137,7 @@ export default function PdfReport({
       const prompt = `Generate a concise, crystal-clear, structured Executive Findings Summary for the VAPT report of ${companyName}.
 Include:
 1. Executive Risk Overview (2 paragraphs)
-2. Ordered breakdown of findings categorized into 3 tiers: Authentication/Execution risks, API/Information disclosure, and Configuration/Network policy.
+2. Ordered breakdown of findings categorized by severity.
 3. Prioritized 3-Phase Action Roadmap (Immediate 24h, Short-term 7d, Medium-term 30d).`;
 
       const res = await askLlmWithRag({
@@ -160,12 +160,12 @@ Include:
   const handleDownloadPdf = async () => {
     setIsExporting(true);
     try {
-      const sanitizedName = companyName.replace(/[^a-zA-Z0-9]/g, '_');
+      const sanitizedName = (companyName || 'Target_System').replace(/[^a-zA-Z0-9]/g, '_');
       await exportReportToPdf('vapt-pdf-report-root', `Sennovate_VAPT_Report_${sanitizedName}.pdf`);
       setExportSuccess(true);
       setTimeout(() => setExportSuccess(false), 3000);
     } catch (err) {
-      console.error('PDF export fallback:', err);
+      console.error('PDF export error:', err);
       window.print();
     } finally {
       setIsExporting(false);
@@ -191,7 +191,7 @@ Include:
             Security Penetration Test Report for {companyName}
           </h2>
           <p className={`text-xs ${theme === 'dark' ? 'text-slate-400' : 'text-slate-600 font-medium'}`}>
-            Prepared by Sennovate Inc. containing ordered findings summary &amp; full technical finding sheets with actual PoC evidence.
+            Prepared by Sennovate Autonomous VAPT Platform containing ordered findings summary &amp; technical finding sheets with PoC reproduction evidence.
           </p>
         </div>
 
@@ -246,13 +246,55 @@ Include:
         </div>
       </div>
 
+      {/* Embedded Print Stylesheet for Zero Blank Pages & Pixel-Perfect Pagination */}
+      <style>{`
+        @media print {
+          body {
+            background: #ffffff !important;
+            color: #0f172a !important;
+            font-size: 11pt !important;
+          }
+          .no-print, nav, aside, header, footer, button, .chat-drawer {
+            display: none !important;
+          }
+          #vapt-pdf-report-root {
+            border: none !important;
+            box-shadow: none !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            width: 100% !important;
+            max-width: 100% !important;
+          }
+          .pdf-page-break {
+            page-break-before: always !important;
+            break-before: page !important;
+          }
+          .pdf-avoid-break {
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
+          }
+          tr {
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
+          }
+        }
+        .pdf-page-break {
+          page-break-before: always;
+          break-before: page;
+        }
+        .pdf-avoid-break {
+          page-break-inside: avoid;
+          break-inside: avoid;
+        }
+      `}</style>
+
       {/* Printable Document Root */}
       <div 
         id="vapt-pdf-report-root" 
-        className="bg-white text-slate-900 font-sans p-8 sm:p-12 rounded-2xl shadow-xl space-y-12 max-w-5xl mx-auto border border-slate-300"
+        className="bg-white text-slate-900 font-sans p-8 sm:p-12 rounded-2xl shadow-xl space-y-10 max-w-5xl mx-auto border border-slate-300"
       >
-        {/* COVER PAGE */}
-        <div className="min-h-[840px] flex flex-col justify-between p-6 sm:p-10 border-b-2 border-slate-300">
+        {/* COVER PAGE (Designed to fit cleanly into Page 1) */}
+        <div className="pdf-avoid-break flex flex-col justify-between p-6 sm:p-10 rounded-xl bg-gradient-to-b from-slate-50 to-white border border-slate-200 min-h-[750px]">
           <div className="flex items-center justify-between border-b pb-6 border-slate-200">
             <div className="flex items-center gap-3">
               <img
@@ -266,32 +308,32 @@ Include:
               <div className="font-bold text-rose-700 uppercase bg-rose-50 border border-rose-200 px-2.5 py-0.5 rounded inline-block">
                 CONFIDENTIAL &bull; PROPRIETARY
               </div>
-              <div className="text-[11px] text-slate-500 mt-1">Assessment Ref: {metadata.runId || 'VAPT-2026'}</div>
+              <div className="text-[11px] text-slate-500 mt-1">Ref: {metadata.runId || 'VAPT-AUDIT'}</div>
             </div>
           </div>
 
-          <div className="space-y-6 my-auto py-12">
+          <div className="space-y-6 my-auto py-8">
             <div className="inline-block px-3 py-1 bg-cyan-50 border border-cyan-200 rounded-lg text-xs font-mono font-bold text-cyan-800 uppercase tracking-wider">
               {metadata.assessmentType || "External Web Application & API Penetration Test"}
             </div>
 
             <div className="space-y-2">
-              <div className="text-sm font-mono text-slate-500 font-bold uppercase tracking-widest">
+              <div className="text-xs font-mono text-slate-500 font-bold uppercase tracking-widest">
                 PREPARED EXCLUSIVELY FOR:
               </div>
-              <h1 className="text-4xl sm:text-5xl font-black text-slate-950 tracking-tight leading-tight">
+              <h1 className="text-3xl sm:text-4xl font-black text-slate-950 tracking-tight leading-tight">
                 {companyName}
               </h1>
             </div>
 
-            <p className="text-base text-slate-700 font-medium max-w-2xl leading-relaxed">
+            <p className="text-sm text-slate-700 font-medium max-w-2xl leading-relaxed">
               Comprehensive security posture audit, attack surface analysis, vulnerability validation, and prioritized remediation roadmap.
             </p>
 
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 p-5 rounded-xl bg-slate-50 border border-slate-200 text-xs font-mono">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 p-5 rounded-xl bg-white border border-slate-200 text-xs font-mono shadow-sm">
               <div>
                 <span className="text-slate-500 text-[10px] block font-bold">PRIMARY TARGET</span>
-                <span className="font-bold text-slate-900">{targetUrl}</span>
+                <span className="font-bold text-slate-900 truncate block">{targetUrl}</span>
               </div>
               <div>
                 <span className="text-slate-500 text-[10px] block font-bold">OVERALL RISK POSTURE</span>
@@ -302,15 +344,15 @@ Include:
                 <span className="font-bold text-slate-900">{sortedVulns.length} Confirmed</span>
               </div>
               <div>
-                <span className="text-slate-500 text-[10px] block font-bold">ASSESSMENT DATE</span>
-                <span className="font-bold text-slate-900">August 2026</span>
+                <span className="text-slate-500 text-[10px] block font-bold">STATUS</span>
+                <span className="font-bold text-emerald-700">Audit Completed</span>
               </div>
             </div>
           </div>
 
-          <div className="flex items-center justify-between border-t pt-6 border-slate-200 text-xs font-mono text-slate-600">
+          <div className="flex items-center justify-between border-t pt-5 border-slate-200 text-xs font-mono text-slate-600">
             <div>
-              <strong>Audited By:</strong> {metadata.leadAuditor || "Sennovate Autonomous Security Team"}
+              <strong>Audited By:</strong> {metadata.leadAuditor || "Sennovate Autonomous Security Engine"}
             </div>
             <div>
               <strong>Security Partner:</strong> {metadata.companyWebsite || "https://www.sennovate.com"}
@@ -318,11 +360,11 @@ Include:
           </div>
         </div>
 
-        {/* SECTION 1: DYNAMIC EXECUTIVE SUMMARY */}
-        <div className="space-y-6 pt-6 page-break">
-          <div className="flex items-center justify-between border-b pb-3 border-slate-300">
+        {/* SECTION 1: EXECUTIVE SUMMARY & THREAT POSTURE */}
+        <div className="space-y-6 pt-4 pdf-page-break">
+          <div className="pdf-avoid-break flex items-center justify-between border-b pb-3 border-slate-300">
             <div className="flex items-center gap-2.5">
-              <h2 className="text-2xl font-black text-slate-950 uppercase tracking-tight">
+              <h2 className="text-xl font-black text-slate-950 uppercase tracking-tight">
                 1. Executive Summary &amp; Threat Posture
               </h2>
               <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-cyan-100 text-cyan-800">
@@ -333,24 +375,24 @@ Include:
           </div>
 
           {customAiSummary ? (
-            <div className="p-6 rounded-xl bg-slate-50 border border-slate-200 space-y-4 text-xs sm:text-sm text-slate-800 leading-relaxed font-sans">
+            <div className="pdf-avoid-break p-6 rounded-xl bg-slate-50 border border-slate-200 space-y-4 text-xs sm:text-sm text-slate-800 leading-relaxed font-sans">
               {renderFormattedMarkdown(customAiSummary)}
             </div>
           ) : (
             <>
               {/* Executive Assessment Overview */}
-              <div className="space-y-3 text-sm text-slate-800 leading-relaxed font-sans">
+              <div className="pdf-avoid-break space-y-2 text-xs sm:text-sm text-slate-800 leading-relaxed font-sans">
                 <p>
-                  Sennovate Inc. performed an external autonomous security assessment and penetration test against <strong>{companyName}</strong> (primary target: <code>{targetUrl}</code>). The scope covered the public digital footprint, active web endpoints, and supporting API services.
+                  Sennovate Autonomous Security Engine performed an external security assessment and penetration test against <strong>{companyName}</strong> (primary target: <code>{targetUrl}</code>). The scope covered the public digital footprint, active web endpoints, and supporting API services.
                 </p>
                 <p>
-                  The testing confirmed <strong>{sortedVulns.length} verified security vulnerabilities</strong> across the target surface ({highVulns.length} High Severity, {medVulns.length} Medium Severity).
+                  The testing confirmed <strong>{sortedVulns.length} verified security vulnerabilities</strong> across the target surface ({critVulns.length > 0 ? `${critVulns.length} Critical, ` : ''}{highVulns.length} High Severity, {medVulns.length} Medium Severity).
                 </p>
               </div>
 
               {/* Top Risk Callout */}
               {topVuln && (
-                <div className="p-4 rounded-xl bg-amber-50 border-l-4 border-amber-500 text-slate-800 space-y-1.5 text-xs">
+                <div className="pdf-avoid-break p-4 rounded-xl bg-amber-50 border-l-4 border-amber-500 text-slate-800 space-y-1.5 text-xs">
                   <div className="font-bold text-amber-900 uppercase font-mono flex items-center gap-2">
                     <ShieldAlert className="w-4 h-4 text-amber-600" />
                     <span>Strategic Threat Assessment: {overallRiskLevel} Risk ({overallRiskScore}/10)</span>
@@ -363,14 +405,14 @@ Include:
 
               {/* DYNAMIC ORDERED FINDINGS BREAKDOWN */}
               <div className="space-y-4 pt-2">
-                <h3 className="text-sm font-bold text-slate-950 font-mono uppercase tracking-wider">
+                <h3 className="text-xs sm:text-sm font-bold text-slate-950 font-mono uppercase tracking-wider">
                   Ordered Findings Breakdown for {companyName}
                 </h3>
 
                 <div className="space-y-3">
                   {/* High Severity Tier */}
                   {highVulns.length > 0 && (
-                    <div className="p-4 rounded-xl border border-rose-200 bg-rose-50/50 space-y-2">
+                    <div className="pdf-avoid-break p-4 rounded-xl border border-rose-200 bg-rose-50/50 space-y-2">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
                           <span className="w-2 h-2 rounded-full bg-rose-500"></span>
@@ -391,9 +433,11 @@ Include:
                             <p className="text-slate-600 leading-relaxed text-[11px]">
                               <strong>Impact:</strong> {v.impact || v.description}
                             </p>
-                            <p className="text-emerald-800 text-[11px] font-mono">
-                              <strong>Remediation:</strong> {v.remediation}
-                            </p>
+                            {v.remediation && (
+                              <p className="text-emerald-800 text-[11px] font-mono">
+                                <strong>Remediation:</strong> {v.remediation}
+                              </p>
+                            )}
                           </div>
                         ))}
                       </div>
@@ -402,7 +446,7 @@ Include:
 
                   {/* Medium Severity Tier */}
                   {medVulns.length > 0 && (
-                    <div className="p-4 rounded-xl border border-amber-200 bg-amber-50/40 space-y-2">
+                    <div className="pdf-avoid-break p-4 rounded-xl border border-amber-200 bg-amber-50/40 space-y-2">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
                           <span className="w-2 h-2 rounded-full bg-amber-500"></span>
@@ -428,8 +472,8 @@ Include:
               </div>
 
               {/* DYNAMIC 3-PHASE REMEDIATION ROADMAP */}
-              <div className="space-y-3 pt-3">
-                <h3 className="text-sm font-bold text-slate-950 font-mono uppercase tracking-wider">
+              <div className="pdf-avoid-break space-y-3 pt-3">
+                <h3 className="text-xs sm:text-sm font-bold text-slate-950 font-mono uppercase tracking-wider">
                   Prioritized 3-Phase Remediation Roadmap
                 </h3>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
@@ -439,7 +483,7 @@ Include:
                       Phase 1: Immediate (&lt; 24h)
                     </div>
                     <p className="text-slate-700 text-[11px] leading-relaxed">
-                      {topVuln ? `Remediate ${topVuln.title} on ${topVuln.endpoint}. ${topVuln.remediation}` : 'Patch critical findings immediately.'}
+                      {topVuln ? `Remediate ${topVuln.title} on ${topVuln.endpoint}.` : 'Patch high priority vulnerabilities immediately.'}
                     </p>
                   </div>
 
@@ -469,79 +513,79 @@ Include:
         </div>
 
         {/* SECTION 2: VULNERABILITY SUMMARY MATRIX */}
-        <div className="space-y-6 pt-6 page-break">
-          <div className="flex items-center justify-between border-b pb-3 border-slate-300">
-            <h2 className="text-2xl font-black text-slate-950 uppercase tracking-tight">
+        <div className="space-y-4 pt-4 pdf-page-break">
+          <div className="pdf-avoid-break flex items-center justify-between border-b pb-3 border-slate-300">
+            <h2 className="text-xl font-black text-slate-950 uppercase tracking-tight">
               2. Vulnerability Summary Matrix
             </h2>
             <span className="text-xs font-mono text-slate-500">{sortedVulns.length} Confirmed Findings</span>
           </div>
 
-          <table className="w-full border border-slate-200 text-xs text-left">
-            <thead className="bg-slate-100 font-mono text-slate-700 border-b border-slate-200">
-              <tr>
-                <th className="p-2.5">ID</th>
-                <th className="p-2.5">Vulnerability Title</th>
-                <th className="p-2.5">Severity</th>
-                <th className="p-2.5">CVSS</th>
-                <th className="p-2.5">CWE</th>
-                <th className="p-2.5">Target Endpoint</th>
-                <th className="p-2.5">Priority</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-200">
-              {sortedVulns.map((v, idx) => (
-                <tr key={v.id} className="hover:bg-slate-50">
-                  <td className="p-2.5 font-mono font-bold text-cyan-800">{v.id}</td>
-                  <td className="p-2.5 font-bold text-slate-900">{v.title}</td>
-                  <td className="p-2.5 font-mono">
-                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                      v.severity === 'CRITICAL' 
-                        ? 'bg-red-100 text-red-900 border border-red-300 font-black' 
-                        : v.severity === 'HIGH' 
-                        ? 'bg-orange-100 text-orange-900 border border-orange-200' 
-                        : 'bg-amber-100 text-amber-900 border border-amber-200'
-                    }`}>
-                      {v.severity}
-                    </span>
-                  </td>
-                  <td className="p-2.5 font-mono font-bold">{v.cvss}</td>
-                  <td className="p-2.5 font-mono text-slate-600">{v.cwe}</td>
-                  <td className="p-2.5 font-mono text-slate-600 truncate max-w-[160px]">{v.endpoint || v.target}</td>
-                  <td className="p-2.5 font-mono font-bold text-slate-700">
-                    {idx === 0 ? 'Urgent (P1)' : idx <= 2 ? 'High (P2)' : 'Medium (P3)'}
-                  </td>
+          <div className="pdf-avoid-break overflow-x-auto">
+            <table className="w-full border border-slate-200 text-xs text-left">
+              <thead className="bg-slate-100 font-mono text-slate-700 border-b border-slate-200">
+                <tr>
+                  <th className="p-2.5">ID</th>
+                  <th className="p-2.5">Vulnerability Title</th>
+                  <th className="p-2.5">Severity</th>
+                  <th className="p-2.5">CVSS</th>
+                  <th className="p-2.5">CWE</th>
+                  <th className="p-2.5">Target Endpoint</th>
+                  <th className="p-2.5">Priority</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-slate-200">
+                {sortedVulns.map((v, idx) => (
+                  <tr key={v.id} className="hover:bg-slate-50">
+                    <td className="p-2.5 font-mono font-bold text-cyan-800">{v.id}</td>
+                    <td className="p-2.5 font-bold text-slate-900">{v.title}</td>
+                    <td className="p-2.5 font-mono">
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                        v.severity === 'CRITICAL' 
+                          ? 'bg-red-100 text-red-900 border border-red-300 font-black' 
+                          : v.severity === 'HIGH' 
+                          ? 'bg-orange-100 text-orange-900 border border-orange-200' 
+                          : 'bg-amber-100 text-amber-900 border border-amber-200'
+                      }`}>
+                        {v.severity}
+                      </span>
+                    </td>
+                    <td className="p-2.5 font-mono font-bold">{v.cvss}</td>
+                    <td className="p-2.5 font-mono text-slate-600">{v.cwe}</td>
+                    <td className="p-2.5 font-mono text-slate-600 truncate max-w-[160px]">{v.endpoint || v.target}</td>
+                    <td className="p-2.5 font-mono font-bold text-slate-700">
+                      {idx === 0 ? 'Urgent (P1)' : idx <= 2 ? 'High (P2)' : 'Medium (P3)'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
 
         {/* SECTION 3: COMPREHENSIVE TECHNICAL FINDING DETAILS */}
-        <div className="space-y-10 pt-6">
-          <div className="flex items-center justify-between border-b pb-3 border-slate-300">
+        <div className="space-y-8 pt-4 pdf-page-break">
+          <div className="pdf-avoid-break flex items-center justify-between border-b pb-3 border-slate-300">
             <div>
-              <h2 className="text-2xl font-black text-slate-950 uppercase tracking-tight">
+              <h2 className="text-xl font-black text-slate-950 uppercase tracking-tight">
                 3. Comprehensive Technical Finding Details
               </h2>
               <p className="text-xs text-slate-500 font-mono mt-0.5">
-                Technical analyses, observed evidence, and exact proof of concept reproduction scripts for {companyName}
+                Technical analyses, observed evidence, and proof of concept reproduction scripts for {companyName}
               </p>
             </div>
             <span className="text-xs font-mono text-slate-500">Ordered by CVSS Severity</span>
           </div>
 
           {sortedVulns.map((vuln, index) => {
-            const isHigh = vuln.severity === 'HIGH';
-
             return (
               <div 
                 key={vuln.id} 
-                className="space-y-5 p-6 sm:p-7 rounded-2xl bg-slate-50/70 border border-slate-200 page-break shadow-sm"
+                className="space-y-4 p-5 sm:p-6 rounded-xl bg-slate-50/70 border border-slate-200 shadow-sm"
               >
                 {/* 1. Header with Badges & Metadata */}
-                <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-200 pb-4">
-                  <div className="space-y-1.5">
+                <div className="pdf-avoid-break flex flex-wrap items-start justify-between gap-3 border-b border-slate-200 pb-3">
+                  <div className="space-y-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="text-xs font-mono font-bold text-cyan-900 bg-cyan-100 px-2.5 py-0.5 rounded-lg border border-cyan-200">
                         Finding #{index + 1}: {vuln.id}
@@ -560,25 +604,25 @@ Include:
                       </span>
                     </div>
 
-                    <h3 className="text-lg sm:text-xl font-extrabold text-slate-950 tracking-tight">
+                    <h3 className="text-base sm:text-lg font-extrabold text-slate-950 tracking-tight">
                       {vuln.title}
                     </h3>
                   </div>
 
-                  <div className="text-right text-xs font-mono text-slate-600 space-y-0.5 bg-white p-2.5 rounded-xl border border-slate-200">
+                  <div className="text-right text-xs font-mono text-slate-600 space-y-0.5 bg-white p-2 rounded-lg border border-slate-200">
                     <div>Target: <strong className="text-slate-900">{vuln.target}</strong></div>
                     <div>Endpoint: <code className="text-cyan-800 font-bold">{vuln.endpoint}</code></div>
                     <div>Fix Effort: <strong className="text-emerald-700">{vuln.fixEffort || 'Low'}</strong></div>
                   </div>
                 </div>
 
-                {/* 2. Summarized Description & Root Cause */}
-                <div className="space-y-2">
+                {/* 2. Description & Root Cause */}
+                <div className="pdf-avoid-break space-y-1.5">
                   <div className="text-xs font-mono font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
                     <Info className="w-3.5 h-3.5 text-cyan-600" />
                     <span>Technical Analysis &amp; Mechanism:</span>
                   </div>
-                  <div className="p-4 rounded-xl bg-white border border-slate-200 text-xs text-slate-700 leading-relaxed space-y-2">
+                  <div className="p-3.5 rounded-xl bg-white border border-slate-200 text-xs text-slate-700 leading-relaxed space-y-2">
                     <p>{vuln.description}</p>
                     {vuln.technicalAnalysis && (
                       <p className="text-slate-600 text-[11px] pt-1 border-t border-slate-100">
@@ -588,25 +632,25 @@ Include:
                   </div>
                 </div>
 
-                {/* 3. Summarized Threat & Business Impact */}
-                <div className="space-y-2">
+                {/* 3. Threat & Business Impact */}
+                <div className="pdf-avoid-break space-y-1.5">
                   <div className="text-xs font-mono font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
                     <ShieldAlert className="w-3.5 h-3.5 text-rose-600" />
                     <span>Security &amp; Business Threat Impact:</span>
                   </div>
-                  <div className="p-4 rounded-xl bg-rose-50/40 border border-rose-200 text-xs text-slate-800 leading-relaxed">
+                  <div className="p-3.5 rounded-xl bg-rose-50/40 border border-rose-200 text-xs text-slate-800 leading-relaxed">
                     <p>{vuln.impact}</p>
                   </div>
                 </div>
 
-                {/* 4. ACTUAL EXACT EVIDENCE */}
+                {/* 4. EXACT EVIDENCE */}
                 {vuln.evidence && (
-                  <div className="space-y-2">
+                  <div className="pdf-avoid-break space-y-1.5">
                     <div className="text-xs font-mono font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
                       <Terminal className="w-3.5 h-3.5 text-slate-700" />
-                      <span>Actual Observed Scan Evidence:</span>
+                      <span>Observed Scan Evidence:</span>
                     </div>
-                    <div className="p-4 rounded-xl bg-slate-900 text-slate-100 font-mono text-[11px] overflow-x-auto border border-slate-800">
+                    <div className="p-3.5 rounded-xl bg-slate-900 text-slate-100 font-mono text-[11px] overflow-x-auto border border-slate-800">
                       <pre className="whitespace-pre-wrap leading-relaxed select-all">
                         {vuln.evidence}
                       </pre>
@@ -614,14 +658,14 @@ Include:
                   </div>
                 )}
 
-                {/* 5. ACTUAL EXACT PROOF OF CONCEPT & REPRODUCTION SCRIPTS */}
-                <div className="space-y-2">
+                {/* 5. PROOF OF CONCEPT & REPRODUCTION */}
+                <div className="pdf-avoid-break space-y-1.5">
                   <div className="text-xs font-mono font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
                     <Code className="w-3.5 h-3.5 text-emerald-600" />
                     <span>Proof of Concept &amp; Exact Reproduction Steps:</span>
                   </div>
 
-                  <div className="p-4 rounded-xl bg-white border border-slate-200 space-y-3 text-xs">
+                  <div className="p-3.5 rounded-xl bg-white border border-slate-200 space-y-2 text-xs">
                     {vuln.pocDescription && (
                       <div className="text-slate-700 leading-relaxed whitespace-pre-line text-[11px] font-sans">
                         {vuln.pocDescription}
@@ -629,7 +673,7 @@ Include:
                     )}
 
                     {(vuln.reproduction || vuln.pocScripts?.bash || vuln.pocScripts?.python) && (
-                      <div className="p-3 rounded-lg bg-slate-950 text-cyan-300 font-mono text-[11px] space-y-1.5 border border-slate-800">
+                      <div className="p-2.5 rounded-lg bg-slate-950 text-cyan-300 font-mono text-[11px] space-y-1 border border-slate-800">
                         <span className="text-[10px] uppercase text-slate-400 font-bold block">
                           Verification Command:
                         </span>
@@ -642,13 +686,13 @@ Include:
                 </div>
 
                 {/* 6. Remediation Action Plan */}
-                <div className="space-y-2">
+                <div className="pdf-avoid-break space-y-1.5">
                   <div className="text-xs font-mono font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
                     <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
                     <span>Remediation Action Plan:</span>
                   </div>
 
-                  <div className="p-4 rounded-xl bg-emerald-50/60 border border-emerald-200 text-xs space-y-2">
+                  <div className="p-3.5 rounded-xl bg-emerald-50/60 border border-emerald-200 text-xs space-y-2">
                     {vuln.remediation && (!vuln.remediationSteps || vuln.remediationSteps.length === 0 || (!vuln.remediation.includes(vuln.remediationSteps[0]) && vuln.remediation !== vuln.remediationSteps[0])) && (
                       <p className="text-slate-800 font-medium">
                         {cleanText(vuln.remediation)}
@@ -669,7 +713,7 @@ Include:
 
                 {/* 7. Scope & Assumptions Note */}
                 {vuln.assumptions && (
-                  <div className="text-[11px] font-mono text-slate-500 bg-white p-3 rounded-lg border border-slate-200">
+                  <div className="pdf-avoid-break text-[11px] font-mono text-slate-500 bg-white p-2.5 rounded-lg border border-slate-200">
                     <strong>Environmental Note / Scope:</strong> {vuln.assumptions}
                   </div>
                 )}
@@ -679,7 +723,7 @@ Include:
         </div>
 
         {/* FOOTER OF DELIVERABLE */}
-        <div className="border-t-2 border-slate-200 pt-6 text-center text-xs font-mono text-slate-500 space-y-1">
+        <div className="pdf-avoid-break border-t-2 border-slate-200 pt-6 text-center text-xs font-mono text-slate-500 space-y-1">
           <div>Report automatically generated by <strong>Sennovate Autonomous VAPT Platform</strong></div>
           <div>Confidential &copy; 2026 Sennovate Inc. All Rights Reserved.</div>
         </div>

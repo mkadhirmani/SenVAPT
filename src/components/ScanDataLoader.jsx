@@ -39,7 +39,7 @@ export default function ScanDataLoader({ isOpen, onClose, onDataLoaded, currentT
     e?.preventDefault();
     const cleanPath = folderInput.trim();
     if (!cleanPath) {
-      setErrorMessage('Please enter a folder name or path (e.g. www-smeco-coop_81f4)');
+      setErrorMessage('Please enter a folder name or path (e.g. strix-scan-output_88a1)');
       return;
     }
 
@@ -430,7 +430,7 @@ export default function ScanDataLoader({ isOpen, onClose, onDataLoaded, currentT
               type="text"
               value={folderInput}
               onChange={(e) => setFolderInput(e.target.value)}
-              placeholder="e.g. www-smeco-coop_81f4 or ~/Downloads/www-smeco-coop_81f4"
+              placeholder="e.g. strix-scan-output_88a1 or ~/Downloads/strix-scan-output_88a1"
               className="flex-1 px-3 py-2 rounded-xl text-xs font-mono bg-[#040813] border border-slate-700 text-cyan-300 placeholder-slate-500 focus:outline-none focus:border-cyan-400"
             />
             <button

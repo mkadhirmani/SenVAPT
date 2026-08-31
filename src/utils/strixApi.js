@@ -228,7 +228,7 @@ export async function triggerN8nScan(params) {
   const config = getStrixServerConfig();
   const payload = {
     webhookUrl: params?.webhookUrl || config.n8nWebhookUrl,
-    domain: params?.domain || params?.targetUrl || 'smeco.coop',
+    domain: params?.domain || params?.targetUrl || 'example.com',
     authType: params?.authType || config.n8nAuthType || 'basic',
     credential: params?.credential !== undefined ? params.credential : (config.n8nCredential || ''),
     username: params?.username !== undefined ? params.username : (config.n8nUsername || ''),

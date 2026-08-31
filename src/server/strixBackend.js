@@ -495,12 +495,14 @@ export function listLocalScanFolders() {
             }
 
             if (!targetUrl) {
-              if (item.includes('emcochem')) targetUrl = 'https://www.emcochem.com/';
-              else if (item.includes('smeco')) targetUrl = 'https://www.smeco.coop/';
-              else if (item.includes('vontier')) targetUrl = 'https://www.vontier.com/';
-              else if (item.startsWith('www-')) {
+              if (item.startsWith('www-')) {
                 const parts = item.split('_')[0].replace('www-', '').replace(/-/g, '.');
                 targetUrl = `https://www.${parts}`;
+              } else if (item.startsWith('scan-')) {
+                const parts = item.split('_')[0].replace('scan-', '').replace(/-/g, '.');
+                targetUrl = `https://${parts}`;
+              } else {
+                targetUrl = 'https://target.com';
               }
             }
 
@@ -1677,7 +1679,7 @@ export async function fetchServerFileProxy(payload) {
 
   const rawPath = (filePath || targetPath || domain || '').trim();
   if (!rawPath) {
-    throw new Error('Please specify a server file path or domain (e.g. /root/strix.log or smeco.coop)');
+    throw new Error('Please specify a server file path or domain (e.g. /root/strix.log or example.com)');
   }
 
   const res = await testN8nFetchWebhookProxy({
@@ -1925,125 +1927,31 @@ export function extractFindingsFromAllSources(raw, actualTargetUrl) {
     parsedVulns.push(v);
   }
 
-  // 6. Target-specific verified findings fallback if remote files were empty
-  if (parsedVulns.length === 0) {
-    const isEmco = actualTargetUrl?.includes('emcochem') || raw.run_dir?.includes('emcochem');
-    const isSmeco = actualTargetUrl?.includes('smeco') || raw.run_dir?.includes('smeco');
-
-    if (isEmco) {
-      addVuln({
-        id: "vuln-0004",
-        title: "Unrestricted File Upload Handler in Contact Inquiry Form",
-        severity: "HIGH",
-        cvss: 8.4,
-        cwe: "CWE-434",
-        target: "https://www.emcochem.com/contact/upload-inquiry",
-        endpoint: "/contact/upload-inquiry",
-        description: "The contact and customer inquiry form handler performs client-side only MIME-type verification without validating server-side magic bytes or file extensions. An attacker can upload arbitrary executable scripts (.php, .phtml) to the web server.",
-        impact: "Remote Code Execution (RCE) on the underlying web application server hosting corporate assets.",
-        technicalAnalysis: "Multipart form upload bypassed extension validation by utilizing double extensions (payload.php.pdf) which were placed directly in the web-accessible /uploads/inquiries/ directory.",
-        pocDescription: "POST request uploading executable payload bypassing MIME filter.",
-        reproduction: `curl -X POST "https://www.emcochem.com/contact/upload-inquiry" -F "file=@poc.php;type=image/png"`,
-        remediation: "Enforce strict server-side file extension allowlists, inspect magic bytes, store uploaded files outside web root or in an isolated S3 bucket, and disable script execution in upload folders.",
-        remediationSteps: [
-          "Store uploaded files outside the web root or on isolated object storage.",
-          "Validate magic bytes and strictly allow only PDF, JPG, and PNG extensions.",
-          "Disable script execution in upload directories."
-        ],
-        evidence: "HTTP/1.1 200 OK\n{\"uploaded\":true,\"path\":\"/uploads/inquiries/poc.php\"}",
-        fixEffort: "4-8 Hours"
-      });
-      addVuln({
-        id: "vuln-0002",
-        title: "Reflected Cross-Site Scripting (XSS) in Product Catalog Search",
-        severity: "HIGH",
-        cvss: 7.2,
-        cwe: "CWE-79",
-        target: "https://www.emcochem.com/search",
-        endpoint: "/search?q=",
-        description: "The product catalog search parameter ?q= reflects user input directly into the DOM without sanitization or HTML entity encoding, allowing arbitrary script execution in the context of the user's browser session.",
-        impact: "Session hijacking of authenticated portal sessions, phishing injection on the official corporate site, and credential theft.",
-        technicalAnalysis: "Input <script>alert(document.domain)</script> supplied to ?q= parameter was reflected unsanitized inside the search result container.",
-        pocDescription: "Crafted URL triggering JavaScript execution in victim browser.",
-        reproduction: `https://www.emcochem.com/search?q=%3Cscript%3Econsole.log(document.cookie)%3C/script%3E`,
-        remediation: "Properly sanitize and HTML-encode all user input before rendering into HTML templates, and enforce a strict Content Security Policy (CSP).",
-        remediationSteps: [
-          "Use contextual HTML encoding on the search query parameter.",
-          "Deploy a Content Security Policy (CSP) blocking inline scripts.",
-          "Sanitize client-side rendering with DOMPurify."
-        ],
-        evidence: "<div class=\"search-results\"><p>Search for: <script>console.log(document.cookie)</script></p></div>",
-        fixEffort: "2-4 Hours"
-      });
-      addVuln({
-        id: "vuln-0003",
-        title: "Weak TLS/SSL Protocol Configuration & Deprecated Cipher Suites",
-        severity: "MEDIUM",
-        cvss: 5.8,
-        cwe: "CWE-326",
-        target: "https://www.emcochem.com:443",
-        endpoint: ":443",
-        description: "The SSL/TLS configuration on port 443 supports deprecated TLS 1.0 and TLS 1.1 protocols and CBC-mode ciphers susceptible to cryptographic downgrade attacks.",
-        impact: "Potential eavesdropping and decryption of encrypted traffic via man-in-the-middle (MitM) attacks.",
-        technicalAnalysis: "TLS handshake probing confirmed negotiation with TLSv1.0 and weak ciphers including TLS_RSA_WITH_AES_128_CBC_SHA.",
-        pocDescription: "Connect using openssl with TLS 1.0 flag.",
-        reproduction: `openssl s_client -connect www.emcochem.com:443 -tls1`,
-        remediation: "Disable TLS 1.0 and 1.1; enforce TLS 1.2 and TLS 1.3 exclusively with forward secrecy cipher suites (ECDHE).",
-        remediationSteps: [
-          "Disable TLSv1.0 and TLSv1.1 in Nginx/Apache configuration.",
-          "Enable modern cipher suites with perfect forward secrecy.",
-          "Enable HSTS preload directive."
-        ],
-        evidence: "SSL-Session:\n    Protocol  : TLSv1\n    Cipher    : AES128-SHA",
-        fixEffort: "1-2 Hours"
-      });
-      addVuln({
-        id: "vuln-0001",
-        title: "Missing Security Headers & Web Server Information Disclosure",
-        severity: "MEDIUM",
-        cvss: 5.5,
-        cwe: "CWE-200",
-        target: "https://www.emcochem.com/",
-        endpoint: "/",
-        description: "The primary web application fails to implement modern defense-in-depth HTTP security headers including Content-Security-Policy (CSP), Strict-Transport-Security (HSTS), X-Content-Type-Options, and X-Frame-Options. Furthermore, sensitive web server signature banners and backend runtime details are disclosed in HTTP response headers.",
-        impact: "Aids threat actors in fingerprinting backend architecture and exposes end-users to clickjacking and MIME-sniffing attacks.",
-        technicalAnalysis: "Automated HTTP response probing verified that critical security headers are absent across web responses, while server identity headers disclose underlying infrastructure.",
-        pocDescription: "Verify missing response headers via curl HEAD request against target.",
-        reproduction: `curl -sI https://www.emcochem.com/ | grep -Ei "(Server|X-Powered-By|Content-Security|X-Frame|Strict-Transport)"`,
-        remediation: "Configure the web server / reverse proxy to inject hardened OWASP security headers and disable public server signature banners.",
-        remediationSteps: [
-          "Add 'Content-Security-Policy: default-src \\'self\\'; frame-ancestors \\'none\\'' header.",
-          "Add 'Strict-Transport-Security: max-age=31536000; includeSubDomains; preload' header.",
-          "Add 'X-Content-Type-Options: nosniff' and 'X-Frame-Options: DENY' headers.",
-          "Disable server version disclosure tokens in web server configuration."
-        ],
-        evidence: "HTTP/1.1 200 OK\n(Content-Security-Policy header: ABSENT)\n(Strict-Transport-Security: ABSENT)\n(X-Frame-Options: ABSENT)\n(X-Content-Type-Options: ABSENT)",
-        fixEffort: "1-2 Hours"
-      });
-    } else if (isSmeco) {
-      addVuln({
-        id: "vuln-0004",
-        title: "Unrestricted File Upload in Contact & Member Feedback Form",
-        severity: "HIGH",
-        cvss: 8.2,
-        cwe: "CWE-434",
-        target: "https://www.smeco.coop/contact/submit-attachment",
-        endpoint: "/contact/submit-attachment",
-        description: "The contact attachment upload handler performs client-side only MIME-type verification without verifying server-side magic bytes or file extensions. An attacker can upload arbitrary executable scripts (.php, .phtml) to the web server.",
-        impact: "Remote Code Execution (RCE) on the web server hosting customer portals and member feedback systems.",
-        technicalAnalysis: "Multipart form upload bypassed extension validation by utilizing double extensions which were executed by the backend PHP interpreter in /uploads/feedback/.",
-        pocDescription: "POST request uploading executable payload bypassing MIME filter.",
-        reproduction: `curl -X POST "https://www.smeco.coop/contact/submit-attachment" -F "file=@poc.php;type=image/png"`,
-        remediation: "Enforce strict server-side file extension allowlists, inspect magic bytes, store uploaded files outside web root, and disable script execution in upload folders.",
-        remediationSteps: [
-          "Store uploaded files outside the web root or on isolated object storage.",
-          "Validate magic bytes and strictly allow only PDF, JPG, and PNG extensions.",
-          "Disable script execution in upload directories."
-        ],
-        evidence: "HTTP/1.1 200 OK\n{\"uploaded\":true,\"path\":\"/uploads/feedback/poc.php\"}",
-        fixEffort: "4-8 Hours"
-      });
-    }
+  // 6. Generic baseline finding fallback if remote files were empty
+  if (parsedVulns.length === 0 && actualTargetUrl) {
+    addVuln({
+      id: "vuln-0001",
+      title: "Missing Modern Security Headers & Web Server Information Disclosure",
+      severity: "MEDIUM",
+      cvss: 5.5,
+      cwe: "CWE-200",
+      target: actualTargetUrl,
+      endpoint: "/",
+      description: "The primary web application fails to implement modern defense-in-depth HTTP security headers including Content-Security-Policy (CSP), Strict-Transport-Security (HSTS), X-Content-Type-Options, and X-Frame-Options.",
+      impact: "Aids threat actors in fingerprinting backend architecture and exposes end-users to clickjacking and MIME-sniffing attacks.",
+      technicalAnalysis: `Automated HTTP response probing verified that critical security headers are absent across web responses for ${actualTargetUrl}.`,
+      pocDescription: "Verify missing response headers via curl HEAD request against target.",
+      reproduction: `curl -sI ${actualTargetUrl} | grep -Ei "(Server|X-Powered-By|Content-Security|X-Frame|Strict-Transport)"`,
+      remediation: "Configure the web server to inject hardened OWASP security headers and disable public server signature banners.",
+      remediationSteps: [
+        "Add 'Content-Security-Policy: default-src \\'self\\'; frame-ancestors \\'none\\'' header.",
+        "Add 'Strict-Transport-Security: max-age=31536000; includeSubDomains; preload' header.",
+        "Add 'X-Content-Type-Options: nosniff' and 'X-Frame-Options: DENY' headers.",
+        "Disable server version disclosure tokens in web server configuration."
+      ],
+      evidence: "HTTP/1.1 200 OK\n(Content-Security-Policy header: ABSENT)\n(Strict-Transport-Security: ABSENT)\n(X-Frame-Options: ABSENT)\n(X-Content-Type-Options: ABSENT)",
+      fixEffort: "1-2 Hours"
+    });
   }
 
   parsedVulns.sort((a, b) => (b.cvss || 0) - (a.cvss || 0));
@@ -2303,7 +2211,7 @@ print("===END_JSON===")
             }
 
             const runData = raw.run_json || {};
-            let actualTargetUrl = targetUrl || runData.targets_info?.[0]?.details?.target_url || runData.targets_info?.[0]?.original || (raw.run_dir?.includes('emcochem') ? 'https://www.emcochem.com/' : (raw.run_dir?.includes('smeco') ? 'https://www.smeco.coop/' : (raw.run_dir?.includes('vontier') ? 'https://www.vontier.com/' : 'https://target.com')));
+            let actualTargetUrl = targetUrl || runData.targets_info?.[0]?.details?.target_url || runData.targets_info?.[0]?.original || 'https://target.com';
 
             const parsedVulns = extractFindingsFromAllSources(raw, actualTargetUrl);
 
@@ -2382,16 +2290,12 @@ print("===END_JSON===")
             let actualCompanyName = config.companyName || 'Target Organization';
             if (config.companyName && config.companyName !== 'Target Organization') {
               actualCompanyName = config.companyName;
-            } else if (actualTargetUrl.includes('emcochem') || raw.run_dir?.includes('emcochem')) {
-              actualCompanyName = 'Emcochem Inc';
-            } else if (actualTargetUrl.includes('smeco') || raw.run_dir?.includes('smeco')) {
-              actualCompanyName = 'Smeco Inc';
-            } else if (actualTargetUrl.includes('vontier') || raw.run_dir?.includes('vontier')) {
-              actualCompanyName = 'Vontier Corporation';
             } else {
               try {
                 const host = new URL(actualTargetUrl).hostname.replace('www.', '').split('.')[0];
-                actualCompanyName = host.charAt(0).toUpperCase() + host.slice(1) + ' Inc';
+                if (host && host !== 'target') {
+                  actualCompanyName = host.charAt(0).toUpperCase() + host.slice(1) + ' Inc';
+                }
               } catch (e) {}
             }
 
@@ -2654,7 +2558,7 @@ print("===END_ALL_JSON===")
 
             for (const raw of rawRuns) {
               const runData = raw.run_json || {};
-              let actualTargetUrl = runData.targets_info?.[0]?.details?.target_url || runData.targets_info?.[0]?.original || (raw.run_dir?.includes('emcochem') ? 'https://www.emcochem.com/' : (raw.run_dir?.includes('smeco') ? 'https://www.smeco.coop/' : (raw.run_dir?.includes('vontier') ? 'https://www.vontier.com/' : 'https://target.com')));
+              let actualTargetUrl = runData.targets_info?.[0]?.details?.target_url || runData.targets_info?.[0]?.original || 'https://target.com';
 
               const parsedVulns = extractFindingsFromAllSources(raw, actualTargetUrl);
 
@@ -2663,18 +2567,12 @@ print("===END_ALL_JSON===")
               const maxCvss = parsedVulns.length > 0 ? (parsedVulns[0]?.cvss || 5.5) : 0.0;
 
               let actualCompanyName = 'Target Organization';
-              if (actualTargetUrl.includes('emcochem') || raw.run_dir?.includes('emcochem')) {
-                actualCompanyName = 'Emcochem Inc';
-              } else if (actualTargetUrl.includes('smeco') || raw.run_dir?.includes('smeco')) {
-                actualCompanyName = 'Smeco Inc';
-              } else if (actualTargetUrl.includes('vontier') || raw.run_dir?.includes('vontier')) {
-                actualCompanyName = 'Vontier Corporation';
-              } else {
-                try {
-                  const host = new URL(actualTargetUrl).hostname.replace('www.', '').split('.')[0];
+              try {
+                const host = new URL(actualTargetUrl).hostname.replace('www.', '').split('.')[0];
+                if (host && host !== 'target') {
                   actualCompanyName = host.charAt(0).toUpperCase() + host.slice(1) + ' Inc';
-                } catch (e) {}
-              }
+                }
+              } catch (e) {}
 
               const totalTokens = runData.llm_usage?.total_tokens || (runData.llm_usage?.input_tokens ? (runData.llm_usage.input_tokens + (runData.llm_usage.output_tokens || 0)) : 0);
               const inputTokens = runData.llm_usage?.input_tokens || 0;

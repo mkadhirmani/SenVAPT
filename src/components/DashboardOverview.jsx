@@ -47,8 +47,6 @@ export default function DashboardOverview({
   const canViewTokens = isAdmin || checkUserPermission(currentUser, 'view_tokens');
 
   const currentTarget = activeScan || scanHistory.find(s => s.id === activeScanId) || {};
-  const isEmco = currentTarget.id?.includes('emcochem') || currentTarget.targetUrl?.includes('emcochem') || metadata.targetUrl?.includes('emcochem');
-  const isSmeco = currentTarget.id?.includes('smeco') || currentTarget.targetUrl?.includes('smeco') || metadata.targetUrl?.includes('smeco');
 
   const critVulns = vulnerabilities.filter(v => v.severity === 'CRITICAL');
   const highVulns = vulnerabilities.filter(v => v.severity === 'HIGH');
