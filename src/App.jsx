@@ -773,6 +773,7 @@ export default function App() {
               onSelectScan={handleSelectScan}
               companyName={currentCompanyName}
               targetUrl={currentTargetUrl}
+              onExportReport={() => setActiveTab('report')}
               theme={theme}
             />
           )}
