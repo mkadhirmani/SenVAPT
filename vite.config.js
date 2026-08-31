@@ -46,7 +46,7 @@ function loadEnvVariables() {
             if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
               val = val.slice(1, -1);
             }
-            if (!process.env[key]) {
+            if (val !== undefined && val !== '') {
               process.env[key] = val;
             }
           }
@@ -456,11 +456,22 @@ function strixBackendPlugin() {
               return;
             }
 
+            loadEnvVariables();
             const rawUsers = getGlobalUsersRaw();
-            const matched = rawUsers.find(u =>
-              (u.username?.toLowerCase() === trimmedInput || u.email?.toLowerCase() === trimmedInput) &&
-              (u.password === trimmedPass || u.altPassword === trimmedPass)
-            );
+            const matched = rawUsers.find(u => {
+              const matchesUsername = (u.username?.toLowerCase() === trimmedInput || u.email?.toLowerCase() === trimmedInput);
+              if (!matchesUsername) return false;
+
+              const envPass = u.id === 'admin' ? process.env.ADMIN_PASSWORD :
+                              u.id === 'user' ? process.env.USER_PASSWORD :
+                              u.id === 'sales123' ? process.env.SALES_PASSWORD : '';
+
+              return (
+                (trimmedPass && u.password && u.password === trimmedPass) ||
+                (trimmedPass && u.altPassword && u.altPassword === trimmedPass) ||
+                (trimmedPass && envPass && envPass === trimmedPass)
+              );
+            });
 
             if (!matched) {
               res.setHeader('Content-Type', 'application/json');
