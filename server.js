@@ -121,33 +121,121 @@ function saveGlobalLlmConfig(conf) {
 // Global Users Store Helper
 const USERS_STORE_FILE = path.join(__dirname, '.users_store.json');
 
-function getGlobalUsersStore() {
+const getDefaultUsersSeed = () => [
+  {
+    id: 'admin',
+    username: 'admin',
+    email: 'admin@sennovate.com',
+    password: process.env.ADMIN_PASSWORD || '',
+    name: 'Administrator',
+    role: 'admin',
+    title: 'Administrator',
+    createdAt: '2026-08-01 08:00:00',
+    lastLogin: new Date().toISOString().replace('T', ' ').slice(0, 19),
+    isOnline: true,
+    scansCount: 0,
+    permissions: {
+      run_scans: true,
+      view_findings: true,
+      attack_graph: true,
+      ai_assistant: true,
+      export_reports: true,
+      view_tokens: true,
+      view_terminal: true,
+      manage_settings: true,
+      manage_users: true,
+      load_custom_folder: true,
+    }
+  },
+  {
+    id: 'user',
+    username: 'user',
+    email: 'user@sennovate.com',
+    password: process.env.USER_PASSWORD || '',
+    name: 'User',
+    role: 'user',
+    title: 'Standard User',
+    createdAt: '2026-08-10 09:30:00',
+    lastLogin: new Date().toISOString().replace('T', ' ').slice(0, 19),
+    isOnline: true,
+    scansCount: 0,
+    assignedTargets: ['General Compliance & Security Audit'],
+    permissions: {
+      run_scans: true,
+      view_findings: true,
+      attack_graph: true,
+      ai_assistant: true,
+      export_reports: true,
+      view_tokens: false,
+      view_terminal: false,
+      manage_settings: false,
+      manage_users: false,
+      load_custom_folder: false
+    }
+  },
+  {
+    id: 'sales123',
+    username: 'sales123',
+    email: 'sales@sennovate.com',
+    password: process.env.SALES_PASSWORD || '',
+    name: 'Sales Team',
+    role: 'sales',
+    title: 'Sales & BD Specialist',
+    createdAt: '2026-08-27 10:00:00',
+    lastLogin: new Date().toISOString().replace('T', ' ').slice(0, 19),
+    isOnline: true,
+    scansCount: 0,
+    assignedTargets: ['Commercial Demos & Sales Audits'],
+    permissions: {
+      run_scans: true,
+      view_findings: true,
+      attack_graph: true,
+      ai_assistant: true,
+      export_reports: true,
+      view_tokens: true,
+      view_terminal: false,
+      manage_settings: false,
+      manage_users: false,
+      load_custom_folder: false
+    }
+  }
+];
+
+function getGlobalUsersStoreRaw() {
   try {
     if (fs.existsSync(USERS_STORE_FILE)) {
       const data = JSON.parse(fs.readFileSync(USERS_STORE_FILE, 'utf-8'));
       if (Array.isArray(data) && data.length > 0) return data;
       if (data && Array.isArray(data.users) && data.users.length > 0) return data.users;
     }
-    if (fs.existsSync(DEFAULT_USERS_FILE)) {
-      const data = JSON.parse(fs.readFileSync(DEFAULT_USERS_FILE, 'utf-8'));
-      const users = Array.isArray(data) ? data : (data?.users || []);
-      if (users.length > 0) {
-        try {
-          fs.writeFileSync(USERS_STORE_FILE, JSON.stringify(users, null, 2), 'utf-8');
-        } catch (_) {}
-        return users;
-      }
-    }
   } catch (e) {}
-  return null;
+  const defaults = getDefaultUsersSeed();
+  try { fs.writeFileSync(USERS_STORE_FILE, JSON.stringify(defaults, null, 2), 'utf-8'); } catch (_) {}
+  return defaults;
+}
+
+function getSanitizedUsersStore() {
+  const users = getGlobalUsersStoreRaw();
+  return users.map(u => {
+    const sanitized = { ...u };
+    delete sanitized.password;
+    delete sanitized.altPassword;
+    delete sanitized.passwordHash;
+    return sanitized;
+  });
 }
 
 function saveGlobalUsersStore(users) {
   try {
-    fs.writeFileSync(USERS_STORE_FILE, JSON.stringify(users, null, 2), 'utf-8');
-    if (fs.existsSync(path.dirname(DEFAULT_USERS_FILE))) {
-      fs.writeFileSync(DEFAULT_USERS_FILE, JSON.stringify(users, null, 2), 'utf-8');
-    }
+    const existingRaw = getGlobalUsersStoreRaw();
+    const merged = users.map(u => {
+      const match = existingRaw.find(e => e.id === u.id || e.username === u.username);
+      return {
+        ...u,
+        password: u.password || match?.password || process.env.USER_PASSWORD || ''
+      };
+    });
+    fs.writeFileSync(USERS_STORE_FILE, JSON.stringify(merged, null, 2), 'utf-8');
     return true;
   } catch (e) {
     return false;
@@ -286,11 +374,56 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
-  // 5.5 Users Store Routes
+  // 5.5 Users Store & Auth Routes
+  if (pathname === '/api/auth/login' && req.method === 'POST') {
+    try {
+      const { username, password, selectedRole } = await parseJsonBody(req);
+      const trimmedInput = (username || '').trim().toLowerCase();
+      const trimmedPass = (password || '').trim();
+
+      if (!trimmedInput || !trimmedPass) {
+        res.setHeader('Content-Type', 'application/json');
+        res.statusCode = 400;
+        return res.end(JSON.stringify({ success: false, error: 'Please enter both username and password.' }));
+      }
+
+      const rawUsers = getGlobalUsersStoreRaw();
+      const matched = rawUsers.find(u =>
+        (u.username?.toLowerCase() === trimmedInput || u.email?.toLowerCase() === trimmedInput) &&
+        (u.password === trimmedPass || u.altPassword === trimmedPass)
+      );
+
+      if (!matched) {
+        res.setHeader('Content-Type', 'application/json');
+        res.statusCode = 401;
+        return res.end(JSON.stringify({ success: false, error: 'Invalid credentials. Please enter a valid username and password.' }));
+      }
+
+      if (selectedRole === 'admin' && matched.role !== 'admin') {
+        res.setHeader('Content-Type', 'application/json');
+        res.statusCode = 403;
+        return res.end(JSON.stringify({ success: false, error: 'Access Denied: This account does not have administrator privileges. Please switch to User Login.' }));
+      }
+
+      const sanitizedUser = { ...matched };
+      delete sanitizedUser.password;
+      delete sanitizedUser.altPassword;
+      delete sanitizedUser.passwordHash;
+
+      res.setHeader('Content-Type', 'application/json');
+      res.statusCode = 200;
+      return res.end(JSON.stringify({ success: true, user: sanitizedUser }));
+    } catch (e) {
+      res.setHeader('Content-Type', 'application/json');
+      res.statusCode = 400;
+      return res.end(JSON.stringify({ success: false, error: e.message }));
+    }
+  }
+
   if (pathname === '/api/users/get-users') {
     res.setHeader('Content-Type', 'application/json');
     res.statusCode = 200;
-    return res.end(JSON.stringify({ success: true, users: getGlobalUsersStore() }));
+    return res.end(JSON.stringify({ success: true, users: getSanitizedUsersStore() }));
   }
 
   if (pathname === '/api/users/save-users') {

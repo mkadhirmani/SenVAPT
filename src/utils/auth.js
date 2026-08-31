@@ -22,8 +22,6 @@ export const DEFAULT_USERS = [
     id: 'admin',
     username: 'admin',
     email: 'admin@sennovate.com',
-    password: '@A198vapt',
-    altPassword: '@A198vapt',
     name: 'Administrator',
     role: 'admin',
     title: 'Administrator',
@@ -48,8 +46,6 @@ export const DEFAULT_USERS = [
     id: 'user',
     username: 'user',
     email: 'user@sennovate.com',
-    password: '@user1vapt',
-    altPassword: '@user1vapt',
     name: 'User',
     role: 'user',
     title: 'Standard User',
@@ -75,8 +71,6 @@ export const DEFAULT_USERS = [
     id: 'sales123',
     username: 'sales123',
     email: 'sales@sennovate.com',
-    password: '@sales1vapt',
-    altPassword: '@sales1vapt',
     name: 'Sales Team',
     role: 'sales',
     title: 'Sales & BD Specialist',
@@ -238,30 +232,38 @@ export function logoutUser() {
   sessionStorage.removeItem(CURRENT_USER_KEY);
   try { localStorage.removeItem(CURRENT_USER_KEY); } catch (_) { }
 }
-export function authenticateUser(usernameOrEmail, password, selectedRole = null) {
-  const users = getUsersList();
-  const trimmedInput = (usernameOrEmail || '').trim().toLowerCase();
+
+/**
+ * Authenticate user credentials securely via backend /api/auth/login
+ */
+export async function authenticateUser(usernameOrEmail, password, selectedRole = null) {
+  const trimmedInput = (usernameOrEmail || '').trim();
   const trimmedPass = (password || '').trim();
 
   if (!trimmedInput || !trimmedPass) {
     throw new Error('Please enter both username and password.');
   }
 
-  const matched = users.find(u =>
-    (u.username.toLowerCase() === trimmedInput || u.email.toLowerCase() === trimmedInput) &&
-    (u.password === trimmedPass || u.altPassword === trimmedPass)
-  );
+  try {
+    const res = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        username: trimmedInput,
+        password: trimmedPass,
+        selectedRole
+      })
+    });
 
-  if (!matched) {
-    throw new Error('Invalid credentials. Please enter a valid username and password.');
+    const data = await res.json();
+    if (!res.ok || !data.success || !data.user) {
+      throw new Error(data?.error || 'Invalid credentials. Please enter a valid username and password.');
+    }
+
+    return setCurrentUser(data.user);
+  } catch (err) {
+    throw new Error(err.message || 'Authentication failed. Please check your credentials.');
   }
-
-  // If logging in through Admin portal, verify that account has administrator role
-  if (selectedRole === 'admin' && matched.role !== 'admin') {
-    throw new Error('Access Denied: This account does not have administrator privileges. Please switch to User Login.');
-  }
-
-  return setCurrentUser(matched);
 }
 
 /**

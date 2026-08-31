@@ -48,7 +48,7 @@ export default function LoginScreen({ onLoginSuccess, theme = 'dark' }) {
     try {
       // Sync fresh users from backend file store
       await fetchGlobalUsersList().catch(() => {});
-      const user = authenticateUser(username, password, selectedRole);
+      const user = await authenticateUser(username, password, selectedRole);
       setIsLoading(false);
       if (onLoginSuccess) {
         onLoginSuccess(user);

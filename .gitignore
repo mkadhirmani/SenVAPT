@@ -12,7 +12,12 @@ dist-ssr/
 .strix_server_config.json
 .llm_config.json
 .scans_cache.json
+.users_store.json
+.users.json
+data_defaults/default_users.json
 .env
+.env.*
+!.env.example
 .env.local
 .env.development.local
 .env.test.local

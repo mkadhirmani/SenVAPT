@@ -203,42 +203,190 @@ function strixBackendPlugin() {
         });
       });
 
-      // 3.5 Global Users Store Get & Save Routes (Persisted in .users_store.json)
+      // 3.5 Global Users Store & Authentication (Persisted in .users_store.json)
       const USERS_STORE_FILE = path.resolve(process.cwd(), '.users_store.json');
 
-      const getGlobalUsers = () => {
+      const getDefaultUsersSeed = () => [
+        {
+          id: 'admin',
+          username: 'admin',
+          email: 'admin@sennovate.com',
+          password: process.env.ADMIN_PASSWORD || '',
+          name: 'Administrator',
+          role: 'admin',
+          title: 'Administrator',
+          createdAt: '2026-08-01 08:00:00',
+          lastLogin: new Date().toISOString().replace('T', ' ').slice(0, 19),
+          isOnline: true,
+          scansCount: 0,
+          permissions: {
+            run_scans: true,
+            view_findings: true,
+            attack_graph: true,
+            ai_assistant: true,
+            export_reports: true,
+            view_tokens: true,
+            view_terminal: true,
+            manage_settings: true,
+            manage_users: true,
+            load_custom_folder: true,
+          }
+        },
+        {
+          id: 'user',
+          username: 'user',
+          email: 'user@sennovate.com',
+          password: process.env.USER_PASSWORD || '',
+          name: 'User',
+          role: 'user',
+          title: 'Standard User',
+          createdAt: '2026-08-10 09:30:00',
+          lastLogin: new Date().toISOString().replace('T', ' ').slice(0, 19),
+          isOnline: true,
+          scansCount: 0,
+          assignedTargets: ['General Compliance & Security Audit'],
+          permissions: {
+            run_scans: true,
+            view_findings: true,
+            attack_graph: true,
+            ai_assistant: true,
+            export_reports: true,
+            view_tokens: false,
+            view_terminal: false,
+            manage_settings: false,
+            manage_users: false,
+            load_custom_folder: false
+          }
+        },
+        {
+          id: 'sales123',
+          username: 'sales123',
+          email: 'sales@sennovate.com',
+          password: process.env.SALES_PASSWORD || '',
+          name: 'Sales Team',
+          role: 'sales',
+          title: 'Sales & BD Specialist',
+          createdAt: '2026-08-27 10:00:00',
+          lastLogin: new Date().toISOString().replace('T', ' ').slice(0, 19),
+          isOnline: true,
+          scansCount: 0,
+          assignedTargets: ['Commercial Demos & Sales Audits'],
+          permissions: {
+            run_scans: true,
+            view_findings: true,
+            attack_graph: true,
+            ai_assistant: true,
+            export_reports: true,
+            view_tokens: true,
+            view_terminal: false,
+            manage_settings: false,
+            manage_users: false,
+            load_custom_folder: false
+          }
+        }
+      ];
+
+      const getGlobalUsersRaw = () => {
         try {
           if (fs.existsSync(USERS_STORE_FILE)) {
             const data = JSON.parse(fs.readFileSync(USERS_STORE_FILE, 'utf-8'));
             if (Array.isArray(data) && data.length > 0) return data;
             if (data && Array.isArray(data.users) && data.users.length > 0) return data.users;
           }
-          if (fs.existsSync(DEFAULT_USERS_FILE)) {
-            const data = JSON.parse(fs.readFileSync(DEFAULT_USERS_FILE, 'utf-8'));
-            const users = Array.isArray(data) ? data : (data?.users || []);
-            if (users.length > 0) {
-              try { fs.writeFileSync(USERS_STORE_FILE, JSON.stringify(users, null, 2), 'utf-8'); } catch (_) {}
-              return users;
-            }
-          }
         } catch (e) {}
-        return null;
+        const defaults = getDefaultUsersSeed();
+        try { fs.writeFileSync(USERS_STORE_FILE, JSON.stringify(defaults, null, 2), 'utf-8'); } catch (_) {}
+        return defaults;
+      };
+
+      const getSanitizedUsers = () => {
+        const users = getGlobalUsersRaw();
+        return users.map(u => {
+          const sanitized = { ...u };
+          delete sanitized.password;
+          delete sanitized.altPassword;
+          delete sanitized.passwordHash;
+          return sanitized;
+        });
       };
 
       const saveGlobalUsers = (users) => {
         try {
-          fs.writeFileSync(USERS_STORE_FILE, JSON.stringify(users, null, 2), 'utf-8');
-          if (fs.existsSync(path.dirname(DEFAULT_USERS_FILE))) {
-            fs.writeFileSync(DEFAULT_USERS_FILE, JSON.stringify(users, null, 2), 'utf-8');
-          }
+          const existingRaw = getGlobalUsersRaw();
+          const merged = users.map(u => {
+            const match = existingRaw.find(e => e.id === u.id || e.username === u.username);
+            return {
+              ...u,
+              password: u.password || match?.password || process.env.USER_PASSWORD || ''
+            };
+          });
+          fs.writeFileSync(USERS_STORE_FILE, JSON.stringify(merged, null, 2), 'utf-8');
         } catch (e) {}
       };
+
+      // Authenticate User Login
+      server.middlewares.use('/api/auth/login', (req, res) => {
+        if (req.method !== 'POST') {
+          res.statusCode = 405;
+          res.end(JSON.stringify({ success: false, error: 'Method Not Allowed' }));
+          return;
+        }
+        let body = '';
+        req.on('data', chunk => { body += chunk; });
+        req.on('end', () => {
+          try {
+            const { username, password, selectedRole } = JSON.parse(body || '{}');
+            const trimmedInput = (username || '').trim().toLowerCase();
+            const trimmedPass = (password || '').trim();
+
+            if (!trimmedInput || !trimmedPass) {
+              res.setHeader('Content-Type', 'application/json');
+              res.statusCode = 400;
+              res.end(JSON.stringify({ success: false, error: 'Please enter both username and password.' }));
+              return;
+            }
+
+            const rawUsers = getGlobalUsersRaw();
+            const matched = rawUsers.find(u =>
+              (u.username?.toLowerCase() === trimmedInput || u.email?.toLowerCase() === trimmedInput) &&
+              (u.password === trimmedPass || u.altPassword === trimmedPass)
+            );
+
+            if (!matched) {
+              res.setHeader('Content-Type', 'application/json');
+              res.statusCode = 401;
+              res.end(JSON.stringify({ success: false, error: 'Invalid credentials. Please enter a valid username and password.' }));
+              return;
+            }
+
+            if (selectedRole === 'admin' && matched.role !== 'admin') {
+              res.setHeader('Content-Type', 'application/json');
+              res.statusCode = 403;
+              res.end(JSON.stringify({ success: false, error: 'Access Denied: This account does not have administrator privileges. Please switch to User Login.' }));
+              return;
+            }
+
+            const sanitizedUser = { ...matched };
+            delete sanitizedUser.password;
+            delete sanitizedUser.altPassword;
+            delete sanitizedUser.passwordHash;
+
+            res.setHeader('Content-Type', 'application/json');
+            res.statusCode = 200;
+            res.end(JSON.stringify({ success: true, user: sanitizedUser }));
+          } catch (e) {
+            res.setHeader('Content-Type', 'application/json');
+            res.statusCode = 400;
+            res.end(JSON.stringify({ success: false, error: e.message }));
+          }
+        });
+      });
 
       server.middlewares.use('/api/users/get-users', (req, res) => {
         res.setHeader('Access-Control-Allow-Origin', '*');
         res.setHeader('Content-Type', 'application/json');
         res.statusCode = 200;
-        res.end(JSON.stringify({ success: true, users: getGlobalUsers() }));
+        res.end(JSON.stringify({ success: true, users: getSanitizedUsers() }));
       });
 
       server.middlewares.use('/api/users/save-users', (req, res) => {
