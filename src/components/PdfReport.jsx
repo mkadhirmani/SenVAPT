@@ -109,7 +109,7 @@ function renderFormattedMarkdown(markdownText) {
   return <div className="space-y-2">{elements}</div>;
 }
 
-// Block estimation helpers for dynamic page-packing
+// Block estimation helpers for dynamic continuous page-packing
 function estimateTextHeight(text, baseHeight = 35, charsPerLine = 80, lineHeight = 16) {
   if (!text) return 0;
   const lines = Math.ceil(text.length / charsPerLine);
@@ -122,115 +122,130 @@ function estimateCodeHeight(code, baseHeight = 45, lineHeight = 14) {
   return baseHeight + (lines * lineHeight);
 }
 
-// Flow and pack finding sections into discrete A4 pages dynamically
+// Continuously flow and pack all finding sections into discrete A4 pages with zero wasted space
 function packFindingPages(sortedVulns) {
-  const MAX_PAGE_HEIGHT = 730; // Usable content height in pixels (guarantees 20mm top & bottom breathing room)
+  const MAX_PAGE_HEIGHT = 760; // Usable content height in pixels (preserves 18mm top & bottom breathing room)
   const pages = [];
+  const allBlocks = [];
 
+  // Step 1: Decompose all findings into an ordered stream of atomic component blocks
   sortedVulns.forEach((vuln, vIdx) => {
     const findingNum = vIdx + 1;
-    const blocks = [];
 
     // Block 1: Header Block
-    blocks.push({
+    allBlocks.push({
       type: 'header',
-      height: 95,
+      height: 90,
       vuln,
       findingNum
     });
 
     // Block 2: Technical Analysis Block
-    const analysisH = 45 + estimateTextHeight(vuln.description, 10, 80, 16) + (vuln.technicalAnalysis ? estimateTextHeight(vuln.technicalAnalysis, 15, 80, 16) : 0);
-    blocks.push({
+    const analysisH = 40 + estimateTextHeight(vuln.description, 10, 80, 16) + (vuln.technicalAnalysis ? estimateTextHeight(vuln.technicalAnalysis, 15, 80, 16) : 0);
+    allBlocks.push({
       type: 'analysis',
-      height: Math.min(analysisH, 280),
+      height: Math.min(analysisH, 260),
       vuln,
       findingNum
     });
 
     // Block 3: Threat Impact Block
-    const impactH = 45 + estimateTextHeight(vuln.impact, 10, 80, 16);
-    blocks.push({
+    const impactH = 40 + estimateTextHeight(vuln.impact, 10, 80, 16);
+    allBlocks.push({
       type: 'impact',
-      height: Math.min(impactH, 200),
+      height: Math.min(impactH, 180),
       vuln,
       findingNum
     });
 
     // Block 4: Observed Evidence Block
     if (vuln.evidence) {
-      const evH = 45 + estimateCodeHeight(vuln.evidence, 20, 14);
-      blocks.push({
+      const evH = 40 + estimateCodeHeight(vuln.evidence, 20, 14);
+      allBlocks.push({
         type: 'evidence',
-        height: Math.min(evH, 360),
+        height: Math.min(evH, 340),
         vuln,
         findingNum
       });
     }
 
     // Block 5: Proof of Concept Block
-    const pocH = 45 + (vuln.pocDescription ? estimateTextHeight(vuln.pocDescription, 10, 80, 16) : 0) + (vuln.reproduction || vuln.pocScripts?.bash ? estimateCodeHeight(vuln.reproduction || vuln.pocScripts?.bash, 25, 14) : 0);
-    blocks.push({
+    const pocH = 40 + (vuln.pocDescription ? estimateTextHeight(vuln.pocDescription, 10, 80, 16) : 0) + (vuln.reproduction || vuln.pocScripts?.bash ? estimateCodeHeight(vuln.reproduction || vuln.pocScripts?.bash, 25, 14) : 0);
+    allBlocks.push({
       type: 'poc',
-      height: Math.min(pocH, 300),
+      height: Math.min(pocH, 280),
       vuln,
       findingNum
     });
 
     // Block 6: Remediation Plan Block
-    const remH = 45 + (vuln.remediation ? estimateTextHeight(vuln.remediation, 10, 80, 16) : 0) + (vuln.remediationSteps ? vuln.remediationSteps.length * 28 : 40);
-    blocks.push({
+    const remH = 40 + (vuln.remediation ? estimateTextHeight(vuln.remediation, 10, 80, 16) : 0) + (vuln.remediationSteps ? vuln.remediationSteps.length * 26 : 40);
+    allBlocks.push({
       type: 'remediation',
-      height: Math.min(remH, 300),
+      height: Math.min(remH, 280),
       vuln,
       findingNum
     });
 
     // Block 7: Scope & Verification Block
-    blocks.push({
+    allBlocks.push({
       type: 'scope',
-      height: 110,
+      height: 100,
       vuln,
       findingNum
     });
+  });
 
-    // Intelligently pack blocks into pages
-    let currentPageBlocks = [];
-    let currentHeight = 0;
-    let isContinuation = false;
+  // Step 2: Continuously pack all blocks into pages without premature page breaks
+  let currentPageBlocks = [];
+  let currentHeight = 0;
+  let activeFindingNum = null;
 
-    blocks.forEach((block) => {
-      const neededHeight = block.height + 16;
+  allBlocks.forEach((block) => {
+    const isNewFindingHeader = block.type === 'header';
+    const isContinuation = !isNewFindingHeader && activeFindingNum !== block.findingNum;
+    const continuationHeaderHeight = isContinuation ? 40 : 0;
+    const neededHeight = block.height + continuationHeaderHeight + 14;
 
-      if (currentPageBlocks.length > 0 && (currentHeight + neededHeight > MAX_PAGE_HEIGHT)) {
-        pages.push({
-          findingNum,
-          vuln,
-          isContinuation,
-          blocks: currentPageBlocks
-        });
-
-        isContinuation = true;
-        currentPageBlocks = [
-          { type: 'continuation_header', height: 45, vuln, findingNum },
-          block
-        ];
-        currentHeight = 45 + neededHeight;
-      } else {
-        currentPageBlocks.push(block);
-        currentHeight += neededHeight;
-      }
-    });
-
-    if (currentPageBlocks.length > 0) {
+    if (currentPageBlocks.length > 0 && (currentHeight + neededHeight > MAX_PAGE_HEIGHT)) {
+      // Current page is full: push completed page
       pages.push({
-        findingNum,
-        vuln,
-        isContinuation,
         blocks: currentPageBlocks
       });
+
+      // Start new page cleanly
+      if (!isNewFindingHeader) {
+        currentPageBlocks = [
+          { type: 'continuation_header', height: 40, vuln: block.vuln, findingNum: block.findingNum },
+          block
+        ];
+        currentHeight = 40 + block.height + 14;
+      } else {
+        currentPageBlocks = [block];
+        currentHeight = block.height + 14;
+      }
+      activeFindingNum = block.findingNum;
+    } else {
+      if (isContinuation) {
+        currentPageBlocks.push({
+          type: 'continuation_header',
+          height: 40,
+          vuln: block.vuln,
+          findingNum: block.findingNum
+        });
+        currentHeight += 40;
+      }
+      currentPageBlocks.push(block);
+      currentHeight += block.height + 14;
+      activeFindingNum = block.findingNum;
     }
   });
+
+  if (currentPageBlocks.length > 0) {
+    pages.push({
+      blocks: currentPageBlocks
+    });
+  }
 
   return pages;
 }
@@ -257,7 +272,7 @@ export default function PdfReport({
   const overallRiskScore = metadata.overallRiskScore || topVuln?.cvss || 6.8;
   const overallRiskLevel = metadata.overallRiskLevel || (overallRiskScore >= 8.5 ? 'CRITICAL' : (overallRiskScore >= 7.0 ? 'HIGH' : 'ELEVATED'));
 
-  // Pack dynamic finding pages with zero block-splitting
+  // Pack dynamic continuous finding pages with zero block-splitting and zero wasted space
   const dynamicFindingPages = packFindingPages(sortedVulns);
   const totalPages = 4 + (dynamicFindingPages.length > 0 ? dynamicFindingPages.length : 1);
 
@@ -308,13 +323,13 @@ Include:
   };
 
   // Helper to render an atomic finding block
-  const renderFindingBlock = (block) => {
+  const renderFindingBlock = (block, bIdx) => {
     const { vuln, findingNum } = block;
 
     switch (block.type) {
       case 'continuation_header':
         return (
-          <div key="continuation_header" className="flex items-center justify-between p-2 rounded-lg bg-slate-50 border border-slate-200 text-xs font-mono">
+          <div key={`cont-${findingNum}-${bIdx}`} className="flex items-center justify-between p-2 rounded-lg bg-slate-50 border border-slate-200 text-xs font-mono">
             <span className="font-bold text-slate-900 truncate max-w-[65%]">
               Continuation: Finding #{findingNum} [{vuln.id}] &mdash; {vuln.title}
             </span>
@@ -326,7 +341,7 @@ Include:
 
       case 'header':
         return (
-          <div key="header" className="flex flex-wrap items-start justify-between gap-2 border-b border-slate-200 pb-2.5">
+          <div key={`hdr-${findingNum}-${bIdx}`} className="flex flex-wrap items-start justify-between gap-2 border-b border-slate-200 pb-2.5 pt-1">
             <div className="space-y-1 max-w-[70%]">
               <div className="flex flex-wrap items-center gap-1.5">
                 <span className="text-[10px] font-mono font-bold text-cyan-900 bg-cyan-100 px-2 py-0.5 rounded border border-cyan-200">
@@ -361,7 +376,7 @@ Include:
 
       case 'analysis':
         return (
-          <div key="analysis" className="space-y-1">
+          <div key={`anl-${findingNum}-${bIdx}`} className="space-y-1">
             <div className="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1">
               <Info className="w-3.5 h-3.5 text-cyan-600 flex-shrink-0" />
               <span>Technical Analysis &amp; Vulnerability Mechanism:</span>
@@ -379,7 +394,7 @@ Include:
 
       case 'impact':
         return (
-          <div key="impact" className="space-y-1">
+          <div key={`imp-${findingNum}-${bIdx}`} className="space-y-1">
             <div className="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1">
               <ShieldAlert className="w-3.5 h-3.5 text-rose-600 flex-shrink-0" />
               <span>Security &amp; Business Threat Impact:</span>
@@ -392,7 +407,7 @@ Include:
 
       case 'evidence':
         return (
-          <div key="evidence" className="space-y-1">
+          <div key={`evd-${findingNum}-${bIdx}`} className="space-y-1">
             <div className="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1">
               <Terminal className="w-3.5 h-3.5 text-slate-700 flex-shrink-0" />
               <span>Observed Scan Evidence (Captured HTTP/Protocol Response):</span>
@@ -407,7 +422,7 @@ Include:
 
       case 'poc':
         return (
-          <div key="poc" className="space-y-1">
+          <div key={`poc-${findingNum}-${bIdx}`} className="space-y-1">
             <div className="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1">
               <Code className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
               <span>Proof of Concept &amp; Exact Reproduction Steps:</span>
@@ -436,7 +451,7 @@ Include:
 
       case 'remediation':
         return (
-          <div key="remediation" className="space-y-1">
+          <div key={`rem-${findingNum}-${bIdx}`} className="space-y-1">
             <div className="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1">
               <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
               <span>Step-by-Step Remediation Action Plan:</span>
@@ -464,7 +479,7 @@ Include:
 
       case 'scope':
         return (
-          <div key="scope" className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs">
+          <div key={`scp-${findingNum}-${bIdx}`} className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs">
             <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200 space-y-1">
               <div className="font-bold text-slate-900 font-mono text-[10px] uppercase flex items-center gap-1">
                 <CheckSquare className="w-3 h-3 text-cyan-600" />
@@ -639,7 +654,7 @@ Include:
         }
       `}</style>
 
-      {/* Printable Document Root (Discrete, Flow-Paginated A4 Pages) */}
+      {/* Printable Document Root (Discrete, Space-Optimized Continuous Flow A4 Pages) */}
       <div id="vapt-pdf-report-root" className="space-y-8 flex flex-col items-center">
 
         {/* ========================================================================= */}
@@ -1039,29 +1054,29 @@ Include:
 
 
         {/* ========================================================================= */}
-        {/* PAGES 5+: DYNAMICALLY FLOW-PACKED FINDING PAGES (Zero Section Splitting)  */}
+        {/* PAGES 5+: CONTINUOUS SPACE-OPTIMIZED FINDING PAGES                        */}
         {/* ========================================================================= */}
         {dynamicFindingPages.map((pageData, pIdx) => {
           const pageNum = 5 + pIdx;
-          const { findingNum, vuln, isContinuation, blocks } = pageData;
+          const { blocks } = pageData;
 
           return (
             <div 
-              key={`finding-page-${pIdx}`}
+              key={`continuous-finding-page-${pIdx}`}
               className="pdf-page p-[16mm_14mm_16mm_14mm] bg-white text-slate-900 border border-slate-200"
             >
               {/* Running Header */}
               <div className="flex items-center justify-between border-b pb-2.5 border-slate-200 text-[10px] font-mono text-slate-500 uppercase">
                 <span className="font-bold text-cyan-700 flex items-center gap-1">
                   <ShieldCheck className="w-3 h-3 text-cyan-600" />
-                  Sennovate Autonomous VAPT Deliverable &bull; Finding #{findingNum} {isContinuation ? '(Continued)' : ''}
+                  Sennovate Autonomous VAPT Deliverable &bull; Detailed Technical Findings
                 </span>
                 <span className="truncate max-w-[200px]">Target: {companyName}</span>
               </div>
 
-              {/* Dynamic Content Body (All complete unbroken blocks) */}
+              {/* Space-Optimized Content Body (Continuous unbroken blocks) */}
               <div className="space-y-3.5 my-auto py-2">
-                {blocks.map((block) => renderFindingBlock(block))}
+                {blocks.map((block, bIdx) => renderFindingBlock(block, bIdx))}
               </div>
 
               {/* Running Footer */}
