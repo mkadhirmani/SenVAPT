@@ -2701,20 +2701,31 @@ export function extractLiveTelemetryFromLine(line) {
   let requests = null;
   let cost = null;
 
-  // 1. Matches "Cost: $0.0122", "Cost: 0.0122", "[Cost: $0.0122]", "│ Cost: $0.0122", "$0.0122"
+  // 1. Matches "Cost $0.3670", "Cost: $0.0122", "Cost: 0.0122", "[Cost: $0.0122]", "│ Cost: $0.0122", "$0.0122"
   const costMatch = line.match(/(?:Cost|cost|Total cost|LLM cost)[\s:|=]+\$?([0-9\.]+)/i);
   if (costMatch) {
     const parsedCost = parseFloat(costMatch[1]);
     if (!isNaN(parsedCost)) cost = parsedCost;
   }
 
-  // 2. Matches "Tokens: 399.9k", "Tokens: 1.2M", "Tokens: 399,920", "[Tokens: 399.9k]", "│ Tokens: 399.9k"
-  const tokenMatch1 = line.match(/(?:Tokens|tokens|Total tokens|LLM tokens|Tokens used)[\s:|=]+([0-9\.,]+)\s*([kKmMbB])?/i);
-  if (tokenMatch1) {
-    tokens = parseTokenUnits(tokenMatch1[1], tokenMatch1[2]);
+  // 2. Matches STRIX box format "Input Tokens 16.4M  ·  Cached Tokens 15.4M  ·  Output Tokens 139.0K"
+  const inTokMatch = line.match(/Input Tokens[\s:|=]+([0-9\.,]+)\s*([kKmMbB])?/i);
+  const outTokMatch = line.match(/Output Tokens[\s:|=]+([0-9\.,]+)\s*([kKmMbB])?/i);
+  if (inTokMatch || outTokMatch) {
+    const inTokens = inTokMatch ? parseTokenUnits(inTokMatch[1], inTokMatch[2]) : 0;
+    const outTokens = outTokMatch ? parseTokenUnits(outTokMatch[1], outTokMatch[2]) : 0;
+    tokens = inTokens + outTokens;
   }
 
-  // 3. Matches "399.9k tokens", "1.2M tokens"
+  // 3. Matches "Tokens: 399.9k", "Tokens: 1.2M", "Tokens: 399,920", "[Tokens: 399.9k]", "│ Tokens: 399.9k"
+  if (tokens === null) {
+    const tokenMatch1 = line.match(/(?:Tokens|tokens|Total tokens|LLM tokens|Tokens used)[\s:|=]+([0-9\.,]+)\s*([kKmMbB])?/i);
+    if (tokenMatch1) {
+      tokens = parseTokenUnits(tokenMatch1[1], tokenMatch1[2]);
+    }
+  }
+
+  // 4. Matches "399.9k tokens", "1.2M tokens"
   if (tokens === null) {
     const tokenMatch2 = line.match(/([0-9\.,]+)\s*([kKmMbB])\s*tokens/i);
     if (tokenMatch2) {
@@ -2722,14 +2733,14 @@ export function extractLiveTelemetryFromLine(line) {
     }
   }
 
-  // 4. Matches "Requests: 12", "Requests 12", "[Requests: 12]"
+  // 5. Matches "Requests: 12", "Requests 12", "[Requests: 12]"
   const reqMatch1 = line.match(/(?:Requests|requests|Total Requests|Checks)[\s:|=]+([0-9,]+)/i);
   if (reqMatch1) {
     const parsedReq = parseInt(reqMatch1[1].replace(/,/g, ''));
     if (!isNaN(parsedReq)) requests = parsedReq;
   }
 
-  // 5. Matches "Starting turn 12", "Turn 12/500"
+  // 6. Matches "Starting turn 12", "Turn 12/500"
   const turnMatch = line.match(/(?:Starting turn|Turn|turn)[\s:=]+(\d+)/i);
   if (turnMatch) {
     const parsedTurn = parseInt(turnMatch[1]);
@@ -2744,42 +2755,55 @@ export function extractLiveTelemetryFromLine(line) {
 export function extractOutputDirFromText(text) {
   if (!text || typeof text !== 'string') return null;
 
-  // 1. Matches "[OUTPUT FOLDER PATH] /root/..."
+  // 1. Matches direct STRIX box lines like "│  /root/senvapt.sennovate.ai-scan/strix_runs/senvapt-sennovate-ai_596c  │"
+  const mBox = text.match(/(?:\/|│\s*)(\/(?:root|home\/[^\/]+|tmp)\/[^\s\r\n│\t,)]*strix_runs\/[^\s\r\n│\t,)\/]+)/i);
+  if (mBox) {
+    let p = cleanScanPath(mBox[1]);
+    if (p) return p;
+  }
+
+  // 2. Matches "strix view <runId>"
+  const mView = text.match(/strix view\s+([a-zA-Z0-9_\-]+)/i);
+  if (mView) {
+    return `/root/strix_runs/${mView[1]}`;
+  }
+
+  // 3. Matches "[OUTPUT FOLDER PATH] /root/..."
   const m1 = text.match(/\[OUTPUT FOLDER PATH\]\s*([^\s\r\n\t,)]+)/i);
   if (m1) {
     let p = cleanScanPath(m1[1]);
     if (p) return p;
   }
 
-  // 2. Matches "run_dir=/root/..." or "run_dir='/root/...'"
+  // 4. Matches "run_dir=/root/..." or "run_dir='/root/...'"
   const m2 = text.match(/run_dir=['"]?([^\s\r\n\t,'")]+)['"]?/i);
   if (m2) {
     let p = cleanScanPath(m2[1]);
     if (p) return p;
   }
 
-  // 3. Matches "Essential scan data saved to: /root/..."
+  // 5. Matches "Essential scan data saved to: /root/..."
   const m3 = text.match(/Essential scan data saved to:?\s*([^\s\r\n\t,)]+)/i);
   if (m3) {
     let p = cleanScanPath(m3[1]);
     if (p) return p;
   }
 
-  // 4. Matches "Saved final penetration test report to: /root/..."
+  // 6. Matches "Saved final penetration test report to: /root/..."
   const m4 = text.match(/Saved final penetration test report to:?\s*([^\s\r\n\t,)]+)/i);
   if (m4) {
     let p = cleanScanPath(m4[1]);
     if (p) return p;
   }
 
-  // 5. Matches "Updated vulnerability index: /root/..." or "Wrote SARIF ... /root/..."
+  // 7. Matches "Updated vulnerability index: /root/..." or "Wrote SARIF ... /root/..."
   const m5 = text.match(/(?:Updated vulnerability index|Wrote SARIF[^\n:]*):?\s*([^\s\r\n\t,)]+)/i);
   if (m5) {
     let p = cleanScanPath(m5[1]);
     if (p) return p;
   }
 
-  // 6. Any direct match of a path with /strix_runs/<runId>
+  // 8. Any direct match of a path with /strix_runs/<runId>
   const m6 = text.match(/(\/(?:root|home\/[^\/]+|tmp)\/[^\s\r\n\t,)]*strix_runs\/[^\s\r\n\t,)\/]+)/i);
   if (m6) {
     let p = cleanScanPath(m6[1]);
@@ -3194,10 +3218,10 @@ export function getScanSession(scanId) {
     }
   }
 
-  // Auto-detect scan completion in logs (strix.log / scan.log / execution finished)
+  // Auto-detect scan completion in logs (strix.log / scan.log / execution finished / STRIX box completed)
   if (session.status === 'running' && session.logs && session.logs.length > 0) {
-    const completionRegex = /(scan completed|scan finished|all tasks completed|vapt assessment completed|strix process session closed|strix process completed|execution finished|summary written to|findings exported to|vapt completed|\[complete\]|output folder path|report generated successfully|final summary)/i;
-    const recentLogs = session.logs.slice(-35);
+    const completionRegex = /(penetration test completed|scan completed|scan finished|all tasks completed|vapt assessment completed|strix process session closed|strix process completed|execution finished|summary written to|findings exported to|vapt completed|\[complete\]|output folder path|report generated successfully|final summary|strix view)/i;
+    const recentLogs = session.logs.slice(-60);
     for (const line of recentLogs) {
       if (completionRegex.test(line)) {
         session.status = 'completed';

@@ -469,10 +469,7 @@ function strixBackendPlugin() {
               const validList = [
                 envPass,
                 u.password,
-                u.altPassword,
-                u.id === 'admin' ? '@A198vapt' : u.id === 'user' ? '@user1vapt' : '@sales1vapt',
-                u.id === 'admin' ? '@admin1vapt' : u.id === 'user' ? '@User1vapt' : '@Sales1vapt',
-                u.id === 'admin' ? '@a198vapt' : ''
+                u.altPassword
               ].filter(Boolean);
 
               return validList.some(p => p === trimmedPass || p.toLowerCase() === trimmedPass.toLowerCase());

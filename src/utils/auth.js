@@ -366,8 +366,7 @@ export async function authenticateUser(usernameOrEmail, password, selectedRole =
   );
 
   if (matched) {
-    const validPass = ['@A198vapt', '@a198vapt', '@admin1vapt', '@user1vapt', '@User1vapt', '@sales1vapt', '@Sales1vapt', 'admin', 'user', 'sales', 'sales123'];
-    if (validPass.includes(trimmedPass) || (matched.password && matched.password === trimmedPass)) {
+    if (matched.password && (matched.password === trimmedPass || matched.password.toLowerCase() === trimmedPass.toLowerCase())) {
       if (selectedRole === 'admin' && matched.role !== 'admin') {
         throw new Error('Access Denied: This account does not have administrator privileges. Please switch to User Login.');
       }

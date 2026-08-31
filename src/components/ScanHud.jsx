@@ -287,25 +287,37 @@ export default function ScanHud({
       if (typeof line !== 'string') continue;
 
       if (latestOutputFolder === null) {
-        const m1 = line.match(/\[OUTPUT FOLDER PATH\]\s*([^\s\r\n\t,)]+)/i);
-        if (m1) {
-          const p = cleanScanPath(m1[1]);
+        // Direct match for STRIX box lines like "│  /root/senvapt.sennovate.ai-scan/strix_runs/senvapt-sennovate-ai_596c  │"
+        const mBox = line.match(/(?:\/|│\s*)(\/(?:root|home\/[^\/]+|tmp)\/[^\s\r\n│\t,)]*strix_runs\/[^\s\r\n│\t,)\/]+)/i);
+        if (mBox) {
+          const p = cleanScanPath(mBox[1]);
           if (p) latestOutputFolder = p;
         } else {
-          const m2 = line.match(/run_dir=['"]?([^\s\r\n\t,'")]+)['"]?/i);
-          if (m2) {
-            const p = cleanScanPath(m2[1]);
-            if (p) latestOutputFolder = p;
+          const mView = line.match(/strix view\s+([a-zA-Z0-9_\-]+)/i);
+          if (mView) {
+            latestOutputFolder = `/root/strix_runs/${mView[1]}`;
           } else {
-            const m3 = line.match(/(?:Essential scan data saved to|Saved final penetration test report to|Updated vulnerability index|Wrote SARIF[^\n:]*):?\s*([^\s\r\n\t,)]+)/i);
-            if (m3) {
-              const p = cleanScanPath(m3[1]);
+            const m1 = line.match(/\[OUTPUT FOLDER PATH\]\s*([^\s\r\n\t,)]+)/i);
+            if (m1) {
+              const p = cleanScanPath(m1[1]);
               if (p) latestOutputFolder = p;
             } else {
-              const m4 = line.match(/(\/(?:root|home\/[^\/]+|tmp)\/[^\s\r\n\t,)]*strix_runs\/[^\s\r\n\t,)\/]+)/i);
-              if (m4) {
-                const p = cleanScanPath(m4[1]);
+              const m2 = line.match(/run_dir=['"]?([^\s\r\n\t,'")]+)['"]?/i);
+              if (m2) {
+                const p = cleanScanPath(m2[1]);
                 if (p) latestOutputFolder = p;
+              } else {
+                const m3 = line.match(/(?:Essential scan data saved to|Saved final penetration test report to|Updated vulnerability index|Wrote SARIF[^\n:]*):?\s*([^\s\r\n\t,)]+)/i);
+                if (m3) {
+                  const p = cleanScanPath(m3[1]);
+                  if (p) latestOutputFolder = p;
+                } else {
+                  const m4 = line.match(/(\/(?:root|home\/[^\/]+|tmp)\/[^\s\r\n\t,)]*strix_runs\/[^\s\r\n\t,)\/]+)/i);
+                  if (m4) {
+                    const p = cleanScanPath(m4[1]);
+                    if (p) latestOutputFolder = p;
+                  }
+                }
               }
             }
           }
@@ -321,6 +333,23 @@ export default function ScanHud({
       }
 
       if (latestTotalTokens === null || latestOutputTokens === null) {
+        const inTok = line.match(/Input Tokens[\s:|=]+([0-9\.,]+)\s*([kKmMbB])?/i);
+        const outTok = line.match(/Output Tokens[\s:|=]+([0-9\.,]+)\s*([kKmMbB])?/i);
+        if (inTok || outTok) {
+          let inNum = inTok ? parseFloat(inTok[1].replace(/,/g, '')) : 0;
+          const inU = inTok ? (inTok[2] || '').toLowerCase() : '';
+          if (inU === 'm') inNum *= 1000000;
+          else if (inU === 'k') inNum *= 1000;
+
+          let outNum = outTok ? parseFloat(outTok[1].replace(/,/g, '')) : 0;
+          const outU = outTok ? (outTok[2] || '').toLowerCase() : '';
+          if (outU === 'm') outNum *= 1000000;
+          else if (outU === 'k') outNum *= 1000;
+
+          if (latestOutputTokens === null && outNum > 0) latestOutputTokens = Math.round(outNum);
+          if (latestTotalTokens === null) latestTotalTokens = Math.round(inNum + outNum);
+        }
+
         const outMatch = line.match(/(?:Out|Output|out|output)[\s:|=]+([0-9\.,]+)\s*([kKmMbB])?/i);
         if (outMatch && latestOutputTokens === null) {
           let num = parseFloat(outMatch[1].replace(/,/g, ''));
@@ -1447,8 +1476,8 @@ export default function ScanHud({
 
           const checkLogCompletion = (logList) => {
             if (!logList || !logList.length) return false;
-            const completionRegex = /(scan completed|scan finished|all tasks completed|vapt assessment completed|strix process session closed|strix process completed|execution finished|summary written to|findings exported to|vapt completed|\[complete\]|output folder path|report generated successfully|final summary)/i;
-            const recentLogs = logList.slice(-30);
+            const completionRegex = /(penetration test completed|scan completed|scan finished|all tasks completed|vapt assessment completed|strix process session closed|strix process completed|execution finished|summary written to|findings exported to|vapt completed|\[complete\]|output folder path|report generated successfully|final summary|strix view)/i;
+            const recentLogs = logList.slice(-60);
             return recentLogs.some(l => completionRegex.test(l));
           };
 
