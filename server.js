@@ -353,15 +353,22 @@ const server = http.createServer(async (req, res) => {
 
       const rawUsers = getGlobalUsersStoreRaw();
       const matched = rawUsers.find(u => {
-        const matchesUsername = (u.username?.toLowerCase() === trimmedInput || u.email?.toLowerCase() === trimmedInput);
+        const uName = (u.username || '').toLowerCase();
+        const uEmail = (u.email || '').toLowerCase();
+        const matchesUsername = (uName === trimmedInput || uEmail === trimmedInput);
         if (!matchesUsername) return false;
 
-        const envPass = u.id === 'admin' ? process.env.ADMIN_PASSWORD :
-                        u.id === 'user' ? process.env.USER_PASSWORD :
-                        u.id === 'sales123' ? process.env.SALES_PASSWORD : '';
+        const envPass = u.id === 'admin' ? (process.env.ADMIN_PASSWORD || '') :
+                        u.id === 'user' ? (process.env.USER_PASSWORD || '') :
+                        u.id === 'sales123' ? (process.env.SALES_PASSWORD || '') : '';
+
+        const altEnvPass = u.id === 'admin' ? (process.env.ADMIN_ALT_PASSWORDS || '') :
+                           u.id === 'user' ? (process.env.USER_ALT_PASSWORDS || '') :
+                           u.id === 'sales123' ? (process.env.SALES_ALT_PASSWORDS || '') : '';
 
         const validList = [
           envPass,
+          ...altEnvPass.split(',').map(s => s.trim()),
           u.password,
           u.altPassword
         ].filter(Boolean);
