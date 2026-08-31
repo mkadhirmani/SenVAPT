@@ -23,7 +23,8 @@ import {
   Shield, 
   Code, 
   FileCode, 
-  Info 
+  Info,
+  CheckSquare
 } from 'lucide-react';
 import { exportReportToPdf } from '../utils/pdfExport';
 import { askLlmWithRag } from '../utils/llmEngine';
@@ -130,9 +131,9 @@ export default function PdfReport({
   const overallRiskScore = metadata.overallRiskScore || topVuln?.cvss || 6.8;
   const overallRiskLevel = metadata.overallRiskLevel || (overallRiskScore >= 8.5 ? 'CRITICAL' : (overallRiskScore >= 7.0 ? 'HIGH' : 'ELEVATED'));
 
-  // Calculate total report pages dynamically (Cover + Exec Summary + 3-Phase Roadmap + Matrix + Findings)
-  const findingsCount = sortedVulns.length > 0 ? sortedVulns.length : 1;
-  const totalPages = 4 + findingsCount;
+  // Calculate total report pages dynamically (Cover + Exec Summary + 3-Phase Roadmap + Matrix + (2 pages per finding))
+  const findingsCount = sortedVulns.length;
+  const totalPages = 4 + (findingsCount > 0 ? findingsCount * 2 : 2);
 
   // Trigger Live LLM RAG Synthesis for Executive Summary
   const handleGenerateAiSummary = async () => {
@@ -725,170 +726,227 @@ Include:
 
 
         {/* ========================================================================= */}
-        {/* PAGES 5 TO N: TECHNICAL VULNERABILITY FINDING SHEETS (1 Fixed A4 per Vuln)*/}
+        {/* PAGES 5+: DEDICATED 2-PAGE FINDING SHEETS PER CONFIRMED VULNERABILITY     */}
+        {/* Part 1 (Analysis & Evidence) + Part 2 (PoC & Remediation Plan)            */}
         {/* ========================================================================= */}
         {sortedVulns.map((vuln, index) => {
-          const pageNum = 5 + index;
+          const pageNumPartA = 5 + (index * 2);
+          const pageNumPartB = 5 + (index * 2) + 1;
 
           return (
-            <div 
-              key={vuln.id} 
-              className="pdf-page p-[16mm_14mm_16mm_14mm] bg-white text-slate-900 border border-slate-200"
-            >
-              {/* Running Header */}
-              <div className="flex items-center justify-between border-b pb-2.5 border-slate-200 text-[10px] font-mono text-slate-500 uppercase">
-                <span className="font-bold text-cyan-700 flex items-center gap-1">
-                  <ShieldCheck className="w-3 h-3 text-cyan-600" />
-                  Sennovate Autonomous VAPT Deliverable &bull; Technical Finding Details
-                </span>
-                <span className="truncate max-w-[200px]">Target: {companyName}</span>
-              </div>
+            <React.Fragment key={vuln.id}>
+              {/* ----------------------------------------------------------------- */}
+              {/* FINDING SHEET - PART 1: TECHNICAL ANALYSIS, IMPACT & EVIDENCE    */}
+              {/* ----------------------------------------------------------------- */}
+              <div className="pdf-page p-[16mm_14mm_16mm_14mm] bg-white text-slate-900 border border-slate-200">
+                {/* Running Header */}
+                <div className="flex items-center justify-between border-b pb-2.5 border-slate-200 text-[10px] font-mono text-slate-500 uppercase">
+                  <span className="font-bold text-cyan-700 flex items-center gap-1">
+                    <ShieldCheck className="w-3 h-3 text-cyan-600" />
+                    Sennovate Autonomous VAPT Deliverable &bull; Finding #{index + 1} (Analysis &amp; Evidence)
+                  </span>
+                  <span className="truncate max-w-[200px]">Target: {companyName}</span>
+                </div>
 
-              {/* Finding Content Container (Fits exactly in 1 A4 Page) */}
-              <div className="space-y-2.5 my-auto py-1">
-                {/* 1. Header with Badges & Metadata */}
-                <div className="flex flex-wrap items-start justify-between gap-2 border-b border-slate-200 pb-2">
-                  <div className="space-y-1 max-w-[70%]">
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      <span className="text-[10px] font-mono font-bold text-cyan-900 bg-cyan-100 px-2 py-0.5 rounded border border-cyan-200">
-                        Finding #{index + 1}: {vuln.id}
-                      </span>
-                      <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded ${
-                        vuln.severity === 'CRITICAL' 
-                          ? 'bg-red-100 text-red-900 border border-red-300 font-black' 
-                          : vuln.severity === 'HIGH' 
-                          ? 'bg-orange-100 text-orange-900 border border-orange-200' 
-                          : 'bg-amber-100 text-amber-900 border border-amber-200'
-                      }`}>
-                        {vuln.severity} &bull; CVSS {vuln.cvss}
-                      </span>
-                      <span className="text-[10px] font-mono text-slate-700 bg-slate-200/80 px-2 py-0.5 rounded">
-                        {vuln.cwe}
-                      </span>
+                {/* Content Body (Part 1) */}
+                <div className="space-y-3.5 my-auto py-2">
+                  {/* 1. Header with Badges & Metadata */}
+                  <div className="flex flex-wrap items-start justify-between gap-2 border-b border-slate-200 pb-2.5">
+                    <div className="space-y-1 max-w-[70%]">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="text-[10px] font-mono font-bold text-cyan-900 bg-cyan-100 px-2 py-0.5 rounded border border-cyan-200">
+                          Finding #{index + 1}: {vuln.id}
+                        </span>
+                        <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded ${
+                          vuln.severity === 'CRITICAL' 
+                            ? 'bg-red-100 text-red-900 border border-red-300 font-black' 
+                            : vuln.severity === 'HIGH' 
+                            ? 'bg-orange-100 text-orange-900 border border-orange-200' 
+                            : 'bg-amber-100 text-amber-900 border border-amber-200'
+                        }`}>
+                          {vuln.severity} &bull; CVSS {vuln.cvss}
+                        </span>
+                        <span className="text-[10px] font-mono text-slate-700 bg-slate-200/80 px-2 py-0.5 rounded">
+                          {vuln.cwe}
+                        </span>
+                      </div>
+
+                      <h3 className="text-sm font-extrabold text-slate-950 tracking-tight leading-snug break-words">
+                        {vuln.title}
+                      </h3>
                     </div>
 
-                    <h3 className="text-sm font-extrabold text-slate-950 tracking-tight leading-snug break-words">
-                      {vuln.title}
-                    </h3>
+                    <div className="text-right text-[10px] font-mono text-slate-600 space-y-0.5 bg-slate-50 p-1.5 rounded-lg border border-slate-200 max-w-[28%]">
+                      <div className="truncate">Target: <strong className="text-slate-900">{vuln.target?.slice(0, 30)}</strong></div>
+                      <div className="truncate">Endpoint: <code className="text-cyan-800 font-bold">{vuln.endpoint}</code></div>
+                      <div>Fix Effort: <strong className="text-emerald-700">{vuln.fixEffort || 'Low'}</strong></div>
+                    </div>
                   </div>
 
-                  <div className="text-right text-[10px] font-mono text-slate-600 space-y-0.5 bg-slate-50 p-1.5 rounded-lg border border-slate-200 max-w-[28%]">
-                    <div className="truncate">Target: <strong className="text-slate-900">{vuln.target?.slice(0, 30)}</strong></div>
-                    <div className="truncate">Endpoint: <code className="text-cyan-800 font-bold">{vuln.endpoint}</code></div>
-                    <div>Fix Effort: <strong className="text-emerald-700">{vuln.fixEffort || 'Low'}</strong></div>
-                  </div>
-                </div>
-
-                {/* 2. Description & Root Cause */}
-                <div className="space-y-1">
-                  <div className="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1">
-                    <Info className="w-3 h-3 text-cyan-600 flex-shrink-0" />
-                    <span>Technical Analysis &amp; Vulnerability Mechanism:</span>
-                  </div>
-                  <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200 text-xs text-slate-700 leading-relaxed space-y-1 break-words">
-                    <p className="break-words">{vuln.description}</p>
-                    {vuln.technicalAnalysis && (
-                      <p className="text-slate-600 text-[11px] pt-1 border-t border-slate-200 break-words">
-                        <strong className="text-slate-800">Mechanics:</strong> {vuln.technicalAnalysis}
-                      </p>
-                    )}
-                  </div>
-                </div>
-
-                {/* 3. Threat & Business Impact */}
-                <div className="space-y-1">
-                  <div className="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1">
-                    <ShieldAlert className="w-3 h-3 text-rose-600 flex-shrink-0" />
-                    <span>Security &amp; Business Threat Impact:</span>
-                  </div>
-                  <div className="p-2.5 rounded-lg bg-rose-50/40 border border-rose-200 text-xs text-slate-800 leading-relaxed break-words">
-                    <p className="break-words">{vuln.impact}</p>
-                  </div>
-                </div>
-
-                {/* 4. OBSERVED EVIDENCE (No scrollbars, fully wrapped) */}
-                {vuln.evidence && (
+                  {/* 2. Technical Description & Root Cause */}
                   <div className="space-y-1">
                     <div className="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1">
-                      <Terminal className="w-3 h-3 text-slate-700 flex-shrink-0" />
-                      <span>Observed Scan Evidence:</span>
+                      <Info className="w-3.5 h-3.5 text-cyan-600 flex-shrink-0" />
+                      <span>1. Technical Analysis &amp; Vulnerability Mechanism:</span>
                     </div>
-                    <div className="p-2.5 rounded-lg bg-slate-900 text-slate-100 font-mono text-[10px] border border-slate-800 break-all overflow-visible">
-                      <pre className="whitespace-pre-wrap leading-relaxed select-all break-all overflow-visible font-mono">
-                        {vuln.evidence}
-                      </pre>
+                    <div className="p-3 rounded-lg bg-slate-50 border border-slate-200 text-xs text-slate-700 leading-relaxed space-y-1.5 break-words font-sans">
+                      <p className="break-words">{vuln.description}</p>
+                      {vuln.technicalAnalysis && (
+                        <p className="text-slate-600 text-[11px] pt-1 border-t border-slate-200 break-words">
+                          <strong className="text-slate-800">Underlying Mechanics:</strong> {vuln.technicalAnalysis}
+                        </p>
+                      )}
                     </div>
                   </div>
-                )}
 
-                {/* 5. PROOF OF CONCEPT & REPRODUCTION */}
-                <div className="space-y-1">
-                  <div className="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1">
-                    <Code className="w-3 h-3 text-emerald-600 flex-shrink-0" />
-                    <span>Proof of Concept &amp; Exact Reproduction Steps:</span>
+                  {/* 3. Threat & Business Impact */}
+                  <div className="space-y-1">
+                    <div className="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1">
+                      <ShieldAlert className="w-3.5 h-3.5 text-rose-600 flex-shrink-0" />
+                      <span>2. Security &amp; Business Threat Impact:</span>
+                    </div>
+                    <div className="p-3 rounded-lg bg-rose-50/50 border border-rose-200 text-xs text-slate-800 leading-relaxed break-words font-sans">
+                      <p className="break-words">{vuln.impact}</p>
+                    </div>
                   </div>
 
-                  <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200 space-y-1.5 text-xs">
-                    {vuln.pocDescription && (
-                      <div className="text-slate-700 leading-relaxed whitespace-pre-line text-[11px] font-sans break-words">
-                        {vuln.pocDescription}
+                  {/* 4. OBSERVED EVIDENCE (Full Uncropped Terminal View) */}
+                  {vuln.evidence && (
+                    <div className="space-y-1">
+                      <div className="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1">
+                        <Terminal className="w-3.5 h-3.5 text-slate-700 flex-shrink-0" />
+                        <span>3. Observed Scan Evidence (Captured HTTP/Protocol Response):</span>
                       </div>
-                    )}
-
-                    {(vuln.reproduction || vuln.pocScripts?.bash || vuln.pocScripts?.python) && (
-                      <div className="p-2 rounded bg-slate-950 text-cyan-300 font-mono text-[10px] space-y-0.5 border border-slate-800 overflow-visible break-all">
-                        <span className="text-[9px] uppercase text-slate-400 font-bold block font-mono">
-                          Verification Command:
-                        </span>
-                        <code className="text-emerald-300 select-all block break-all whitespace-pre-wrap font-mono">
-                          {vuln.reproduction || vuln.pocScripts?.bash || vuln.pocScripts?.python}
-                        </code>
+                      <div className="p-3 rounded-lg bg-slate-950 text-slate-100 font-mono text-[10px] border border-slate-800 break-all overflow-visible">
+                        <pre className="whitespace-pre-wrap leading-relaxed select-all break-all overflow-visible font-mono">
+                          {vuln.evidence}
+                        </pre>
                       </div>
-                    )}
-                  </div>
+                    </div>
+                  )}
                 </div>
 
-                {/* 6. Remediation Action Plan */}
-                <div className="space-y-1">
-                  <div className="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1">
-                    <CheckCircle2 className="w-3 h-3 text-emerald-600 flex-shrink-0" />
-                    <span>Step-by-Step Remediation Action Plan:</span>
+                {/* Running Footer */}
+                <div className="flex items-center justify-between border-t pt-2.5 border-slate-200 text-[10px] font-mono text-slate-500">
+                  <span>CONFIDENTIAL &bull; PROPRIETARY</span>
+                  <span>Audited by Sennovate Autonomous VAPT Platform</span>
+                  <span>Page {pageNumPartA} of {totalPages}</span>
+                </div>
+              </div>
+
+
+              {/* ----------------------------------------------------------------- */}
+              {/* FINDING SHEET - PART 2: PROOF OF CONCEPT & REMEDIATION PLAN       */}
+              {/* ----------------------------------------------------------------- */}
+              <div className="pdf-page p-[16mm_14mm_16mm_14mm] bg-white text-slate-900 border border-slate-200">
+                {/* Running Header */}
+                <div className="flex items-center justify-between border-b pb-2.5 border-slate-200 text-[10px] font-mono text-slate-500 uppercase">
+                  <span className="font-bold text-cyan-700 flex items-center gap-1">
+                    <ShieldCheck className="w-3 h-3 text-cyan-600" />
+                    Sennovate Autonomous VAPT Deliverable &bull; Finding #{index + 1} (Exploitation &amp; Remediation)
+                  </span>
+                  <span className="truncate max-w-[200px]">Target: {companyName}</span>
+                </div>
+
+                {/* Content Body (Part 2) */}
+                <div className="space-y-3.5 my-auto py-2">
+                  {/* Continuation Subheader */}
+                  <div className="flex items-center justify-between p-2 rounded-lg bg-slate-50 border border-slate-200 text-xs font-mono">
+                    <span className="font-bold text-slate-900 truncate max-w-[65%]">
+                      Continuation: Finding #{index + 1} [{vuln.id}] &mdash; {vuln.title}
+                    </span>
+                    <span className="font-bold text-cyan-800 bg-cyan-100 px-2 py-0.5 rounded text-[10px]">
+                      Endpoint: {vuln.endpoint}
+                    </span>
                   </div>
 
-                  <div className="p-2.5 rounded-lg bg-emerald-50/60 border border-emerald-200 text-xs space-y-1 break-words">
-                    {vuln.remediation && (!vuln.remediationSteps || vuln.remediationSteps.length === 0 || (!vuln.remediation.includes(vuln.remediationSteps[0]) && vuln.remediation !== vuln.remediationSteps[0])) && (
-                      <p className="text-slate-800 font-medium text-[11px] break-words">
-                        {cleanText(vuln.remediation)}
+                  {/* 4. PROOF OF CONCEPT & REPRODUCTION */}
+                  <div className="space-y-1">
+                    <div className="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1">
+                      <Code className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
+                      <span>4. Proof of Concept &amp; Exact Reproduction Steps:</span>
+                    </div>
+
+                    <div className="p-3 rounded-lg bg-slate-50 border border-slate-200 space-y-2 text-xs">
+                      {vuln.pocDescription && (
+                        <div className="text-slate-700 leading-relaxed whitespace-pre-line text-[11px] font-sans break-words">
+                          {vuln.pocDescription}
+                        </div>
+                      )}
+
+                      {(vuln.reproduction || vuln.pocScripts?.bash || vuln.pocScripts?.python) && (
+                        <div className="p-2.5 rounded bg-slate-950 text-cyan-300 font-mono text-[10px] space-y-1 border border-slate-800 overflow-visible break-all">
+                          <span className="text-[9px] uppercase text-slate-400 font-bold block font-mono">
+                            Verification Exploit / cURL Command:
+                          </span>
+                          <code className="text-emerald-300 select-all block break-all whitespace-pre-wrap font-mono">
+                            {vuln.reproduction || vuln.pocScripts?.bash || vuln.pocScripts?.python}
+                          </code>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* 5. Remediation Action Plan */}
+                  <div className="space-y-1">
+                    <div className="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
+                      <span>5. Step-by-Step Remediation Action Plan:</span>
+                    </div>
+
+                    <div className="p-3 rounded-lg bg-emerald-50/60 border border-emerald-200 text-xs space-y-1.5">
+                      {vuln.remediation && (!vuln.remediationSteps || vuln.remediationSteps.length === 0 || (!vuln.remediation.includes(vuln.remediationSteps[0]) && vuln.remediation !== vuln.remediationSteps[0])) && (
+                        <p className="text-slate-900 font-semibold text-[11px] break-words">
+                          {cleanText(vuln.remediation)}
+                        </p>
+                      )}
+
+                      {vuln.remediationSteps && vuln.remediationSteps.length > 0 ? (
+                        <ol className="list-decimal list-inside space-y-1 text-[11px] text-slate-800 font-sans">
+                          {vuln.remediationSteps.map((step, sIdx) => (
+                            <li key={sIdx} className="leading-relaxed break-words">{cleanText(step)}</li>
+                          ))}
+                        </ol>
+                      ) : (
+                        !vuln.remediation && <p className="text-slate-500 italic text-[11px]">Apply standard security patches and configuration hardening.</p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* 6. Remediation Verification Checklist & Environmental Note */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs">
+                    <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200 space-y-1">
+                      <div className="font-bold text-slate-900 font-mono text-[10px] uppercase flex items-center gap-1">
+                        <CheckSquare className="w-3 h-3 text-cyan-600" />
+                        Verification Checklist
+                      </div>
+                      <ul className="text-[10px] text-slate-600 space-y-0.5 pl-3 list-disc">
+                        <li>Validate input sanitization &amp; parameterized queries.</li>
+                        <li>Deploy WAF inspection rules.</li>
+                        <li>Perform automated regression re-test.</li>
+                      </ul>
+                    </div>
+
+                    <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200 space-y-1">
+                      <div className="font-bold text-slate-900 font-mono text-[10px] uppercase flex items-center gap-1">
+                        <Shield className="w-3 h-3 text-slate-600" />
+                        Environmental Scope Note
+                      </div>
+                      <p className="text-[10px] text-slate-600 leading-relaxed break-words">
+                        {vuln.assumptions || 'Assessed against live production API perimeter under standard operational conditions.'}
                       </p>
-                    )}
-
-                    {vuln.remediationSteps && vuln.remediationSteps.length > 0 ? (
-                      <ol className="list-decimal list-inside space-y-0.5 text-[10px] text-slate-700 font-sans">
-                        {vuln.remediationSteps.map((step, sIdx) => (
-                          <li key={sIdx} className="leading-relaxed break-words">{cleanText(step)}</li>
-                        ))}
-                      </ol>
-                    ) : (
-                      !vuln.remediation && <p className="text-slate-500 italic text-[11px]">Apply standard security patches and configuration hardening.</p>
-                    )}
+                    </div>
                   </div>
                 </div>
 
-                {/* 7. Scope & Assumptions Note */}
-                {vuln.assumptions && (
-                  <div className="text-[10px] font-mono text-slate-500 bg-slate-50 p-1.5 rounded border border-slate-200 break-words">
-                    <strong>Scope Note:</strong> {vuln.assumptions}
-                  </div>
-                )}
+                {/* Running Footer */}
+                <div className="flex items-center justify-between border-t pt-2.5 border-slate-200 text-[10px] font-mono text-slate-500">
+                  <span>CONFIDENTIAL &bull; PROPRIETARY</span>
+                  <span>Audited by Sennovate Autonomous VAPT Platform</span>
+                  <span>Page {pageNumPartB} of {totalPages}</span>
+                </div>
               </div>
-
-              {/* Running Footer */}
-              <div className="flex items-center justify-between border-t pt-2.5 border-slate-200 text-[10px] font-mono text-slate-500">
-                <span>CONFIDENTIAL &bull; PROPRIETARY</span>
-                <span>Audited by Sennovate Autonomous VAPT Platform</span>
-                <span>Page {pageNum} of {totalPages}</span>
-              </div>
-            </div>
+            </React.Fragment>
           );
         })}
 
