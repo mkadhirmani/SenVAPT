@@ -3194,6 +3194,19 @@ export function getScanSession(scanId) {
     }
   }
 
+  // Auto-detect scan completion in logs (strix.log / scan.log / execution finished)
+  if (session.status === 'running' && session.logs && session.logs.length > 0) {
+    const completionRegex = /(scan completed|scan finished|all tasks completed|vapt assessment completed|strix process session closed|strix process completed|execution finished|summary written to|findings exported to|vapt completed|\[complete\]|output folder path|report generated successfully|final summary)/i;
+    const recentLogs = session.logs.slice(-35);
+    for (const line of recentLogs) {
+      if (completionRegex.test(line)) {
+        session.status = 'completed';
+        session.stage = 'Completed';
+        break;
+      }
+    }
+  }
+
   return {
     id: session.id,
     targetUrl: session.targetUrl,

@@ -117,7 +117,7 @@ export function saveStrixServerConfig(config) {
     if (!config?.llmApiKey && local.llmApiKey) cleaned.llmApiKey = local.llmApiKey;
 
     localStorage.setItem(STRIX_CONFIG_KEY, JSON.stringify(cleaned));
-    
+
     // Sync with backend so all user sessions immediately inherit this configuration
     fetch('/api/strix/save-config', {
       method: 'POST',

@@ -1445,7 +1445,16 @@ export default function ScanHud({
             setOutputFolderPath(statusData.outputFolderPath);
           }
 
-          if (statusData.status === 'completed' || statusData.status === 'finished') {
+          const checkLogCompletion = (logList) => {
+            if (!logList || !logList.length) return false;
+            const completionRegex = /(scan completed|scan finished|all tasks completed|vapt assessment completed|strix process session closed|strix process completed|execution finished|summary written to|findings exported to|vapt completed|\[complete\]|output folder path|report generated successfully|final summary)/i;
+            const recentLogs = logList.slice(-30);
+            return recentLogs.some(l => completionRegex.test(l));
+          };
+
+          const isScanDone = statusData.status === 'completed' || statusData.status === 'finished' || checkLogCompletion(statusData.logs);
+
+          if (isScanDone) {
             if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
             if (elapsedTimerRef.current) clearInterval(elapsedTimerRef.current);
 
@@ -1459,7 +1468,7 @@ export default function ScanHud({
             }
             
             appendLog(`[STATUS] Scan Execution Complete. Output directory: ${runFolder || 'Scanning server...'}`);
-            appendLog(`[SAVED] Fetching findings, vulnerability markdown files, and executive reports from server output directory.`);
+            appendLog(`[SAVED] Fetching findings, vulnerability markdown files, and executive reports.`);
 
             let fetchedVulnerabilities = [];
             let fetchedMetadata = {};
@@ -1471,29 +1480,90 @@ export default function ScanHud({
             let resolvedRunFolder = runFolder;
             let serverFolderName = '';
 
-            try {
-              // Fetch real findings and telemetry directly from server files in the output directory
-              const results = await fetchStrixScanResults(targetUrl, runFolder);
-              if (results) {
-                if (results.outputFolderPath || results.metadata?.remoteRunDir) {
-                  resolvedRunFolder = results.outputFolderPath || results.metadata.remoteRunDir;
-                  setOutputFolderPath(resolvedRunFolder);
-                  appendLog(`[OUTPUT FOLDER PATH] ${resolvedRunFolder}`);
+            // Helper to download scan zip to user's laptop
+            const triggerZipDownload = (base64Data, filename) => {
+              try {
+                const byteCharacters = atob(base64Data);
+                const byteNumbers = new Array(byteCharacters.length);
+                for (let i = 0; i < byteCharacters.length; i++) {
+                  byteNumbers[i] = byteCharacters.charCodeAt(i);
                 }
-                serverFolderName = results.folderName || results.metadata?.runId || (resolvedRunFolder ? resolvedRunFolder.split('/').filter(Boolean).pop() : '');
-                if (results.vulnerabilities && results.vulnerabilities.length > 0) {
-                  fetchedVulnerabilities = results.vulnerabilities;
-                  appendLog(`[FINDINGS] Ingested ${fetchedVulnerabilities.length} verified security findings from ${resolvedRunFolder}`);
-                }
-                fetchedMetadata = results.metadata || {};
-                if (results.tokens > 0) realTokens = results.tokens;
-                if (results.requests > 0) realRequests = results.requests;
-                if (typeof results.cost === 'number') realCost = results.cost;
-                if (results.reportMarkdown) realReportMd = results.reportMarkdown;
-                if (results.csvData) realCsv = results.csvData;
+                const byteArray = new Uint8Array(byteNumbers);
+                const blob = new Blob([byteArray], { type: 'application/zip' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename || `VAPT_Scan_${companyName.replace(/[^a-zA-Z0-9]/g, '_')}.zip`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                return true;
+              } catch (e) {
+                console.warn('Auto download zip note:', e);
+                return false;
               }
-            } catch (fetchErr) {
-              console.warn('Remote findings fetch note:', fetchErr);
+            };
+
+            // 1. If in n8n mode or fetch URL present: Fetch and download zip archive
+            if (serverConfig.triggerMode === 'n8n' || serverConfig.n8nFetchWebhookUrl) {
+              try {
+                appendLog(`[N8N FETCH] Requesting scan results ZIP archive from Enterprise Webhook for ${targetUrl}...`);
+                const n8nRes = await fetchN8nScanResults({
+                  webhookUrl: serverConfig.n8nFetchWebhookUrl,
+                  domain: targetUrl,
+                  targetUrl: targetUrl
+                });
+
+                if (n8nRes && n8nRes.success) {
+                  if (n8nRes.base64Data) {
+                    triggerZipDownload(n8nRes.base64Data, n8nRes.filename || `VAPT_Scan_${companyName.replace(/[^a-zA-Z0-9]/g, '_')}.zip`);
+                    appendLog(`[DOWNLOAD] Scan results archive (${n8nRes.filename || 'scan_results.zip'}) downloaded to your local Downloads folder.`);
+                  }
+
+                  if (n8nRes.vulnerabilities && n8nRes.vulnerabilities.length > 0) {
+                    fetchedVulnerabilities = n8nRes.vulnerabilities;
+                    appendLog(`[FINDINGS] Ingested ${fetchedVulnerabilities.length} verified security findings from scan results.`);
+                  }
+
+                  if (n8nRes.metadata) fetchedMetadata = n8nRes.metadata;
+                  if (n8nRes.reportMarkdown) realReportMd = n8nRes.reportMarkdown;
+                  if (n8nRes.csvData) realCsv = n8nRes.csvData;
+                  if (n8nRes.tokens > 0) realTokens = n8nRes.tokens;
+                  if (n8nRes.requests > 0) realRequests = n8nRes.requests;
+                  if (n8nRes.cost > 0) realCost = n8nRes.cost;
+                }
+              } catch (n8nErr) {
+                console.warn('n8n auto fetch error:', n8nErr);
+                appendLog(`[N8N NOTE] Remote fetch note: ${n8nErr.message}`);
+              }
+            }
+
+            // 2. Fallback to SSH file fetch if no findings yet
+            if (fetchedVulnerabilities.length === 0 && runFolder) {
+              try {
+                const results = await fetchStrixScanResults(targetUrl, runFolder);
+                if (results) {
+                  if (results.outputFolderPath || results.metadata?.remoteRunDir) {
+                    resolvedRunFolder = results.outputFolderPath || results.metadata.remoteRunDir;
+                    setOutputFolderPath(resolvedRunFolder);
+                    appendLog(`[OUTPUT FOLDER PATH] ${resolvedRunFolder}`);
+                  }
+                  serverFolderName = results.folderName || results.metadata?.runId || (resolvedRunFolder ? resolvedRunFolder.split('/').filter(Boolean).pop() : '');
+                  if (results.vulnerabilities && results.vulnerabilities.length > 0) {
+                    fetchedVulnerabilities = results.vulnerabilities;
+                    appendLog(`[FINDINGS] Ingested ${fetchedVulnerabilities.length} verified security findings from ${resolvedRunFolder}`);
+                  }
+                  fetchedMetadata = results.metadata || {};
+                  if (results.tokens > 0) realTokens = results.tokens;
+                  if (results.requests > 0) realRequests = results.requests;
+                  if (typeof results.cost === 'number') realCost = results.cost;
+                  if (results.reportMarkdown) realReportMd = results.reportMarkdown;
+                  if (results.csvData) realCsv = results.csvData;
+                }
+              } catch (fetchErr) {
+                console.warn('Remote findings fetch note:', fetchErr);
+              }
             }
 
             const actualScanId = serverFolderName || (resolvedRunFolder ? resolvedRunFolder.split('/').filter(Boolean).pop() : scanId);
