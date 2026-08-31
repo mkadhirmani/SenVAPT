@@ -17,7 +17,6 @@ RUN npm install --omit=dev
 
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/src ./src
-COPY --from=build /app/data_defaults ./data_defaults
 COPY --from=build /app/server.js ./server.js
 
 ENV PORT=8080
