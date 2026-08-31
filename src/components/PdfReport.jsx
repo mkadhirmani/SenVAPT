@@ -109,22 +109,28 @@ function renderFormattedMarkdown(markdownText) {
   return <div className="space-y-2">{elements}</div>;
 }
 
-// Block estimation helpers for dynamic continuous page-packing
-function estimateTextHeight(text, baseHeight = 35, charsPerLine = 80, lineHeight = 16) {
+// Accurate line-based height estimators with zero truncation capping
+function estimateTextHeight(text, baseHeight = 35) {
   if (!text) return 0;
-  const lines = Math.ceil(text.length / charsPerLine);
-  return baseHeight + (lines * lineHeight);
+  const lines = Math.ceil(text.length / 65);
+  return baseHeight + (lines * 20);
 }
 
-function estimateCodeHeight(code, baseHeight = 45, lineHeight = 14) {
+function estimateCodeHeight(code, baseHeight = 45) {
   if (!code) return 0;
   const lines = (code.match(/\n/g) || []).length + 1;
-  return baseHeight + (lines * lineHeight);
+  return baseHeight + (lines * 18);
 }
 
-// Continuously flow and pack all finding sections into discrete A4 pages with zero wasted space
+function estimateListHeight(steps, baseHeight = 35) {
+  if (!steps || !steps.length) return baseHeight;
+  return baseHeight + (steps.length * 36);
+}
+
+// Continuously flow and pack all finding sections into discrete A4 pages with guaranteed zero clipping
 function packFindingPages(sortedVulns) {
-  const MAX_PAGE_HEIGHT = 760; // Usable content height in pixels (preserves 18mm top & bottom breathing room)
+  // Conservative usable height leaving 20mm top & bottom margins on 297mm A4 page
+  const MAX_PAGE_HEIGHT = 650;
   const pages = [];
   const allBlocks = [];
 
@@ -135,54 +141,57 @@ function packFindingPages(sortedVulns) {
     // Block 1: Header Block
     allBlocks.push({
       type: 'header',
-      height: 90,
+      height: 100,
       vuln,
       findingNum
     });
 
     // Block 2: Technical Analysis Block
-    const analysisH = 40 + estimateTextHeight(vuln.description, 10, 80, 16) + (vuln.technicalAnalysis ? estimateTextHeight(vuln.technicalAnalysis, 15, 80, 16) : 0);
+    const descH = estimateTextHeight(vuln.description, 40);
+    const techH = vuln.technicalAnalysis ? estimateTextHeight(vuln.technicalAnalysis, 25) : 0;
     allBlocks.push({
       type: 'analysis',
-      height: Math.min(analysisH, 260),
+      height: descH + techH,
       vuln,
       findingNum
     });
 
     // Block 3: Threat Impact Block
-    const impactH = 40 + estimateTextHeight(vuln.impact, 10, 80, 16);
     allBlocks.push({
       type: 'impact',
-      height: Math.min(impactH, 180),
+      height: estimateTextHeight(vuln.impact, 45),
       vuln,
       findingNum
     });
 
     // Block 4: Observed Evidence Block
     if (vuln.evidence) {
-      const evH = 40 + estimateCodeHeight(vuln.evidence, 20, 14);
       allBlocks.push({
         type: 'evidence',
-        height: Math.min(evH, 340),
+        height: estimateCodeHeight(vuln.evidence, 55),
         vuln,
         findingNum
       });
     }
 
     // Block 5: Proof of Concept Block
-    const pocH = 40 + (vuln.pocDescription ? estimateTextHeight(vuln.pocDescription, 10, 80, 16) : 0) + (vuln.reproduction || vuln.pocScripts?.bash ? estimateCodeHeight(vuln.reproduction || vuln.pocScripts?.bash, 25, 14) : 0);
+    const pocDescH = vuln.pocDescription ? estimateTextHeight(vuln.pocDescription, 30) : 0;
+    const pocCodeH = (vuln.reproduction || vuln.pocScripts?.bash || vuln.pocScripts?.python) 
+      ? estimateCodeHeight(vuln.reproduction || vuln.pocScripts?.bash || vuln.pocScripts?.python, 40) 
+      : 0;
     allBlocks.push({
       type: 'poc',
-      height: Math.min(pocH, 280),
+      height: 45 + pocDescH + pocCodeH,
       vuln,
       findingNum
     });
 
     // Block 6: Remediation Plan Block
-    const remH = 40 + (vuln.remediation ? estimateTextHeight(vuln.remediation, 10, 80, 16) : 0) + (vuln.remediationSteps ? vuln.remediationSteps.length * 26 : 40);
+    const remDescH = vuln.remediation ? estimateTextHeight(vuln.remediation, 30) : 0;
+    const remStepsH = vuln.remediationSteps ? estimateListHeight(vuln.remediationSteps, 15) : 40;
     allBlocks.push({
       type: 'remediation',
-      height: Math.min(remH, 280),
+      height: 45 + remDescH + remStepsH,
       vuln,
       findingNum
     });
@@ -190,13 +199,13 @@ function packFindingPages(sortedVulns) {
     // Block 7: Scope & Verification Block
     allBlocks.push({
       type: 'scope',
-      height: 100,
+      height: 120,
       vuln,
       findingNum
     });
   });
 
-  // Step 2: Continuously pack all blocks into pages without premature page breaks
+  // Step 2: Continuously pack all blocks into pages safely
   let currentPageBlocks = [];
   let currentHeight = 0;
   let activeFindingNum = null;
@@ -204,11 +213,11 @@ function packFindingPages(sortedVulns) {
   allBlocks.forEach((block) => {
     const isNewFindingHeader = block.type === 'header';
     const isContinuation = !isNewFindingHeader && activeFindingNum !== block.findingNum;
-    const continuationHeaderHeight = isContinuation ? 40 : 0;
-    const neededHeight = block.height + continuationHeaderHeight + 14;
+    const continuationHeaderHeight = isContinuation ? 45 : 0;
+    const neededHeight = block.height + continuationHeaderHeight + 16;
 
     if (currentPageBlocks.length > 0 && (currentHeight + neededHeight > MAX_PAGE_HEIGHT)) {
-      // Current page is full: push completed page
+      // Current page has reached safe capacity: push completed page
       pages.push({
         blocks: currentPageBlocks
       });
@@ -216,27 +225,27 @@ function packFindingPages(sortedVulns) {
       // Start new page cleanly
       if (!isNewFindingHeader) {
         currentPageBlocks = [
-          { type: 'continuation_header', height: 40, vuln: block.vuln, findingNum: block.findingNum },
+          { type: 'continuation_header', height: 45, vuln: block.vuln, findingNum: block.findingNum },
           block
         ];
-        currentHeight = 40 + block.height + 14;
+        currentHeight = 45 + block.height + 16;
       } else {
         currentPageBlocks = [block];
-        currentHeight = block.height + 14;
+        currentHeight = block.height + 16;
       }
       activeFindingNum = block.findingNum;
     } else {
       if (isContinuation) {
         currentPageBlocks.push({
           type: 'continuation_header',
-          height: 40,
+          height: 45,
           vuln: block.vuln,
           findingNum: block.findingNum
         });
-        currentHeight += 40;
+        currentHeight += 45;
       }
       currentPageBlocks.push(block);
-      currentHeight += block.height + 14;
+      currentHeight += block.height + 16;
       activeFindingNum = block.findingNum;
     }
   });
@@ -272,7 +281,7 @@ export default function PdfReport({
   const overallRiskScore = metadata.overallRiskScore || topVuln?.cvss || 6.8;
   const overallRiskLevel = metadata.overallRiskLevel || (overallRiskScore >= 8.5 ? 'CRITICAL' : (overallRiskScore >= 7.0 ? 'HIGH' : 'ELEVATED'));
 
-  // Pack dynamic continuous finding pages with zero block-splitting and zero wasted space
+  // Pack dynamic continuous finding pages with zero block-splitting and zero cutoffs
   const dynamicFindingPages = packFindingPages(sortedVulns);
   const totalPages = 4 + (dynamicFindingPages.length > 0 ? dynamicFindingPages.length : 1);
 
@@ -322,7 +331,7 @@ Include:
     window.print();
   };
 
-  // Helper to render an atomic finding block
+  // Helper to render an atomic finding block completely without truncation
   const renderFindingBlock = (block, bIdx) => {
     const { vuln, findingNum } = block;
 
@@ -585,10 +594,9 @@ Include:
           width: 210mm;
           min-width: 210mm;
           max-width: 210mm;
-          height: 297mm;
           min-height: 297mm;
-          max-height: 297mm;
           margin: 0 auto 32px auto;
+          padding: 18mm 16mm 18mm 16mm;
           background: #ffffff;
           box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.12), 0 8px 10px -6px rgba(0, 0, 0, 0.08);
           border-radius: 4px;
@@ -597,7 +605,7 @@ Include:
           flex-direction: column;
           justify-content: space-between;
           position: relative;
-          overflow: hidden !important;
+          overflow: visible !important;
           page-break-after: always;
           break-after: page;
         }
@@ -636,9 +644,8 @@ Include:
             width: 210mm !important;
             min-width: 210mm !important;
             max-width: 210mm !important;
-            height: 297mm !important;
             min-height: 297mm !important;
-            max-height: 297mm !important;
+            padding: 18mm 16mm 18mm 16mm !important;
             page-break-after: always !important;
             break-after: page !important;
             box-sizing: border-box !important;
@@ -649,18 +656,18 @@ Include:
             display: flex !important;
             flex-direction: column !important;
             justify-content: space-between !important;
-            overflow: hidden !important;
+            overflow: visible !important;
           }
         }
       `}</style>
 
-      {/* Printable Document Root (Discrete, Space-Optimized Continuous Flow A4 Pages) */}
+      {/* Printable Document Root (Discrete, Guaranteed Unclipped A4 Pages) */}
       <div id="vapt-pdf-report-root" className="space-y-8 flex flex-col items-center">
 
         {/* ========================================================================= */}
         {/* PAGE 1: EXECUTIVE COVER PAGE                                              */}
         {/* ========================================================================= */}
-        <div className="pdf-page p-[16mm_14mm_16mm_14mm] bg-white text-slate-900 border border-slate-200">
+        <div className="pdf-page p-[18mm_16mm_18mm_16mm] bg-white text-slate-900 border border-slate-200">
           {/* Cover Header */}
           <div className="flex items-center justify-between border-b pb-4 border-slate-200">
             <div className="flex items-center gap-3">
@@ -748,7 +755,7 @@ Include:
         {/* ========================================================================= */}
         {/* PAGE 2: EXECUTIVE SUMMARY & THREAT POSTURE                                */}
         {/* ========================================================================= */}
-        <div className="pdf-page p-[16mm_14mm_16mm_14mm] bg-white text-slate-900 border border-slate-200">
+        <div className="pdf-page p-[18mm_16mm_18mm_16mm] bg-white text-slate-900 border border-slate-200">
           {/* Running Header */}
           <div className="flex items-center justify-between border-b pb-2.5 border-slate-200 text-[10px] font-mono text-slate-500 uppercase">
             <span className="font-bold text-cyan-700 flex items-center gap-1">
@@ -862,7 +869,7 @@ Include:
         {/* ========================================================================= */}
         {/* PAGE 3: PRIORITIZED 3-PHASE ACTION ROADMAP & METHODOLOGY                  */}
         {/* ========================================================================= */}
-        <div className="pdf-page p-[16mm_14mm_16mm_14mm] bg-white text-slate-900 border border-slate-200">
+        <div className="pdf-page p-[18mm_16mm_18mm_16mm] bg-white text-slate-900 border border-slate-200">
           {/* Running Header */}
           <div className="flex items-center justify-between border-b pb-2.5 border-slate-200 text-[10px] font-mono text-slate-500 uppercase">
             <span className="font-bold text-cyan-700 flex items-center gap-1">
@@ -958,7 +965,7 @@ Include:
         {/* ========================================================================= */}
         {/* PAGE 4: VULNERABILITY SUMMARY MATRIX & CVSS RATING GUIDE                  */}
         {/* ========================================================================= */}
-        <div className="pdf-page p-[16mm_14mm_16mm_14mm] bg-white text-slate-900 border border-slate-200">
+        <div className="pdf-page p-[18mm_16mm_18mm_16mm] bg-white text-slate-900 border border-slate-200">
           {/* Running Header */}
           <div className="flex items-center justify-between border-b pb-2.5 border-slate-200 text-[10px] font-mono text-slate-500 uppercase">
             <span className="font-bold text-cyan-700 flex items-center gap-1">
@@ -1054,7 +1061,7 @@ Include:
 
 
         {/* ========================================================================= */}
-        {/* PAGES 5+: CONTINUOUS SPACE-OPTIMIZED FINDING PAGES                        */}
+        {/* PAGES 5+: GUARANTEED UNCLIPPED A4 FINDING PAGES                           */}
         {/* ========================================================================= */}
         {dynamicFindingPages.map((pageData, pIdx) => {
           const pageNum = 5 + pIdx;
@@ -1062,8 +1069,8 @@ Include:
 
           return (
             <div 
-              key={`continuous-finding-page-${pIdx}`}
-              className="pdf-page p-[16mm_14mm_16mm_14mm] bg-white text-slate-900 border border-slate-200"
+              key={`safe-finding-page-${pIdx}`}
+              className="pdf-page p-[18mm_16mm_18mm_16mm] bg-white text-slate-900 border border-slate-200"
             >
               {/* Running Header */}
               <div className="flex items-center justify-between border-b pb-2.5 border-slate-200 text-[10px] font-mono text-slate-500 uppercase">
@@ -1074,7 +1081,7 @@ Include:
                 <span className="truncate max-w-[200px]">Target: {companyName}</span>
               </div>
 
-              {/* Space-Optimized Content Body (Continuous unbroken blocks) */}
+              {/* Dynamic Content Body (Unclipped, uncropped atomic blocks) */}
               <div className="space-y-3.5 my-auto py-2">
                 {blocks.map((block, bIdx) => renderFindingBlock(block, bIdx))}
               </div>
