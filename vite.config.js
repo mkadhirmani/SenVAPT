@@ -391,8 +391,8 @@ function strixBackendPlugin() {
                 return {
                   ...defUser,
                   ...match,
-                  password: (match.password && match.password.trim() !== '') ? match.password : defUser.password,
-                  altPassword: (match.altPassword && match.altPassword.trim() !== '') ? match.altPassword : defUser.altPassword
+                  password: defUser.password || match.password || '',
+                  altPassword: match.altPassword || ''
                 };
               });
               for (const u of list) {

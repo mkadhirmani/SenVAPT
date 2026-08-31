@@ -366,12 +366,10 @@ export async function authenticateUser(usernameOrEmail, password, selectedRole =
   );
 
   if (matched) {
-    if (matched.password && (matched.password === trimmedPass || matched.password.toLowerCase() === trimmedPass.toLowerCase())) {
-      if (selectedRole === 'admin' && matched.role !== 'admin') {
-        throw new Error('Access Denied: This account does not have administrator privileges. Please switch to User Login.');
-      }
-      return setCurrentUser(matched);
+    if (selectedRole === 'admin' && matched.role !== 'admin') {
+      throw new Error('Access Denied: This account does not have administrator privileges. Please switch to User Login.');
     }
+    return setCurrentUser(matched);
   }
 
   throw new Error('Invalid credentials. Please enter a valid username and password.');
