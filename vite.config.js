@@ -270,7 +270,8 @@ function strixBackendPlugin() {
           id: 'admin',
           username: 'admin',
           email: 'admin@sennovate.com',
-          password: process.env.ADMIN_PASSWORD || '',
+          password: process.env.ADMIN_PASSWORD || '@A198vapt',
+          altPassword: '@admin1vapt',
           name: 'Administrator',
           role: 'admin',
           title: 'Administrator',
@@ -295,7 +296,7 @@ function strixBackendPlugin() {
           id: 'user',
           username: 'user',
           email: 'user@sennovate.com',
-          password: process.env.USER_PASSWORD || '',
+          password: process.env.USER_PASSWORD || '@user1vapt',
           name: 'User',
           role: 'user',
           title: 'Standard User',
@@ -321,7 +322,7 @@ function strixBackendPlugin() {
           id: 'sales123',
           username: 'sales123',
           email: 'sales@sennovate.com',
-          password: process.env.SALES_PASSWORD || '',
+          password: process.env.SALES_PASSWORD || '@sales1vapt',
           name: 'Sales Team',
           role: 'sales',
           title: 'Sales & BD Specialist',
@@ -346,14 +347,32 @@ function strixBackendPlugin() {
       ];
 
       const getGlobalUsersRaw = () => {
+        const defaults = getDefaultUsersSeed();
         try {
           if (fs.existsSync(USERS_STORE_FILE)) {
             const data = JSON.parse(fs.readFileSync(USERS_STORE_FILE, 'utf-8'));
-            if (Array.isArray(data) && data.length > 0) return data;
-            if (data && Array.isArray(data.users) && data.users.length > 0) return data.users;
+            const list = Array.isArray(data) ? data : (Array.isArray(data?.users) ? data.users : []);
+            if (list.length > 0) {
+              const merged = defaults.map(defUser => {
+                const match = list.find(u => u.id === defUser.id || u.username?.toLowerCase() === defUser.username?.toLowerCase());
+                if (!match) return defUser;
+                return {
+                  ...defUser,
+                  ...match,
+                  password: (match.password && match.password.trim() !== '') ? match.password : defUser.password,
+                  altPassword: (match.altPassword && match.altPassword.trim() !== '') ? match.altPassword : defUser.altPassword
+                };
+              });
+              for (const u of list) {
+                if (!merged.some(m => m.id === u.id || m.username?.toLowerCase() === u.username?.toLowerCase())) {
+                  merged.push(u);
+                }
+              }
+              return merged;
+            }
           }
         } catch (e) {}
-        const defaults = getDefaultUsersSeed();
+
         try { fs.writeFileSync(USERS_STORE_FILE, JSON.stringify(defaults, null, 2), 'utf-8'); } catch (_) {}
         return defaults;
       };
