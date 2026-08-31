@@ -14,7 +14,8 @@ dist-ssr/
 .scans_cache.json
 .users_store.json
 .users.json
-data_defaults/default_users.json
+data_defaults/
+data_defaults/**
 .env
 .env.*
 .env.local

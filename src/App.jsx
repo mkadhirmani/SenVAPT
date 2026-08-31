@@ -30,7 +30,8 @@ import {
   setCurrentUser, 
   logoutUser, 
   checkUserPermission,
-  fetchGlobalUsersList
+  fetchGlobalUsersList,
+  verifySessionWithServer
 } from './utils/auth';
 import { initializeKnowledgeBase } from './utils/ragEngine';
 import { fetchAllRemoteScans, fetchStrixServerConfig } from './utils/strixApi';
@@ -229,10 +230,17 @@ export default function App() {
     setTheme(prev => (prev === 'dark' ? 'light' : 'dark'));
   };
 
-  // Auto-sync server config, LLM config, users, and scans on initial load
+  // Auto-sync server config, LLM config, users, and scans on initial load with session verification
   useEffect(() => {
     async function syncOnMount() {
       try {
+        const verified = await verifySessionWithServer();
+        if (!verified) {
+          setAuthUser(null);
+          return;
+        }
+        setAuthUser(verified);
+
         await Promise.all([
           fetchStrixServerConfig(),
           fetchGlobalLlmConfig(),

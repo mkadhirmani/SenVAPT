@@ -1,4 +1,6 @@
 // Strix Backend API & SSH Store
+import { getAuthHeaders } from './auth';
+
 const STRIX_CONFIG_KEY = 'sennovate_strix_ssh_config';
 
 export function getStrixServerConfig() {
@@ -51,7 +53,9 @@ export function getStrixServerConfig() {
  */
 export async function fetchStrixServerConfig() {
   try {
-    const res = await fetch('/api/strix/get-config');
+    const res = await fetch('/api/strix/get-config', {
+      headers: { ...getAuthHeaders() }
+    });
     if (res.ok) {
       const data = await res.json();
       const local = getStrixServerConfig();
@@ -83,7 +87,10 @@ export function saveStrixServerConfig(config) {
     // Sync with backend so all user sessions immediately inherit this configuration
     fetch('/api/strix/save-config', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAuthHeaders()
+      },
       body: JSON.stringify(cleaned)
     }).catch(err => console.warn('Note syncing server config to backend:', err));
 
@@ -100,7 +107,10 @@ export function saveStrixServerConfig(config) {
 export async function testStrixSshConnection(config) {
   const res = await fetch('/api/strix/test-ssh', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      ...getAuthHeaders()
+    },
     body: JSON.stringify(config)
   });
 
@@ -129,7 +139,10 @@ export async function startStrixScan(params) {
 
   const res = await fetch('/api/strix/start-scan', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      ...getAuthHeaders()
+    },
     body: JSON.stringify(payload)
   });
 
@@ -147,7 +160,10 @@ export async function startStrixScan(params) {
 export async function stopStrixScan(scanId) {
   const res = await fetch('/api/strix/stop-scan', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      ...getAuthHeaders()
+    },
     body: JSON.stringify({ scanId })
   });
 
@@ -160,7 +176,10 @@ export async function stopStrixScan(scanId) {
 export async function sendStrixInput(scanId, input) {
   const res = await fetch('/api/strix/send-input', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      ...getAuthHeaders()
+    },
     body: JSON.stringify({ scanId, input })
   });
 
@@ -171,7 +190,9 @@ export async function sendStrixInput(scanId, input) {
  * Poll live scan status and logs from Strix server
  */
 export async function pollStrixScanStatus(scanId) {
-  const res = await fetch(`/api/strix/status?scanId=${encodeURIComponent(scanId)}`);
+  const res = await fetch(`/api/strix/status?scanId=${encodeURIComponent(scanId)}`, {
+    headers: { ...getAuthHeaders() }
+  });
   if (!res.ok) {
     throw new Error('Failed to retrieve scan logs');
   }
@@ -185,7 +206,10 @@ export async function fetchStrixScanResults(targetUrl, runDir) {
   const config = getStrixServerConfig();
   const res = await fetch('/api/strix/fetch-results', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      ...getAuthHeaders()
+    },
     body: JSON.stringify({ ...config, targetUrl, runDir })
   });
 
@@ -214,7 +238,10 @@ export async function triggerN8nScan(params) {
 
   const res = await fetch('/api/strix/trigger-n8n', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      ...getAuthHeaders()
+    },
     body: JSON.stringify(payload)
   });
 
@@ -245,7 +272,10 @@ export async function fetchN8nScanResults(params) {
 
   const res = await fetch('/api/strix/fetch-n8n-results', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      ...getAuthHeaders()
+    },
     body: JSON.stringify(payload)
   });
 
@@ -274,7 +304,10 @@ export async function testN8nFetchWebhookApi(params) {
 
   const res = await fetch('/api/strix/test-n8n-fetch', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      ...getAuthHeaders()
+    },
     body: JSON.stringify(payload)
   });
 
@@ -288,7 +321,10 @@ export async function testN8nFetchWebhookApi(params) {
 export async function fetchLocalStrixFolder(folderPath) {
   const res = await fetch('/api/strix/parse-local-folder', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      ...getAuthHeaders()
+    },
     body: JSON.stringify({ folderPath })
   });
 
@@ -305,7 +341,9 @@ export async function fetchLocalStrixFolder(folderPath) {
  */
 export async function listLocalScanFoldersApi() {
   try {
-    const res = await fetch('/api/strix/list-local-folders');
+    const res = await fetch('/api/strix/list-local-folders', {
+      headers: { ...getAuthHeaders() }
+    });
     if (res.ok) {
       const data = await res.json();
       return data.folders || [];
@@ -323,7 +361,10 @@ export async function fetchAllRemoteScans(customConfig) {
   const config = customConfig || getStrixServerConfig();
   const res = await fetch('/api/strix/fetch-all-runs', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      ...getAuthHeaders()
+    },
     body: JSON.stringify(config)
   });
 
@@ -354,7 +395,10 @@ export async function fetchServerFile(params) {
 
   const res = await fetch('/api/strix/fetch-server-file', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      ...getAuthHeaders()
+    },
     body: JSON.stringify(payload)
   });
 
@@ -377,7 +421,10 @@ export async function uploadScanZipApi(file) {
         const base64Data = e.target.result.split(',')[1];
         const res = await fetch('/api/strix/upload-scan-zip', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            ...getAuthHeaders()
+          },
           body: JSON.stringify({
             filename: file.name,
             base64Data
@@ -397,5 +444,3 @@ export async function uploadScanZipApi(file) {
     reader.readAsDataURL(file);
   });
 }
-
-

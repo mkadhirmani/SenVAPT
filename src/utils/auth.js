@@ -2,6 +2,7 @@
 
 const USERS_STORAGE_KEY = 'sennovate_vapt_users';
 const CURRENT_USER_KEY = 'sennovate_current_user';
+const AUTH_TOKEN_KEY = 'sennovate_auth_token';
 const SESSIONS_STORAGE_KEY = 'sennovate_active_sessions';
 
 export const ALL_PERMISSIONS = [
@@ -94,12 +95,71 @@ export const DEFAULT_USERS = [
   }
 ];
 
+export function getAuthToken() {
+  return sessionStorage.getItem(AUTH_TOKEN_KEY) || localStorage.getItem(AUTH_TOKEN_KEY) || '';
+}
+
+export function setAuthToken(token) {
+  if (token) {
+    sessionStorage.setItem(AUTH_TOKEN_KEY, token);
+  } else {
+    sessionStorage.removeItem(AUTH_TOKEN_KEY);
+    try { localStorage.removeItem(AUTH_TOKEN_KEY); } catch (_) {}
+  }
+}
+
+export function getAuthHeaders() {
+  const token = getAuthToken();
+  return token ? { 'Authorization': `Bearer ${token}` } : {};
+}
+
+/**
+ * Verify session token cryptographically with server.
+ * Prevents sessionStorage injection / auth bypass.
+ */
+export async function verifySessionWithServer() {
+  const token = getAuthToken();
+  if (!token) {
+    setCurrentUser(null);
+    setAuthToken(null);
+    return null;
+  }
+
+  try {
+    const res = await fetch('/api/auth/verify-session', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      }
+    });
+
+    if (!res.ok) {
+      setCurrentUser(null);
+      setAuthToken(null);
+      return null;
+    }
+
+    const data = await res.json();
+    if (data && data.success && data.user) {
+      return setCurrentUser(data.user);
+    }
+  } catch (e) {
+    console.warn('Session verification error:', e);
+  }
+  setCurrentUser(null);
+  setAuthToken(null);
+  return null;
+}
+
 /**
  * Fetch users list from backend server (.users_store.json) and synchronize with localStorage
  */
 export async function fetchGlobalUsersList() {
   try {
-    const res = await fetch('/api/users/get-users');
+    const res = await fetch('/api/users/get-users', {
+      headers: getAuthHeaders()
+    });
     if (res.ok) {
       const data = await res.json();
       if (data && data.success && Array.isArray(data.users) && data.users.length > 0) {
@@ -156,12 +216,18 @@ export function saveUsersList(users) {
   try {
     localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(users));
 
-    // Persist to server store (.users_store.json)
-    fetch('/api/users/save-users', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ users })
-    }).catch(err => console.warn('Note syncing users to backend:', err));
+    // Persist to server store (.users_store.json) if admin
+    const token = getAuthToken();
+    if (token) {
+      fetch('/api/users/save-users', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ users })
+      }).catch(err => console.warn('Note syncing users to backend:', err));
+    }
   } catch (e) {
     console.error('Error saving users:', e);
   }
@@ -175,7 +241,7 @@ export function getCurrentUser() {
     const raw = sessionStorage.getItem(CURRENT_USER_KEY);
     if (raw) {
       const user = JSON.parse(raw);
-      if (user && user.username) {
+      if (user && user.id) {
         const allUsers = getUsersList();
         const fresh = allUsers.find(u => u.id === user.id || u.username === user.username);
         return fresh || user;
@@ -221,7 +287,18 @@ export function setCurrentUser(user) {
 /**
  * Log out current user
  */
-export function logoutUser() {
+export async function logoutUser() {
+  const token = getAuthToken();
+  if (token) {
+    try {
+      await fetch('/api/auth/logout', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+    } catch (_) {}
+  }
+  setAuthToken(null);
+
   const current = getCurrentUser();
   if (current) {
     trackSessionLogout(current.id);
@@ -260,6 +337,10 @@ export async function authenticateUser(usernameOrEmail, password, selectedRole =
       throw new Error(data?.error || 'Invalid credentials. Please enter a valid username and password.');
     }
 
+    if (data.token) {
+      setAuthToken(data.token);
+    }
+
     return setCurrentUser(data.user);
   } catch (err) {
     throw new Error(err.message || 'Authentication failed. Please check your credentials.');
@@ -288,7 +369,7 @@ export function updateUserPermissions(userId, newPermissions) {
   const current = getCurrentUser();
   if (current && current.id === userId) {
     const updatedCurrent = updated.find(u => u.id === userId);
-    localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(updatedCurrent));
+    sessionStorage.setItem(CURRENT_USER_KEY, JSON.stringify(updatedCurrent));
   }
 
   return updated;
@@ -311,8 +392,7 @@ export function updateUserPassword(userIdOrUsername, newPassword) {
       found = true;
       return {
         ...u,
-        password: trimmed,
-        altPassword: trimmed
+        password: trimmed
       };
     }
     return u;
@@ -342,7 +422,7 @@ export function createNewUser(userData) {
     id: `user-${Date.now()}`,
     username: userData.username.toLowerCase().trim(),
     email: userData.email || `${userData.username.toLowerCase().trim()}@sennovate.com`,
-    password: userData.password || 'password123',
+    password: userData.password || '',
     name: userData.name || userData.username,
     role: userData.role || 'user',
     title: userData.title || 'Security Analyst',

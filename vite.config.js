@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import crypto from 'crypto';
 import { 
   testSshConnection, 
   startRemoteStrixScan, 
@@ -17,6 +18,7 @@ import {
   testN8nFetchWebhookProxy,
   fetchServerFileProxy,
   getGlobalServerConfig,
+  getSanitizedServerConfig,
   saveGlobalServerConfig
 } from './src/server/strixBackend.js';
 import path from 'path';
@@ -24,10 +26,38 @@ import fs from 'fs';
 
 // Built-in Strix Backend & LLM Proxy Server Plugin
 function strixBackendPlugin() {
+  // In-Memory Cryptographic Session Registry
+  const activeSessions = new Map(); // token -> { user, role, token, expiresAt }
+
+  const createSession = (user) => {
+    const token = crypto.randomBytes(32).toString('hex');
+    const session = {
+      token,
+      user,
+      role: user.role,
+      expiresAt: Date.now() + 24 * 60 * 60 * 1000 // 24 hours
+    };
+    activeSessions.set(token, session);
+    return token;
+  };
+
+  const getAuthenticatedSession = (req) => {
+    const authHeader = req.headers['authorization'] || req.headers['Authorization'] || '';
+    const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : (req.headers['x-auth-token'] || '');
+    if (!token) return null;
+    const session = activeSessions.get(token);
+    if (!session) return null;
+    if (session.expiresAt && Date.now() > session.expiresAt) {
+      activeSessions.delete(token);
+      return null;
+    }
+    return session;
+  };
+
   return {
     name: 'strix-backend-middleware',
     configureServer(server) {
-      // 1. LLM Proxy Route
+      // 1. LLM Proxy Route (Requires Valid Session)
       server.middlewares.use('/api/llm-proxy', async (req, res) => {
         if (req.method === 'OPTIONS') {
           res.setHeader('Access-Control-Allow-Origin', '*');
@@ -35,6 +65,13 @@ function strixBackendPlugin() {
           res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
           res.statusCode = 200;
           return res.end();
+        }
+
+        const session = getAuthenticatedSession(req);
+        if (!session) {
+          res.setHeader('Content-Type', 'application/json');
+          res.statusCode = 401;
+          return res.end(JSON.stringify({ error: 'Unauthorized: Authentication required.' }));
         }
 
         if (req.method !== 'POST') {
@@ -70,9 +107,6 @@ function strixBackendPlugin() {
 
       // 1.5. Server Scan History Get & Save Routes (Persisted in .scans_cache.json)
       const SCANS_CACHE_FILE = path.resolve(process.cwd(), '.scans_cache.json');
-      const DEFAULT_SCANS_FILE = path.resolve(process.cwd(), 'data_defaults/default_scans.json');
-      const DEFAULT_LLM_FILE = path.resolve(process.cwd(), 'data_defaults/default_llm_config.json');
-      const DEFAULT_USERS_FILE = path.resolve(process.cwd(), 'data_defaults/default_users.json');
 
       const getServerScanHistory = () => {
         try {
@@ -81,14 +115,6 @@ function strixBackendPlugin() {
             if (Array.isArray(data) && data.length > 0) return data;
             if (data && Array.isArray(data.scans) && data.scans.length > 0) return data.scans;
           }
-          if (fs.existsSync(DEFAULT_SCANS_FILE)) {
-            const data = JSON.parse(fs.readFileSync(DEFAULT_SCANS_FILE, 'utf-8'));
-            const scans = Array.isArray(data) ? data : (data?.scans || []);
-            if (scans.length > 0) {
-              try { fs.writeFileSync(SCANS_CACHE_FILE, JSON.stringify(scans, null, 2), 'utf-8'); } catch (_) {}
-              return scans;
-            }
-          }
         } catch (e) {}
         return [];
       };
@@ -96,9 +122,6 @@ function strixBackendPlugin() {
       const saveServerScanHistory = (scans) => {
         try {
           fs.writeFileSync(SCANS_CACHE_FILE, JSON.stringify(scans, null, 2), 'utf-8');
-          if (fs.existsSync(path.dirname(DEFAULT_SCANS_FILE))) {
-            fs.writeFileSync(DEFAULT_SCANS_FILE, JSON.stringify(scans, null, 2), 'utf-8');
-          }
           return true;
         } catch (e) {
           return false;
@@ -106,6 +129,12 @@ function strixBackendPlugin() {
       };
 
       server.middlewares.use('/api/scans/get-history', (req, res) => {
+        const session = getAuthenticatedSession(req);
+        if (!session) {
+          res.setHeader('Content-Type', 'application/json');
+          res.statusCode = 401;
+          return res.end(JSON.stringify({ success: false, error: 'Unauthorized' }));
+        }
         res.setHeader('Access-Control-Allow-Origin', '*');
         res.setHeader('Content-Type', 'application/json');
         res.statusCode = 200;
@@ -113,6 +142,12 @@ function strixBackendPlugin() {
       });
 
       server.middlewares.use('/api/scans/save-history', (req, res) => {
+        const session = getAuthenticatedSession(req);
+        if (!session) {
+          res.setHeader('Content-Type', 'application/json');
+          res.statusCode = 401;
+          return res.end(JSON.stringify({ success: false, error: 'Unauthorized' }));
+        }
         let body = '';
         req.on('data', chunk => { body += chunk; });
         req.on('end', () => {
@@ -132,15 +167,27 @@ function strixBackendPlugin() {
         });
       });
 
-      // 2. Global Strix Config Get & Save Routes
+      // 2. Global Strix Config Get & Save Routes (Authenticated & Redacted)
       server.middlewares.use('/api/strix/get-config', (req, res) => {
+        const session = getAuthenticatedSession(req);
+        if (!session) {
+          res.setHeader('Content-Type', 'application/json');
+          res.statusCode = 401;
+          return res.end(JSON.stringify({ success: false, error: 'Unauthorized: Valid session required.' }));
+        }
         res.setHeader('Access-Control-Allow-Origin', '*');
         res.setHeader('Content-Type', 'application/json');
         res.statusCode = 200;
-        res.end(JSON.stringify({ success: true, config: getGlobalServerConfig() }));
+        res.end(JSON.stringify({ success: true, config: getSanitizedServerConfig() }));
       });
 
       server.middlewares.use('/api/strix/save-config', (req, res) => {
+        const session = getAuthenticatedSession(req);
+        if (!session || session.role !== 'admin') {
+          res.setHeader('Content-Type', 'application/json');
+          res.statusCode = 403;
+          return res.end(JSON.stringify({ success: false, error: 'Access Denied: Administrator privilege required.' }));
+        }
         let body = '';
         req.on('data', chunk => { body += chunk; });
         req.on('end', () => {
@@ -150,7 +197,7 @@ function strixBackendPlugin() {
             res.setHeader('Access-Control-Allow-Origin', '*');
             res.setHeader('Content-Type', 'application/json');
             res.statusCode = 200;
-            res.end(JSON.stringify({ success: true, config: saved }));
+            res.end(JSON.stringify({ success: true, config: getSanitizedServerConfig() }));
           } catch (e) {
             res.setHeader('Content-Type', 'application/json');
             res.statusCode = 400;
@@ -178,6 +225,12 @@ function strixBackendPlugin() {
       };
 
       server.middlewares.use('/api/llm/get-config', (req, res) => {
+        const session = getAuthenticatedSession(req);
+        if (!session) {
+          res.setHeader('Content-Type', 'application/json');
+          res.statusCode = 401;
+          return res.end(JSON.stringify({ success: false, error: 'Unauthorized' }));
+        }
         res.setHeader('Access-Control-Allow-Origin', '*');
         res.setHeader('Content-Type', 'application/json');
         res.statusCode = 200;
@@ -185,6 +238,12 @@ function strixBackendPlugin() {
       });
 
       server.middlewares.use('/api/llm/save-config', (req, res) => {
+        const session = getAuthenticatedSession(req);
+        if (!session || session.role !== 'admin') {
+          res.setHeader('Content-Type', 'application/json');
+          res.statusCode = 403;
+          return res.end(JSON.stringify({ success: false, error: 'Access Denied: Administrator privilege required.' }));
+        }
         let body = '';
         req.on('data', chunk => { body += chunk; });
         req.on('end', () => {
@@ -324,7 +383,7 @@ function strixBackendPlugin() {
         } catch (e) {}
       };
 
-      // Authenticate User Login
+      // Authenticate User Login & Issue Cryptographic Session Token
       server.middlewares.use('/api/auth/login', (req, res) => {
         if (req.method !== 'POST') {
           res.statusCode = 405;
@@ -371,9 +430,11 @@ function strixBackendPlugin() {
             delete sanitizedUser.altPassword;
             delete sanitizedUser.passwordHash;
 
+            const token = createSession(sanitizedUser);
+
             res.setHeader('Content-Type', 'application/json');
             res.statusCode = 200;
-            res.end(JSON.stringify({ success: true, user: sanitizedUser }));
+            res.end(JSON.stringify({ success: true, token, user: sanitizedUser }));
           } catch (e) {
             res.setHeader('Content-Type', 'application/json');
             res.statusCode = 400;
@@ -382,7 +443,39 @@ function strixBackendPlugin() {
         });
       });
 
+      // Verify Session Token (Frontend startup check)
+      server.middlewares.use('/api/auth/verify-session', (req, res) => {
+        const session = getAuthenticatedSession(req);
+        if (!session) {
+          res.setHeader('Content-Type', 'application/json');
+          res.statusCode = 401;
+          return res.end(JSON.stringify({ success: false, error: 'Invalid or expired session.' }));
+        }
+        res.setHeader('Content-Type', 'application/json');
+        res.statusCode = 200;
+        res.end(JSON.stringify({ success: true, user: session.user }));
+      });
+
+      // Revoke Session Token (Logout)
+      server.middlewares.use('/api/auth/logout', (req, res) => {
+        const authHeader = req.headers['authorization'] || '';
+        const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : (req.headers['x-auth-token'] || '');
+        if (token) {
+          activeSessions.delete(token);
+        }
+        res.setHeader('Content-Type', 'application/json');
+        res.statusCode = 200;
+        res.end(JSON.stringify({ success: true }));
+      });
+
+      // Admin-only User Management Routes
       server.middlewares.use('/api/users/get-users', (req, res) => {
+        const session = getAuthenticatedSession(req);
+        if (!session || session.role !== 'admin') {
+          res.setHeader('Content-Type', 'application/json');
+          res.statusCode = 403;
+          return res.end(JSON.stringify({ success: false, error: 'Access Denied: Administrator privilege required.' }));
+        }
         res.setHeader('Access-Control-Allow-Origin', '*');
         res.setHeader('Content-Type', 'application/json');
         res.statusCode = 200;
@@ -390,6 +483,12 @@ function strixBackendPlugin() {
       });
 
       server.middlewares.use('/api/users/save-users', (req, res) => {
+        const session = getAuthenticatedSession(req);
+        if (!session || session.role !== 'admin') {
+          res.setHeader('Content-Type', 'application/json');
+          res.statusCode = 403;
+          return res.end(JSON.stringify({ success: false, error: 'Access Denied: Administrator privilege required.' }));
+        }
         let body = '';
         req.on('data', chunk => { body += chunk; });
         req.on('end', () => {
@@ -411,14 +510,20 @@ function strixBackendPlugin() {
         });
       });
 
-      // 3.6 Full System Backup & Restore Routes
+      // 3.6 Full System Backup & Restore Routes (Admin-Only & Passwords Stripped)
       server.middlewares.use('/api/system/export-backup', (req, res) => {
+        const session = getAuthenticatedSession(req);
+        if (!session || session.role !== 'admin') {
+          res.setHeader('Content-Type', 'application/json');
+          res.statusCode = 403;
+          return res.end(JSON.stringify({ success: false, error: 'Access Denied: Administrator privilege required.' }));
+        }
         const backupData = {
           version: '1.0.0',
           exportedAt: new Date().toISOString(),
-          serverConfig: getGlobalServerConfig(),
+          serverConfig: getSanitizedServerConfig(),
           llmConfig: getGlobalLlmConfig(),
-          users: getGlobalUsers(),
+          users: getSanitizedUsers(),
           scans: getServerScanHistory()
         };
         res.setHeader('Access-Control-Allow-Origin', '*');
@@ -428,6 +533,12 @@ function strixBackendPlugin() {
       });
 
       server.middlewares.use('/api/system/import-backup', (req, res) => {
+        const session = getAuthenticatedSession(req);
+        if (!session || session.role !== 'admin') {
+          res.setHeader('Content-Type', 'application/json');
+          res.statusCode = 403;
+          return res.end(JSON.stringify({ success: false, error: 'Access Denied: Administrator privilege required.' }));
+        }
         let body = '';
         req.on('data', chunk => { body += chunk; });
         req.on('end', () => {
@@ -453,6 +564,12 @@ function strixBackendPlugin() {
 
       // 4. Test SSH Connection
       server.middlewares.use('/api/strix/test-ssh', async (req, res) => {
+        const session = getAuthenticatedSession(req);
+        if (!session) {
+          res.setHeader('Content-Type', 'application/json');
+          res.statusCode = 401;
+          return res.end(JSON.stringify({ success: false, error: 'Unauthorized: Valid session required.' }));
+        }
         if (req.method !== 'POST') {
           res.statusCode = 405;
           return res.end('Method Not Allowed');
@@ -477,6 +594,12 @@ function strixBackendPlugin() {
 
       // 3. Start Strix Scan on Ubuntu Server
       server.middlewares.use('/api/strix/start-scan', async (req, res) => {
+        const session = getAuthenticatedSession(req);
+        if (!session) {
+          res.setHeader('Content-Type', 'application/json');
+          res.statusCode = 401;
+          return res.end(JSON.stringify({ success: false, error: 'Unauthorized: Valid session required.' }));
+        }
         if (req.method !== 'POST') {
           res.statusCode = 405;
           return res.end('Method Not Allowed');
@@ -501,6 +624,12 @@ function strixBackendPlugin() {
 
       // 4. Stop / Abort Scan Immediately
       server.middlewares.use('/api/strix/stop-scan', async (req, res) => {
+        const session = getAuthenticatedSession(req);
+        if (!session) {
+          res.setHeader('Content-Type', 'application/json');
+          res.statusCode = 401;
+          return res.end(JSON.stringify({ success: false, error: 'Unauthorized: Valid session required.' }));
+        }
         if (req.method !== 'POST') {
           res.statusCode = 405;
           return res.end('Method Not Allowed');
@@ -525,6 +654,12 @@ function strixBackendPlugin() {
 
       // 5. Poll Scan Status and Live Logs (supports POST & GET on /api/strix/status and /api/strix/poll-status)
       const handlePollStatus = (req, res) => {
+        const session = getAuthenticatedSession(req);
+        if (!session) {
+          res.setHeader('Content-Type', 'application/json');
+          res.statusCode = 401;
+          return res.end(JSON.stringify({ success: false, error: 'Unauthorized: Valid session required.' }));
+        }
         if (req.method === 'GET') {
           const urlObj = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
           const scanId = urlObj.searchParams.get('scanId');
@@ -562,6 +697,12 @@ function strixBackendPlugin() {
 
       // 6. Send Interactive Stdin Input to Running Scan
       server.middlewares.use('/api/strix/send-input', async (req, res) => {
+        const session = getAuthenticatedSession(req);
+        if (!session) {
+          res.setHeader('Content-Type', 'application/json');
+          res.statusCode = 401;
+          return res.end(JSON.stringify({ success: false, error: 'Unauthorized: Valid session required.' }));
+        }
         if (req.method !== 'POST') {
           res.statusCode = 405;
           return res.end('Method Not Allowed');
@@ -586,6 +727,12 @@ function strixBackendPlugin() {
 
       // 7. Fetch Real Findings from Remote Ubuntu Server for a Target
       server.middlewares.use('/api/strix/fetch-results', async (req, res) => {
+        const session = getAuthenticatedSession(req);
+        if (!session) {
+          res.setHeader('Content-Type', 'application/json');
+          res.statusCode = 401;
+          return res.end(JSON.stringify({ success: false, error: 'Unauthorized: Valid session required.' }));
+        }
         let body = '';
         req.on('data', chunk => { body += chunk; });
         req.on('end', async () => {
@@ -611,6 +758,12 @@ function strixBackendPlugin() {
 
       // 8. Fetch ALL Scan Runs from Server Archive
       server.middlewares.use('/api/strix/fetch-all-runs', async (req, res) => {
+        const session = getAuthenticatedSession(req);
+        if (!session) {
+          res.setHeader('Content-Type', 'application/json');
+          res.statusCode = 401;
+          return res.end(JSON.stringify({ success: false, error: 'Unauthorized: Valid session required.' }));
+        }
         let body = '';
         req.on('data', chunk => { body += chunk; });
         req.on('end', async () => {
@@ -636,6 +789,12 @@ function strixBackendPlugin() {
 
       // 9. Ingest and Parse Local Strix Output Folder on User PC/Laptop (All 7 Files Engine)
       server.middlewares.use('/api/strix/parse-local-folder', async (req, res) => {
+        const session = getAuthenticatedSession(req);
+        if (!session) {
+          res.setHeader('Content-Type', 'application/json');
+          res.statusCode = 401;
+          return res.end(JSON.stringify({ success: false, error: 'Unauthorized: Valid session required.' }));
+        }
         if (req.method !== 'POST') {
           res.statusCode = 405;
           return res.end('Method Not Allowed');
@@ -666,6 +825,12 @@ function strixBackendPlugin() {
 
       // 10. Trigger n8n Webhook Scanner with dynamic domain & credentials
       server.middlewares.use('/api/strix/trigger-n8n', async (req, res) => {
+        const session = getAuthenticatedSession(req);
+        if (!session) {
+          res.setHeader('Content-Type', 'application/json');
+          res.statusCode = 401;
+          return res.end(JSON.stringify({ success: false, error: 'Unauthorized: Valid session required.' }));
+        }
         if (req.method !== 'POST') {
           res.statusCode = 405;
           return res.end('Method Not Allowed');
@@ -690,6 +855,12 @@ function strixBackendPlugin() {
 
       // 11. List all available downloaded Strix scan folders on user computer
       server.middlewares.use('/api/strix/list-local-folders', (req, res) => {
+        const session = getAuthenticatedSession(req);
+        if (!session) {
+          res.setHeader('Content-Type', 'application/json');
+          res.statusCode = 401;
+          return res.end(JSON.stringify({ success: false, error: 'Unauthorized: Valid session required.', folders: [] }));
+        }
         try {
           const folders = listLocalScanFolders();
           res.setHeader('Content-Type', 'application/json');
@@ -704,6 +875,12 @@ function strixBackendPlugin() {
 
       // 12. Fetch and download scan results ZIP from n8n webhook
       server.middlewares.use('/api/strix/fetch-n8n-results', async (req, res) => {
+        const session = getAuthenticatedSession(req);
+        if (!session) {
+          res.setHeader('Content-Type', 'application/json');
+          res.statusCode = 401;
+          return res.end(JSON.stringify({ success: false, error: 'Unauthorized: Valid session required.' }));
+        }
         if (req.method !== 'POST') {
           res.statusCode = 405;
           return res.end('Method Not Allowed');
@@ -728,6 +905,12 @@ function strixBackendPlugin() {
 
       // 12.5 Upload and Ingest Scan Archive (.ZIP) from Downloads
       server.middlewares.use('/api/strix/upload-scan-zip', async (req, res) => {
+        const session = getAuthenticatedSession(req);
+        if (!session) {
+          res.setHeader('Content-Type', 'application/json');
+          res.statusCode = 401;
+          return res.end(JSON.stringify({ success: false, error: 'Unauthorized: Valid session required.' }));
+        }
         if (req.method !== 'POST') {
           res.statusCode = 405;
           return res.end('Method Not Allowed');
@@ -752,6 +935,12 @@ function strixBackendPlugin() {
 
       // 13. Test n8n Fetch Webhook diagnostic connectivity
       server.middlewares.use('/api/strix/test-n8n-fetch', async (req, res) => {
+        const session = getAuthenticatedSession(req);
+        if (!session) {
+          res.setHeader('Content-Type', 'application/json');
+          res.statusCode = 401;
+          return res.end(JSON.stringify({ success: false, error: 'Unauthorized: Valid session required.' }));
+        }
         if (req.method !== 'POST') {
           res.statusCode = 405;
           return res.end('Method Not Allowed');
@@ -776,6 +965,12 @@ function strixBackendPlugin() {
 
       // 14. Directly fetch any arbitrary file from server root
       server.middlewares.use('/api/strix/fetch-server-file', async (req, res) => {
+        const session = getAuthenticatedSession(req);
+        if (!session) {
+          res.setHeader('Content-Type', 'application/json');
+          res.statusCode = 401;
+          return res.end(JSON.stringify({ success: false, error: 'Unauthorized: Valid session required.' }));
+        }
         if (req.method !== 'POST') {
           res.statusCode = 405;
           return res.end('Method Not Allowed');

@@ -40,7 +40,8 @@ import {
   createNewUser, 
   deleteUser,
   ALL_PERMISSIONS, 
-  getActiveSessionCount 
+  getActiveSessionCount,
+  getAuthHeaders
 } from '../utils/auth';
 
 export default function AdminUserManagement({ 
@@ -164,7 +165,9 @@ export default function AdminUserManagement({
           <button
             onClick={async () => {
               try {
-                const res = await fetch('/api/system/export-backup');
+                const res = await fetch('/api/system/export-backup', {
+                  headers: { ...getAuthHeaders() }
+                });
                 if (res.ok) {
                   const data = await res.json();
                   const blob = new Blob([JSON.stringify(data.backup || data, null, 2)], { type: 'application/json' });
@@ -175,6 +178,8 @@ export default function AdminUserManagement({
                   a.click();
                   URL.revokeObjectURL(url);
                   showFeedback('System Snapshot Backup Downloaded Successfully!');
+                } else {
+                  throw new Error('Export API rejected (Requires Admin privileges)');
                 }
               } catch (e) {
                 showFeedback(`Backup Export Failed: ${e.message}`);
@@ -211,14 +216,17 @@ export default function AdminUserManagement({
                   const json = JSON.parse(text);
                   const res = await fetch('/api/system/import-backup', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: {
+                      'Content-Type': 'application/json',
+                      ...getAuthHeaders()
+                    },
                     body: JSON.stringify(json)
                   });
                   if (res.ok) {
                     showFeedback('System Snapshot Restored! Refreshing data...');
                     setTimeout(() => window.location.reload(), 1200);
                   } else {
-                    throw new Error('Import API failed');
+                    throw new Error('Import API failed (Requires Admin privileges)');
                   }
                 } catch (err) {
                   showFeedback(`Import Failed: ${err.message}`);

@@ -1,4 +1,5 @@
 import { SCAN_METADATA, VULNERABILITIES } from './scanData';
+import { getAuthHeaders } from '../utils/auth';
 
 export const SMECO_VULNERABILITIES = [
   {
@@ -507,22 +508,27 @@ export function saveScanHistory(historyList) {
     console.error('Error saving scan history to localStorage:', e);
   }
 
-  // Persist to backend server / GCP Cloud Run so all sessions see the latest scans
+  // Persist to backend server so all sessions see the latest scans
   try {
     fetch('/api/scans/save-history', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAuthHeaders()
+      },
       body: JSON.stringify(historyList)
     }).catch(err => console.warn('Note syncing scan history to backend:', err.message));
   } catch (_) {}
 }
 
 /**
- * Fetch and merge scan history from the backend server / GCP cloud storage
+ * Fetch and merge scan history from the backend server
  */
 export async function syncScanHistoryWithServer() {
   try {
-    const res = await fetch('/api/scans/get-history');
+    const res = await fetch('/api/scans/get-history', {
+      headers: { ...getAuthHeaders() }
+    });
     if (res.ok) {
       const data = await res.json();
       const local = getStoredScanHistory();

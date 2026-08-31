@@ -1,6 +1,7 @@
 import http from 'http';
 import fs from 'fs';
 import path from 'path';
+import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import { 
   testSshConnection, 
@@ -19,6 +20,7 @@ import {
   testN8nFetchWebhookProxy,
   fetchServerFileProxy,
   getGlobalServerConfig,
+  getSanitizedServerConfig,
   saveGlobalServerConfig
 } from './src/server/strixBackend.js';
 
@@ -30,6 +32,7 @@ const HOST = '0.0.0.0';
 const DIST_DIR = path.join(__dirname, 'dist');
 const SCANS_CACHE_FILE = path.join(__dirname, '.scans_cache.json');
 const LLM_CONFIG_FILE = path.join(__dirname, '.llm_config.json');
+const USERS_STORE_FILE = path.join(__dirname, '.users_store.json');
 
 // MIME types dictionary for static file serving
 const MIME_TYPES = {
@@ -51,10 +54,6 @@ const MIME_TYPES = {
   '.txt': 'text/plain; charset=utf-8'
 };
 
-const DEFAULT_SCANS_FILE = path.join(__dirname, 'data_defaults', 'default_scans.json');
-const DEFAULT_LLM_FILE = path.join(__dirname, 'data_defaults', 'default_llm_config.json');
-const DEFAULT_USERS_FILE = path.join(__dirname, 'data_defaults', 'default_users.json');
-
 // Global Server-Side Scan Cache Helper
 function getServerScanHistory() {
   try {
@@ -62,16 +61,6 @@ function getServerScanHistory() {
       const data = JSON.parse(fs.readFileSync(SCANS_CACHE_FILE, 'utf-8'));
       if (Array.isArray(data) && data.length > 0) return data;
       if (data && Array.isArray(data.scans) && data.scans.length > 0) return data.scans;
-    }
-    if (fs.existsSync(DEFAULT_SCANS_FILE)) {
-      const data = JSON.parse(fs.readFileSync(DEFAULT_SCANS_FILE, 'utf-8'));
-      const scans = Array.isArray(data) ? data : (data?.scans || []);
-      if (scans.length > 0) {
-        try {
-          fs.writeFileSync(SCANS_CACHE_FILE, JSON.stringify(scans, null, 2), 'utf-8');
-        } catch (_) {}
-        return scans;
-      }
     }
   } catch (e) {
     console.warn('Note reading server scan history:', e.message);
@@ -82,9 +71,6 @@ function getServerScanHistory() {
 function saveServerScanHistory(scans) {
   try {
     fs.writeFileSync(SCANS_CACHE_FILE, JSON.stringify(scans, null, 2), 'utf-8');
-    if (fs.existsSync(path.dirname(DEFAULT_SCANS_FILE))) {
-      fs.writeFileSync(DEFAULT_SCANS_FILE, JSON.stringify(scans, null, 2), 'utf-8');
-    }
     return true;
   } catch (e) {
     console.error('Error saving server scan history:', e.message);
@@ -98,13 +84,6 @@ function getGlobalLlmConfig() {
     if (fs.existsSync(LLM_CONFIG_FILE)) {
       return JSON.parse(fs.readFileSync(LLM_CONFIG_FILE, 'utf-8'));
     }
-    if (fs.existsSync(DEFAULT_LLM_FILE)) {
-      const data = JSON.parse(fs.readFileSync(DEFAULT_LLM_FILE, 'utf-8'));
-      try {
-        fs.writeFileSync(LLM_CONFIG_FILE, JSON.stringify(data, null, 2), 'utf-8');
-      } catch (_) {}
-      return data;
-    }
   } catch (e) {}
   return null;
 }
@@ -112,15 +91,10 @@ function getGlobalLlmConfig() {
 function saveGlobalLlmConfig(conf) {
   try {
     fs.writeFileSync(LLM_CONFIG_FILE, JSON.stringify(conf, null, 2), 'utf-8');
-    if (fs.existsSync(path.dirname(DEFAULT_LLM_FILE))) {
-      fs.writeFileSync(DEFAULT_LLM_FILE, JSON.stringify(conf, null, 2), 'utf-8');
-    }
   } catch (e) {}
 }
 
 // Global Users Store Helper
-const USERS_STORE_FILE = path.join(__dirname, '.users_store.json');
-
 const getDefaultUsersSeed = () => [
   {
     id: 'admin',
@@ -242,6 +216,34 @@ function saveGlobalUsersStore(users) {
   }
 }
 
+// In-Memory Cryptographic Session Registry
+const activeSessions = new Map(); // token -> { user, role, token, expiresAt }
+
+function createSession(user) {
+  const token = crypto.randomBytes(32).toString('hex');
+  const session = {
+    token,
+    user,
+    role: user.role,
+    expiresAt: Date.now() + 24 * 60 * 60 * 1000 // 24 hours
+  };
+  activeSessions.set(token, session);
+  return token;
+}
+
+function getAuthenticatedSession(req) {
+  const authHeader = req.headers['authorization'] || req.headers['Authorization'] || '';
+  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : (req.headers['x-auth-token'] || '');
+  if (!token) return null;
+  const session = activeSessions.get(token);
+  if (!session) return null;
+  if (session.expiresAt && Date.now() > session.expiresAt) {
+    activeSessions.delete(token);
+    return null;
+  }
+  return session;
+}
+
 // Helper to parse JSON body
 function parseJsonBody(req) {
   return new Promise((resolve, reject) => {
@@ -278,103 +280,13 @@ const server = http.createServer(async (req, res) => {
   // ==========================================
 
   // 1. Health Check
-  if (pathname === '/health' || pathname === '/api/health') {
+  if (pathname === '/health' || pathname === '/api/health' || pathname === '/healthz' || pathname === '/_health') {
     res.setHeader('Content-Type', 'application/json');
     res.statusCode = 200;
     return res.end(JSON.stringify({ status: 'ok', uptime: process.uptime(), timestamp: new Date().toISOString() }));
   }
 
-  // 0. Cloud Run & Container Health Check Endpoint
-  if (pathname === '/healthz' || pathname === '/health' || pathname === '/_health') {
-    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-    res.statusCode = 200;
-    return res.end('OK');
-  }
-
-  // 1. Downloaded Scan Files Listing Routery Sync
-  if (pathname === '/api/scans/get-history') {
-    res.setHeader('Content-Type', 'application/json');
-    res.statusCode = 200;
-    return res.end(JSON.stringify({ success: true, scans: getServerScanHistory() }));
-  }
-
-  if (pathname === '/api/scans/save-history') {
-    const payload = await parseJsonBody(req);
-    const scansList = Array.isArray(payload) ? payload : (payload.scans || []);
-    const ok = saveServerScanHistory(scansList);
-    res.setHeader('Content-Type', 'application/json');
-    res.statusCode = ok ? 200 : 500;
-    return res.end(JSON.stringify({ success: ok, count: scansList.length }));
-  }
-
-  // 3. LLM Proxy Route
-  if (pathname === '/api/llm-proxy') {
-    if (req.method !== 'POST') {
-      res.statusCode = 405;
-      return res.end('Method Not Allowed');
-    }
-    try {
-      const { targetUrl, headers, data } = await parseJsonBody(req);
-      const fetchRes = await fetch(targetUrl, {
-        method: 'POST',
-        headers: headers || { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data)
-      });
-      const status = fetchRes.status;
-      const resText = await fetchRes.text();
-      res.setHeader('Content-Type', 'application/json');
-      res.statusCode = status;
-      return res.end(resText);
-    } catch (err) {
-      res.setHeader('Content-Type', 'application/json');
-      res.statusCode = 500;
-      return res.end(JSON.stringify({ error: err.message }));
-    }
-  }
-
-  // 4. Strix Config Routes
-  if (pathname === '/api/strix/get-config') {
-    res.setHeader('Content-Type', 'application/json');
-    res.statusCode = 200;
-    return res.end(JSON.stringify({ success: true, config: getGlobalServerConfig() }));
-  }
-
-  if (pathname === '/api/strix/save-config') {
-    try {
-      const newConf = await parseJsonBody(req);
-      const saved = saveGlobalServerConfig(newConf);
-      res.setHeader('Content-Type', 'application/json');
-      res.statusCode = 200;
-      return res.end(JSON.stringify({ success: true, config: saved }));
-    } catch (e) {
-      res.setHeader('Content-Type', 'application/json');
-      res.statusCode = 400;
-      return res.end(JSON.stringify({ success: false, error: e.message }));
-    }
-  }
-
-  // 5. LLM Config Routes
-  if (pathname === '/api/llm/get-config') {
-    res.setHeader('Content-Type', 'application/json');
-    res.statusCode = 200;
-    return res.end(JSON.stringify({ success: true, config: getGlobalLlmConfig() }));
-  }
-
-  if (pathname === '/api/llm/save-config') {
-    try {
-      const conf = await parseJsonBody(req);
-      saveGlobalLlmConfig(conf);
-      res.setHeader('Content-Type', 'application/json');
-      res.statusCode = 200;
-      return res.end(JSON.stringify({ success: true, config: conf }));
-    } catch (e) {
-      res.setHeader('Content-Type', 'application/json');
-      res.statusCode = 400;
-      return res.end(JSON.stringify({ success: false, error: e.message }));
-    }
-  }
-
-  // 5.5 Users Store & Auth Routes
+  // 2. Authentication & Session Verification Routes
   if (pathname === '/api/auth/login' && req.method === 'POST') {
     try {
       const { username, password, selectedRole } = await parseJsonBody(req);
@@ -410,9 +322,11 @@ const server = http.createServer(async (req, res) => {
       delete sanitizedUser.altPassword;
       delete sanitizedUser.passwordHash;
 
+      const token = createSession(sanitizedUser);
+
       res.setHeader('Content-Type', 'application/json');
       res.statusCode = 200;
-      return res.end(JSON.stringify({ success: true, user: sanitizedUser }));
+      return res.end(JSON.stringify({ success: true, token, user: sanitizedUser }));
     } catch (e) {
       res.setHeader('Content-Type', 'application/json');
       res.statusCode = 400;
@@ -420,13 +334,174 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
+  if (pathname === '/api/auth/verify-session') {
+    const session = getAuthenticatedSession(req);
+    if (!session) {
+      res.setHeader('Content-Type', 'application/json');
+      res.statusCode = 401;
+      return res.end(JSON.stringify({ success: false, error: 'Invalid or expired session.' }));
+    }
+    res.setHeader('Content-Type', 'application/json');
+    res.statusCode = 200;
+    return res.end(JSON.stringify({ success: true, user: session.user }));
+  }
+
+  if (pathname === '/api/auth/logout') {
+    const authHeader = req.headers['authorization'] || '';
+    const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : (req.headers['x-auth-token'] || '');
+    if (token) {
+      activeSessions.delete(token);
+    }
+    res.setHeader('Content-Type', 'application/json');
+    res.statusCode = 200;
+    return res.end(JSON.stringify({ success: true }));
+  }
+
+  // 3. Scan History Routes (Protected)
+  if (pathname === '/api/scans/get-history') {
+    const session = getAuthenticatedSession(req);
+    if (!session) {
+      res.setHeader('Content-Type', 'application/json');
+      res.statusCode = 401;
+      return res.end(JSON.stringify({ success: false, error: 'Unauthorized: Valid session required.' }));
+    }
+    res.setHeader('Content-Type', 'application/json');
+    res.statusCode = 200;
+    return res.end(JSON.stringify({ success: true, scans: getServerScanHistory() }));
+  }
+
+  if (pathname === '/api/scans/save-history') {
+    const session = getAuthenticatedSession(req);
+    if (!session) {
+      res.setHeader('Content-Type', 'application/json');
+      res.statusCode = 401;
+      return res.end(JSON.stringify({ success: false, error: 'Unauthorized: Valid session required.' }));
+    }
+    const payload = await parseJsonBody(req);
+    const scansList = Array.isArray(payload) ? payload : (payload.scans || []);
+    const ok = saveServerScanHistory(scansList);
+    res.setHeader('Content-Type', 'application/json');
+    res.statusCode = ok ? 200 : 500;
+    return res.end(JSON.stringify({ success: ok, count: scansList.length }));
+  }
+
+  // 4. LLM Proxy Route (Protected)
+  if (pathname === '/api/llm-proxy') {
+    const session = getAuthenticatedSession(req);
+    if (!session) {
+      res.setHeader('Content-Type', 'application/json');
+      res.statusCode = 401;
+      return res.end(JSON.stringify({ error: 'Unauthorized: Valid session required.' }));
+    }
+    if (req.method !== 'POST') {
+      res.statusCode = 405;
+      return res.end('Method Not Allowed');
+    }
+    try {
+      const { targetUrl, headers, data } = await parseJsonBody(req);
+      const fetchRes = await fetch(targetUrl, {
+        method: 'POST',
+        headers: headers || { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      });
+      const status = fetchRes.status;
+      const resText = await fetchRes.text();
+      res.setHeader('Content-Type', 'application/json');
+      res.statusCode = status;
+      return res.end(resText);
+    } catch (err) {
+      res.setHeader('Content-Type', 'application/json');
+      res.statusCode = 500;
+      return res.end(JSON.stringify({ error: err.message }));
+    }
+  }
+
+  // 5. Strix Config Routes (Protected & Redacted)
+  if (pathname === '/api/strix/get-config') {
+    const session = getAuthenticatedSession(req);
+    if (!session) {
+      res.setHeader('Content-Type', 'application/json');
+      res.statusCode = 401;
+      return res.end(JSON.stringify({ success: false, error: 'Unauthorized: Valid session required.' }));
+    }
+    res.setHeader('Content-Type', 'application/json');
+    res.statusCode = 200;
+    return res.end(JSON.stringify({ success: true, config: getSanitizedServerConfig() }));
+  }
+
+  if (pathname === '/api/strix/save-config') {
+    const session = getAuthenticatedSession(req);
+    if (!session || session.role !== 'admin') {
+      res.setHeader('Content-Type', 'application/json');
+      res.statusCode = 403;
+      return res.end(JSON.stringify({ success: false, error: 'Access Denied: Administrator privilege required.' }));
+    }
+    try {
+      const newConf = await parseJsonBody(req);
+      const saved = saveGlobalServerConfig(newConf);
+      res.setHeader('Content-Type', 'application/json');
+      res.statusCode = 200;
+      return res.end(JSON.stringify({ success: true, config: getSanitizedServerConfig() }));
+    } catch (e) {
+      res.setHeader('Content-Type', 'application/json');
+      res.statusCode = 400;
+      return res.end(JSON.stringify({ success: false, error: e.message }));
+    }
+  }
+
+  // 6. LLM Config Routes (Protected)
+  if (pathname === '/api/llm/get-config') {
+    const session = getAuthenticatedSession(req);
+    if (!session) {
+      res.setHeader('Content-Type', 'application/json');
+      res.statusCode = 401;
+      return res.end(JSON.stringify({ success: false, error: 'Unauthorized: Valid session required.' }));
+    }
+    res.setHeader('Content-Type', 'application/json');
+    res.statusCode = 200;
+    return res.end(JSON.stringify({ success: true, config: getGlobalLlmConfig() }));
+  }
+
+  if (pathname === '/api/llm/save-config') {
+    const session = getAuthenticatedSession(req);
+    if (!session || session.role !== 'admin') {
+      res.setHeader('Content-Type', 'application/json');
+      res.statusCode = 403;
+      return res.end(JSON.stringify({ success: false, error: 'Access Denied: Administrator privilege required.' }));
+    }
+    try {
+      const conf = await parseJsonBody(req);
+      saveGlobalLlmConfig(conf);
+      res.setHeader('Content-Type', 'application/json');
+      res.statusCode = 200;
+      return res.end(JSON.stringify({ success: true, config: conf }));
+    } catch (e) {
+      res.setHeader('Content-Type', 'application/json');
+      res.statusCode = 400;
+      return res.end(JSON.stringify({ success: false, error: e.message }));
+    }
+  }
+
+  // 7. Users Management Routes (Admin Only)
   if (pathname === '/api/users/get-users') {
+    const session = getAuthenticatedSession(req);
+    if (!session || session.role !== 'admin') {
+      res.setHeader('Content-Type', 'application/json');
+      res.statusCode = 403;
+      return res.end(JSON.stringify({ success: false, error: 'Access Denied: Administrator privilege required.' }));
+    }
     res.setHeader('Content-Type', 'application/json');
     res.statusCode = 200;
     return res.end(JSON.stringify({ success: true, users: getSanitizedUsersStore() }));
   }
 
   if (pathname === '/api/users/save-users') {
+    const session = getAuthenticatedSession(req);
+    if (!session || session.role !== 'admin') {
+      res.setHeader('Content-Type', 'application/json');
+      res.statusCode = 403;
+      return res.end(JSON.stringify({ success: false, error: 'Access Denied: Administrator privilege required.' }));
+    }
     try {
       const data = await parseJsonBody(req);
       const users = Array.isArray(data) ? data : data.users;
@@ -443,14 +518,20 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
-  // 5.6 Full System Backup & Restore Routes
+  // 8. Full System Backup & Restore Routes (Admin Only & Passwords Redacted)
   if (pathname === '/api/system/export-backup') {
+    const session = getAuthenticatedSession(req);
+    if (!session || session.role !== 'admin') {
+      res.setHeader('Content-Type', 'application/json');
+      res.statusCode = 403;
+      return res.end(JSON.stringify({ success: false, error: 'Access Denied: Administrator privilege required.' }));
+    }
     const backupData = {
       version: '1.0.0',
       exportedAt: new Date().toISOString(),
-      serverConfig: getGlobalServerConfig(),
+      serverConfig: getSanitizedServerConfig(),
       llmConfig: getGlobalLlmConfig(),
-      users: getGlobalUsersStore(),
+      users: getSanitizedUsersStore(),
       scans: getServerScanHistory()
     };
     res.setHeader('Content-Type', 'application/json');
@@ -459,6 +540,12 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (pathname === '/api/system/import-backup') {
+    const session = getAuthenticatedSession(req);
+    if (!session || session.role !== 'admin') {
+      res.setHeader('Content-Type', 'application/json');
+      res.statusCode = 403;
+      return res.end(JSON.stringify({ success: false, error: 'Access Denied: Administrator privilege required.' }));
+    }
     try {
       const data = await parseJsonBody(req);
       const backup = data.backup || data;
@@ -477,206 +564,217 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
-  // 6. Test SSH Connection
-  if (pathname === '/api/strix/test-ssh') {
-    try {
-      const config = await parseJsonBody(req);
-      const result = await testSshConnection(config);
+  // 9. Strix Scan Operation Routes (Protected with Session Auth)
+  if (pathname.startsWith('/api/strix/')) {
+    const session = getAuthenticatedSession(req);
+    if (!session) {
       res.setHeader('Content-Type', 'application/json');
-      res.statusCode = 200;
-      return res.end(JSON.stringify(result));
-    } catch (err) {
-      res.setHeader('Content-Type', 'application/json');
-      res.statusCode = 400;
-      return res.end(JSON.stringify({ success: false, error: err.message }));
+      res.statusCode = 401;
+      return res.end(JSON.stringify({ success: false, error: 'Unauthorized: Valid session required.' }));
     }
-  }
 
-  // 7. Start Strix Scan on Server
-  if (pathname === '/api/strix/start-scan') {
-    try {
-      const payload = await parseJsonBody(req);
-      const result = await startRemoteStrixScan(payload);
-      res.setHeader('Content-Type', 'application/json');
-      res.statusCode = 200;
-      return res.end(JSON.stringify(result));
-    } catch (err) {
-      res.setHeader('Content-Type', 'application/json');
-      res.statusCode = 500;
-      return res.end(JSON.stringify({ error: err.message }));
-    }
-  }
-
-  // 8. Stop Scan
-  if (pathname === '/api/strix/stop-scan') {
-    try {
-      const { scanId } = await parseJsonBody(req);
-      const result = stopRemoteStrixScan(scanId);
-      res.setHeader('Content-Type', 'application/json');
-      res.statusCode = 200;
-      return res.end(JSON.stringify(result));
-    } catch (err) {
-      res.setHeader('Content-Type', 'application/json');
-      res.statusCode = 500;
-      return res.end(JSON.stringify({ error: err.message }));
-    }
-  }
-
-  // 9. Poll Status
-  if (pathname === '/api/strix/status' || pathname === '/api/strix/poll-status') {
-    try {
-      let scanId = parsedUrl.searchParams.get('scanId');
-      if (!scanId && req.method === 'POST') {
-        const body = await parseJsonBody(req);
-        scanId = body.scanId;
-      }
-      const result = getScanSession(scanId);
-      res.setHeader('Content-Type', 'application/json');
-      res.statusCode = 200;
-      return res.end(JSON.stringify(result || { status: 'idle', logs: [], stats: {} }));
-    } catch (err) {
-      res.setHeader('Content-Type', 'application/json');
-      res.statusCode = 500;
-      return res.end(JSON.stringify({ error: err.message }));
-    }
-  }
-
-  // 10. Fetch Remote Results
-  if (pathname === '/api/strix/fetch-results') {
-    try {
-      const config = await parseJsonBody(req);
-      const data = await fetchRemoteStrixResults(config, config.targetUrl, config.runDir);
-      res.setHeader('Content-Type', 'application/json');
-      res.statusCode = 200;
-      return res.end(JSON.stringify({ success: true, data }));
-    } catch (err) {
-      res.setHeader('Content-Type', 'application/json');
-      res.statusCode = 400;
-      return res.end(JSON.stringify({ success: false, error: err.message }));
-    }
-  }
-
-  // 11. Fetch All Remote Scan Runs
-  if (pathname === '/api/strix/fetch-all-runs') {
-    try {
-      const config = await parseJsonBody(req);
-      const runs = await fetchAllRemoteScanRuns(config);
-      res.setHeader('Content-Type', 'application/json');
-      res.statusCode = 200;
-      return res.end(JSON.stringify({ success: true, runs }));
-    } catch (err) {
-      res.setHeader('Content-Type', 'application/json');
-      res.statusCode = 400;
-      return res.end(JSON.stringify({ success: false, error: err.message }));
-    }
-  }
-
-  // 12. Parse Local Folder
-  if (pathname === '/api/strix/parse-local-folder') {
-    try {
-      const { folderPath } = await parseJsonBody(req);
-      if (!folderPath) {
+    if (pathname === '/api/strix/test-ssh') {
+      try {
+        const config = await parseJsonBody(req);
+        const result = await testSshConnection(config);
+        res.setHeader('Content-Type', 'application/json');
+        res.statusCode = 200;
+        return res.end(JSON.stringify(result));
+      } catch (err) {
         res.setHeader('Content-Type', 'application/json');
         res.statusCode = 400;
-        return res.end(JSON.stringify({ success: false, error: 'Folder name or path is required.' }));
+        return res.end(JSON.stringify({ success: false, error: err.message }));
       }
-      const result = parseLocalStrixFolder(folderPath);
-      res.setHeader('Content-Type', 'application/json');
-      res.statusCode = 200;
-      return res.end(JSON.stringify({ success: true, data: result }));
-    } catch (err) {
-      res.setHeader('Content-Type', 'application/json');
-      res.statusCode = 400;
-      return res.end(JSON.stringify({ success: false, error: err.message }));
     }
-  }
 
-  // 13. Trigger n8n Scan
-  if (pathname === '/api/strix/trigger-n8n') {
-    try {
-      const payload = await parseJsonBody(req);
-      const result = await triggerN8nScanProxy(payload);
-      res.setHeader('Content-Type', 'application/json');
-      res.statusCode = 200;
-      return res.end(JSON.stringify(result));
-    } catch (err) {
-      res.setHeader('Content-Type', 'application/json');
-      res.statusCode = 500;
-      return res.end(JSON.stringify({ success: false, error: err.message }));
+    if (pathname === '/api/strix/start-scan') {
+      try {
+        const payload = await parseJsonBody(req);
+        const result = await startRemoteStrixScan(payload);
+        res.setHeader('Content-Type', 'application/json');
+        res.statusCode = 200;
+        return res.end(JSON.stringify(result));
+      } catch (err) {
+        res.setHeader('Content-Type', 'application/json');
+        res.statusCode = 500;
+        return res.end(JSON.stringify({ error: err.message }));
+      }
     }
-  }
 
-  // 14. List Local Folders
-  if (pathname === '/api/strix/list-local-folders') {
-    try {
-      const folders = listLocalScanFolders();
-      res.setHeader('Content-Type', 'application/json');
-      res.statusCode = 200;
-      return res.end(JSON.stringify({ success: true, folders }));
-    } catch (err) {
-      res.setHeader('Content-Type', 'application/json');
-      res.statusCode = 500;
-      return res.end(JSON.stringify({ success: false, error: err.message, folders: [] }));
+    if (pathname === '/api/strix/stop-scan') {
+      try {
+        const { scanId } = await parseJsonBody(req);
+        const result = stopRemoteStrixScan(scanId);
+        res.setHeader('Content-Type', 'application/json');
+        res.statusCode = 200;
+        return res.end(JSON.stringify(result));
+      } catch (err) {
+        res.setHeader('Content-Type', 'application/json');
+        res.statusCode = 500;
+        return res.end(JSON.stringify({ error: err.message }));
+      }
     }
-  }
 
-  // 15. Fetch n8n Scan Results ZIP
-  if (pathname === '/api/strix/fetch-n8n-results') {
-    try {
-      const payload = await parseJsonBody(req);
-      const result = await fetchN8nScanResultsProxy(payload);
-      res.setHeader('Content-Type', 'application/json');
-      res.statusCode = 200;
-      return res.end(JSON.stringify(result));
-    } catch (err) {
-      res.setHeader('Content-Type', 'application/json');
-      res.statusCode = 500;
-      return res.end(JSON.stringify({ success: false, error: err.message }));
+    if (pathname === '/api/strix/status' || pathname === '/api/strix/poll-status') {
+      try {
+        let scanId = parsedUrl.searchParams.get('scanId');
+        if (!scanId && req.method === 'POST') {
+          const body = await parseJsonBody(req);
+          scanId = body.scanId;
+        }
+        const result = getScanSession(scanId);
+        res.setHeader('Content-Type', 'application/json');
+        res.statusCode = 200;
+        return res.end(JSON.stringify(result || { status: 'idle', logs: [], stats: {} }));
+      } catch (err) {
+        res.setHeader('Content-Type', 'application/json');
+        res.statusCode = 500;
+        return res.end(JSON.stringify({ error: err.message }));
+      }
     }
-  }
 
-  // 15.5 Upload Scan ZIP from user downloads
-  if (pathname === '/api/strix/upload-scan-zip') {
-    try {
-      const payload = await parseJsonBody(req);
-      const result = await uploadScanZipProxy(payload);
-      res.setHeader('Content-Type', 'application/json');
-      res.statusCode = 200;
-      return res.end(JSON.stringify(result));
-    } catch (err) {
-      res.setHeader('Content-Type', 'application/json');
-      res.statusCode = 500;
-      return res.end(JSON.stringify({ success: false, error: err.message }));
+    if (pathname === '/api/strix/send-input') {
+      try {
+        const { scanId, input } = await parseJsonBody(req);
+        const result = sendInputToScanSession(scanId, input);
+        res.setHeader('Content-Type', 'application/json');
+        res.statusCode = 200;
+        return res.end(JSON.stringify(result));
+      } catch (err) {
+        res.setHeader('Content-Type', 'application/json');
+        res.statusCode = 500;
+        return res.end(JSON.stringify({ error: err.message }));
+      }
     }
-  }
 
-  // 16. Test n8n Fetch Webhook
-  if (pathname === '/api/strix/test-n8n-fetch') {
-    try {
-      const payload = await parseJsonBody(req);
-      const result = await testN8nFetchWebhookProxy(payload);
-      res.setHeader('Content-Type', 'application/json');
-      res.statusCode = 200;
-      return res.end(JSON.stringify(result));
-    } catch (err) {
-      res.setHeader('Content-Type', 'application/json');
-      res.statusCode = 500;
-      return res.end(JSON.stringify({ success: false, error: err.message }));
+    if (pathname === '/api/strix/fetch-results') {
+      try {
+        const config = await parseJsonBody(req);
+        const data = await fetchRemoteStrixResults(config, config.targetUrl, config.runDir);
+        res.setHeader('Content-Type', 'application/json');
+        res.statusCode = 200;
+        return res.end(JSON.stringify({ success: true, data }));
+      } catch (err) {
+        res.setHeader('Content-Type', 'application/json');
+        res.statusCode = 400;
+        return res.end(JSON.stringify({ success: false, error: err.message }));
+      }
     }
-  }
 
-  // 17. Fetch Server File
-  if (pathname === '/api/strix/fetch-server-file') {
-    try {
-      const payload = await parseJsonBody(req);
-      const result = await fetchServerFileProxy(payload);
-      res.setHeader('Content-Type', 'application/json');
-      res.statusCode = 200;
-      return res.end(JSON.stringify(result));
-    } catch (err) {
-      res.setHeader('Content-Type', 'application/json');
-      res.statusCode = 500;
-      return res.end(JSON.stringify({ success: false, error: err.message }));
+    if (pathname === '/api/strix/fetch-all-runs') {
+      try {
+        const config = await parseJsonBody(req);
+        const runs = await fetchAllRemoteScanRuns(config);
+        res.setHeader('Content-Type', 'application/json');
+        res.statusCode = 200;
+        return res.end(JSON.stringify({ success: true, runs }));
+      } catch (err) {
+        res.setHeader('Content-Type', 'application/json');
+        res.statusCode = 400;
+        return res.end(JSON.stringify({ success: false, error: err.message }));
+      }
+    }
+
+    if (pathname === '/api/strix/parse-local-folder') {
+      try {
+        const { folderPath } = await parseJsonBody(req);
+        if (!folderPath) {
+          res.setHeader('Content-Type', 'application/json');
+          res.statusCode = 400;
+          return res.end(JSON.stringify({ success: false, error: 'Folder name or path is required.' }));
+        }
+        const result = parseLocalStrixFolder(folderPath);
+        res.setHeader('Content-Type', 'application/json');
+        res.statusCode = 200;
+        return res.end(JSON.stringify({ success: true, data: result }));
+      } catch (err) {
+        res.setHeader('Content-Type', 'application/json');
+        res.statusCode = 400;
+        return res.end(JSON.stringify({ success: false, error: err.message }));
+      }
+    }
+
+    if (pathname === '/api/strix/trigger-n8n') {
+      try {
+        const payload = await parseJsonBody(req);
+        const result = await triggerN8nScanProxy(payload);
+        res.setHeader('Content-Type', 'application/json');
+        res.statusCode = 200;
+        return res.end(JSON.stringify(result));
+      } catch (err) {
+        res.setHeader('Content-Type', 'application/json');
+        res.statusCode = 500;
+        return res.end(JSON.stringify({ success: false, error: err.message }));
+      }
+    }
+
+    if (pathname === '/api/strix/list-local-folders') {
+      try {
+        const folders = listLocalScanFolders();
+        res.setHeader('Content-Type', 'application/json');
+        res.statusCode = 200;
+        return res.end(JSON.stringify({ success: true, folders }));
+      } catch (err) {
+        res.setHeader('Content-Type', 'application/json');
+        res.statusCode = 500;
+        return res.end(JSON.stringify({ success: false, error: err.message, folders: [] }));
+      }
+    }
+
+    if (pathname === '/api/strix/fetch-n8n-results') {
+      try {
+        const payload = await parseJsonBody(req);
+        const result = await fetchN8nScanResultsProxy(payload);
+        res.setHeader('Content-Type', 'application/json');
+        res.statusCode = 200;
+        return res.end(JSON.stringify(result));
+      } catch (err) {
+        res.setHeader('Content-Type', 'application/json');
+        res.statusCode = 500;
+        return res.end(JSON.stringify({ success: false, error: err.message }));
+      }
+    }
+
+    if (pathname === '/api/strix/upload-scan-zip') {
+      try {
+        const payload = await parseJsonBody(req);
+        const result = await uploadScanZipProxy(payload);
+        res.setHeader('Content-Type', 'application/json');
+        res.statusCode = 200;
+        return res.end(JSON.stringify(result));
+      } catch (err) {
+        res.setHeader('Content-Type', 'application/json');
+        res.statusCode = 500;
+        return res.end(JSON.stringify({ success: false, error: err.message }));
+      }
+    }
+
+    if (pathname === '/api/strix/test-n8n-fetch') {
+      try {
+        const payload = await parseJsonBody(req);
+        const result = await testN8nFetchWebhookProxy(payload);
+        res.setHeader('Content-Type', 'application/json');
+        res.statusCode = 200;
+        return res.end(JSON.stringify(result));
+      } catch (err) {
+        res.setHeader('Content-Type', 'application/json');
+        res.statusCode = 500;
+        return res.end(JSON.stringify({ success: false, error: err.message }));
+      }
+    }
+
+    if (pathname === '/api/strix/fetch-server-file') {
+      try {
+        const payload = await parseJsonBody(req);
+        const result = await fetchServerFileProxy(payload);
+        res.setHeader('Content-Type', 'application/json');
+        res.statusCode = 200;
+        return res.end(JSON.stringify(result));
+      } catch (err) {
+        res.setHeader('Content-Type', 'application/json');
+        res.statusCode = 500;
+        return res.end(JSON.stringify({ success: false, error: err.message }));
+      }
     }
   }
 

@@ -9,7 +9,6 @@ const activeScans = new Map();
 
 // Persistent Global Strix Server Configuration (Admin configs shared across all users)
 const CONFIG_FILE_PATH = path.resolve(process.cwd(), '.strix_server_config.json');
-const DEFAULT_CONFIG_FILE_PATH = path.resolve(process.cwd(), 'data_defaults/default_strix_config.json');
 
 let globalStrixConfig = {
   host: '',
@@ -39,12 +38,6 @@ try {
   if (fs.existsSync(CONFIG_FILE_PATH)) {
     const data = JSON.parse(fs.readFileSync(CONFIG_FILE_PATH, 'utf-8'));
     globalStrixConfig = { ...globalStrixConfig, ...data };
-  } else if (fs.existsSync(DEFAULT_CONFIG_FILE_PATH)) {
-    const data = JSON.parse(fs.readFileSync(DEFAULT_CONFIG_FILE_PATH, 'utf-8'));
-    globalStrixConfig = { ...globalStrixConfig, ...data };
-    try {
-      fs.writeFileSync(CONFIG_FILE_PATH, JSON.stringify(globalStrixConfig, null, 2), 'utf-8');
-    } catch (_) {}
   }
 } catch (e) {
   console.warn('Note reading saved strix server config:', e.message);
@@ -54,14 +47,59 @@ export function getGlobalServerConfig() {
   return globalStrixConfig;
 }
 
+export function getSanitizedServerConfig() {
+  const cfg = { ...globalStrixConfig };
+  const hasPassword = Boolean(cfg.password && cfg.password.length > 0);
+  const hasPrivateKey = Boolean(cfg.privateKey && cfg.privateKey.length > 0);
+  const hasN8nCredential = Boolean(cfg.n8nCredential && cfg.n8nCredential.length > 0);
+  const hasN8nPassword = Boolean(cfg.n8nPassword && cfg.n8nPassword.length > 0);
+  const hasOpenrouterApiKey = Boolean(cfg.openrouterApiKey && cfg.openrouterApiKey.length > 0);
+  const hasLlmApiKey = Boolean(cfg.llmApiKey && cfg.llmApiKey.length > 0);
+
+  // Redact all sensitive credentials from the API response
+  cfg.password = '';
+  cfg.privateKey = '';
+  cfg.n8nCredential = '';
+  cfg.n8nPassword = '';
+  cfg.openrouterApiKey = '';
+  cfg.llmApiKey = '';
+
+  return {
+    ...cfg,
+    hasPassword,
+    hasPrivateKey,
+    hasN8nCredential,
+    hasN8nPassword,
+    hasOpenrouterApiKey,
+    hasLlmApiKey
+  };
+}
+
 export function saveGlobalServerConfig(newConfig) {
   if (!newConfig) return globalStrixConfig;
-  globalStrixConfig = { ...globalStrixConfig, ...newConfig };
+  const merged = { ...globalStrixConfig, ...newConfig };
+  if (!newConfig.password && globalStrixConfig.password) {
+    merged.password = globalStrixConfig.password;
+  }
+  if (!newConfig.privateKey && globalStrixConfig.privateKey) {
+    merged.privateKey = globalStrixConfig.privateKey;
+  }
+  if (!newConfig.n8nCredential && globalStrixConfig.n8nCredential) {
+    merged.n8nCredential = globalStrixConfig.n8nCredential;
+  }
+  if (!newConfig.n8nPassword && globalStrixConfig.n8nPassword) {
+    merged.n8nPassword = globalStrixConfig.n8nPassword;
+  }
+  if (!newConfig.openrouterApiKey && globalStrixConfig.openrouterApiKey) {
+    merged.openrouterApiKey = globalStrixConfig.openrouterApiKey;
+  }
+  if (!newConfig.llmApiKey && globalStrixConfig.llmApiKey) {
+    merged.llmApiKey = globalStrixConfig.llmApiKey;
+  }
+
+  globalStrixConfig = merged;
   try {
     fs.writeFileSync(CONFIG_FILE_PATH, JSON.stringify(globalStrixConfig, null, 2), 'utf-8');
-    if (fs.existsSync(path.dirname(DEFAULT_CONFIG_FILE_PATH))) {
-      fs.writeFileSync(DEFAULT_CONFIG_FILE_PATH, JSON.stringify(globalStrixConfig, null, 2), 'utf-8');
-    }
   } catch (e) {
     console.warn('Note writing strix server config:', e.message);
   }

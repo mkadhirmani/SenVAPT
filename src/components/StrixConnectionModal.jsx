@@ -585,7 +585,7 @@ export default function StrixConnectionModal({ isOpen, onClose, onConnected, the
                     type="text"
                     value={config.host || ''}
                     onChange={(e) => setConfig({ ...config, host: e.target.value })}
-                    placeholder="e.g. 10.0.8.193"
+                    placeholder="e.g. 192.168.1.100 or vapt-server.internal"
                     className={`w-full px-3.5 py-2.5 rounded-xl font-mono text-xs focus:outline-none transition-all ${
                       theme === 'dark'
                         ? 'bg-[#080E1C] border border-slate-700 text-white placeholder-slate-500 focus:border-cyan-400'

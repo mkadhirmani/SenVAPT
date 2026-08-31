@@ -1,4 +1,5 @@
 import { searchKnowledgeBase, generateChatbotResponse as localRagFallback } from './ragEngine';
+import { getAuthHeaders } from './auth';
 
 // Storage key for user's custom LLM configuration
 const LLM_CONFIG_KEY = 'sennovate_universal_llm_config';
@@ -48,7 +49,9 @@ export function getLlmConfig() {
  */
 export async function fetchGlobalLlmConfig() {
   try {
-    const res = await fetch('/api/llm/get-config');
+    const res = await fetch('/api/llm/get-config', {
+      headers: { ...getAuthHeaders() }
+    });
     if (res.ok) {
       const data = await res.json();
       const local = getLlmConfig();
@@ -62,7 +65,10 @@ export async function fetchGlobalLlmConfig() {
         // Upload local configured key to backend so it is preserved across restarts
         fetch('/api/llm/save-config', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            ...getAuthHeaders()
+          },
           body: JSON.stringify(local)
         }).catch(() => {});
       }
@@ -85,7 +91,10 @@ export function saveLlmConfig(config) {
     // Sync to backend file storage (.llm_config.json)
     fetch('/api/llm/save-config', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAuthHeaders()
+      },
       body: JSON.stringify(config)
     }).catch(err => console.warn('Note syncing LLM config to backend:', err));
 
@@ -103,7 +112,10 @@ async function executeApiRequest(targetUrl, headers, data) {
   try {
     const proxyRes = await fetch('/api/llm-proxy', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAuthHeaders()
+      },
       body: JSON.stringify({ targetUrl, headers, data })
     });
 
