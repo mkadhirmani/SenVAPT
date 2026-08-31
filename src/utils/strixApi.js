@@ -63,7 +63,30 @@ export async function fetchStrixServerConfig() {
 
       let merged = { ...local };
       if (serverConfig && typeof serverConfig === 'object') {
-        merged = { ...local, ...serverConfig };
+        const cleanServer = { ...serverConfig };
+        // Never overwrite local credentials if server config returned empty/redacted credentials
+        if (!cleanServer.password && local.password) {
+          cleanServer.password = local.password;
+        }
+        if (!cleanServer.privateKey && local.privateKey) {
+          cleanServer.privateKey = local.privateKey;
+        }
+        if (!cleanServer.n8nCredential && local.n8nCredential) {
+          cleanServer.n8nCredential = local.n8nCredential;
+        }
+        if (!cleanServer.n8nPassword && local.n8nPassword) {
+          cleanServer.n8nPassword = local.n8nPassword;
+        }
+        if (!cleanServer.n8nToken && local.n8nToken) {
+          cleanServer.n8nToken = local.n8nToken;
+        }
+        if (!cleanServer.openrouterApiKey && local.openrouterApiKey) {
+          cleanServer.openrouterApiKey = local.openrouterApiKey;
+        }
+        if (!cleanServer.llmApiKey && local.llmApiKey) {
+          cleanServer.llmApiKey = local.llmApiKey;
+        }
+        merged = { ...local, ...cleanServer };
       }
 
       localStorage.setItem(STRIX_CONFIG_KEY, JSON.stringify(merged));

@@ -113,17 +113,29 @@ export function saveGlobalServerConfig(newConfig) {
  */
 export function testSshConnection(config) {
   return new Promise((resolve, reject) => {
+    const effConfig = { ...globalStrixConfig, ...(config || {}) };
+    if (!config?.password && globalStrixConfig.password) {
+      effConfig.password = globalStrixConfig.password;
+    }
+    if (!config?.privateKey && globalStrixConfig.privateKey) {
+      effConfig.privateKey = globalStrixConfig.privateKey;
+    }
+
+    if (!effConfig.host) {
+      return reject(new Error('No SSH Host specified. Please configure your server IP in Settings.'));
+    }
+
     const conn = new Client();
     const timeout = setTimeout(() => {
       conn.end();
-      reject(new Error(`SSH Connection timed out after 10 seconds to ${config.username || 'ubuntu'}@${config.host}. Verify Host IP & Port.`));
-    }, 10000);
+      reject(new Error(`SSH Connection timed out after 20 seconds to ${effConfig.username || 'ubuntu'}@${effConfig.host}. Note: Private internal IP (${effConfig.host}) requires VPC/VPN network routing. For Cloud deployment, use 'Enterprise n8n Webhook' mode.`));
+    }, 20000);
 
     conn.on('ready', () => {
       clearTimeout(timeout);
       
-      const username = config.username || 'ubuntu';
-      const password = config.password || '';
+      const username = effConfig.username || 'ubuntu';
+      const password = effConfig.password || '';
 
       const testScript = `
         export PATH=$PATH:/root/.local/bin:/home/ubuntu/.local/bin:/usr/local/bin:/usr/bin:~/.local/bin:/root/.cargo/bin
@@ -150,7 +162,7 @@ export function testSshConnection(config) {
           conn.end();
           return resolve({
             success: true,
-            message: `Connected to ${username}@${config.host}`
+            message: `Connected to ${username}@${effConfig.host}`
           });
         }
 
@@ -2793,17 +2805,76 @@ function cleanScanPath(p) {
  * Start Remote Strix Scan with automatic environment sourcing & directory creation
  */
 export function startRemoteStrixScan(rawParams = {}) {
-  return new Promise((resolve, reject) => {
+  return new Promise(async (resolve, reject) => {
     const params = { ...globalStrixConfig, ...(rawParams || {}) };
+    const mode = params.triggerMode || globalStrixConfig.triggerMode || 'n8n';
+
+    const id = params.scanId || `scan-${Date.now()}`;
+    const targetUrl = params.targetUrl;
+    const companyName = params.companyName || 'Target Organization';
+
+    // 1. Enterprise n8n Webhook Mode (Preferred & Highly Available)
+    if (mode === 'n8n' || (!params.host && (params.n8nWebhookUrl || globalStrixConfig.n8nWebhookUrl))) {
+      const scanSession = {
+        id,
+        targetUrl,
+        companyName,
+        status: 'running',
+        stage: 'Triggering n8n Autonomous VAPT Webhook Pipeline',
+        logs: [],
+        error: null,
+        stream: null,
+        conn: null,
+        startTime: new Date().toISOString(),
+        outputDir: null,
+        liveRequests: 0,
+        liveTokens: 0,
+        liveOutputTokens: 0,
+        liveTotalTokens: 0,
+        explicitTokensFound: false,
+        turns: 0,
+        httpChecks: 0
+      };
+
+      activeScans.set(id, scanSession);
+
+      const appendLog = (line) => {
+        const timestamp = new Date().toISOString().slice(11, 19);
+        const cleanLine = (line || '').replace(/\x1B\[[0-?]*[ -/]*[@-~]/g, '').trim();
+        if (cleanLine) {
+          scanSession.logs.push(`[${timestamp}] ${cleanLine}`);
+          if (scanSession.logs.length > 800) scanSession.logs.shift();
+        }
+      };
+
+      appendLog(`[N8N] Initiating Autonomous Scan via Enterprise Webhook`);
+      appendLog(`[N8N] Target URL: ${targetUrl} (${companyName})`);
+
+      try {
+        const n8nResult = await triggerN8nScanProxy(params);
+        appendLog(`[N8N] Webhook accepted: ${n8nResult.message || 'Execution Pipeline Started'}`);
+        scanSession.stage = 'Scan in progress via Enterprise n8n Pipeline';
+        return resolve({
+          scanId: id,
+          status: 'started',
+          mode: 'n8n',
+          message: 'Scan triggered successfully via Enterprise Webhook'
+        });
+      } catch (err) {
+        scanSession.status = 'failed';
+        scanSession.error = err.message;
+        appendLog(`[ERROR] ${err.message}`);
+        return reject(err);
+      }
+    }
+
+    // 2. Direct SSH Mode
     const {
-      scanId,
       host,
       port = 22,
       username = 'ubuntu',
       password,
       privateKey,
-      targetUrl,
-      companyName = 'Target Organization',
       openrouterApiKey,
       strixLlm,
       llmApiKey,
@@ -2811,7 +2882,6 @@ export function startRemoteStrixScan(rawParams = {}) {
       remoteOutputDir = '/root/strix_runs'
     } = params;
 
-    const id = scanId || `scan-${Date.now()}`;
     const conn = new Client();
 
     const scanSession = {
@@ -2825,7 +2895,7 @@ export function startRemoteStrixScan(rawParams = {}) {
       stream: null,
       conn: conn,
       startTime: new Date().toISOString(),
-      outputDir: null, // Zero placeholder: captured only from real execution!
+      outputDir: null,
       liveRequests: 0,
       liveTokens: 0,
       liveOutputTokens: 0,
@@ -2847,7 +2917,7 @@ export function startRemoteStrixScan(rawParams = {}) {
     };
 
     if (!host) {
-      const err = new Error('No SSH Host configured. Please enter your Ubuntu server IP address in SSH Settings.');
+      const err = new Error('No SSH Host configured. Please configure in Settings or use Enterprise n8n Webhook mode.');
       scanSession.status = 'failed';
       scanSession.error = err.message;
       appendLog(`[CONFIG ERROR] ${err.message}`);
