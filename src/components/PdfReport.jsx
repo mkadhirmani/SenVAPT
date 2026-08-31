@@ -130,9 +130,9 @@ export default function PdfReport({
   const overallRiskScore = metadata.overallRiskScore || topVuln?.cvss || 6.8;
   const overallRiskLevel = metadata.overallRiskLevel || (overallRiskScore >= 8.5 ? 'CRITICAL' : (overallRiskScore >= 7.0 ? 'HIGH' : 'ELEVATED'));
 
-  // Calculate total report pages dynamically
+  // Calculate total report pages dynamically (Cover + Exec Summary + 3-Phase Roadmap + Matrix + Findings)
   const findingsCount = sortedVulns.length > 0 ? sortedVulns.length : 1;
-  const totalPages = 3 + findingsCount;
+  const totalPages = 4 + findingsCount;
 
   // Trigger Live LLM RAG Synthesis for Executive Summary
   const handleGenerateAiSummary = async () => {
@@ -253,19 +253,24 @@ Include:
       {/* Embedded Print & Page Styling Rules */}
       <style>{`
         .pdf-page {
-          width: 100%;
+          width: 210mm;
+          min-width: 210mm;
           max-width: 210mm;
+          height: 297mm;
           min-height: 297mm;
+          max-height: 297mm;
           margin: 0 auto 32px auto;
           background: #ffffff;
-          box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
-          border-radius: 8px;
+          box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.12), 0 8px 10px -6px rgba(0, 0, 0, 0.08);
+          border-radius: 4px;
           box-sizing: border-box;
           display: flex;
           flex-direction: column;
           justify-content: space-between;
           position: relative;
-          overflow: visible !important;
+          overflow: hidden !important;
+          page-break-after: always;
+          break-after: page;
         }
         .pdf-page * {
           box-sizing: border-box !important;
@@ -292,7 +297,7 @@ Include:
             display: none !important;
           }
           #vapt-pdf-report-root {
-            width: 100% !important;
+            width: 210mm !important;
             margin: 0 !important;
             padding: 0 !important;
             box-shadow: none !important;
@@ -300,7 +305,11 @@ Include:
           }
           .pdf-page {
             width: 210mm !important;
+            min-width: 210mm !important;
+            max-width: 210mm !important;
+            height: 297mm !important;
             min-height: 297mm !important;
+            max-height: 297mm !important;
             page-break-after: always !important;
             break-after: page !important;
             box-sizing: border-box !important;
@@ -311,18 +320,18 @@ Include:
             display: flex !important;
             flex-direction: column !important;
             justify-content: space-between !important;
-            overflow: visible !important;
+            overflow: hidden !important;
           }
         }
       `}</style>
 
-      {/* Printable Document Root (Pre-Paginated Clean A4 Containers) */}
-      <div id="vapt-pdf-report-root" className="space-y-8">
+      {/* Printable Document Root (Discrete, Fixed-A4 Pages) */}
+      <div id="vapt-pdf-report-root" className="space-y-8 flex flex-col items-center">
 
         {/* ========================================================================= */}
         {/* PAGE 1: EXECUTIVE COVER PAGE                                              */}
         {/* ========================================================================= */}
-        <div className="pdf-page p-[18mm_16mm_18mm_16mm] bg-white text-slate-900 border border-slate-200">
+        <div className="pdf-page p-[16mm_14mm_16mm_14mm] bg-white text-slate-900 border border-slate-200">
           {/* Cover Header */}
           <div className="flex items-center justify-between border-b pb-4 border-slate-200">
             <div className="flex items-center gap-3">
@@ -341,7 +350,7 @@ Include:
           </div>
 
           {/* Cover Body */}
-          <div className="space-y-5 my-auto py-4">
+          <div className="space-y-5 my-auto py-3">
             <div className="inline-block px-3 py-1 bg-cyan-50 border border-cyan-200 rounded-lg text-xs font-mono font-bold text-cyan-900 uppercase tracking-wider">
               {metadata.assessmentType || "External Web Application & API Penetration Test"}
             </div>
@@ -408,9 +417,9 @@ Include:
 
 
         {/* ========================================================================= */}
-        {/* PAGE 2: EXECUTIVE SUMMARY & THREAT POSTURE & ROADMAP                      */}
+        {/* PAGE 2: EXECUTIVE SUMMARY & THREAT POSTURE                                */}
         {/* ========================================================================= */}
-        <div className="pdf-page p-[18mm_16mm_18mm_16mm] bg-white text-slate-900 border border-slate-200">
+        <div className="pdf-page p-[16mm_14mm_16mm_14mm] bg-white text-slate-900 border border-slate-200">
           {/* Running Header */}
           <div className="flex items-center justify-between border-b pb-2.5 border-slate-200 text-[10px] font-mono text-slate-500 uppercase">
             <span className="font-bold text-cyan-700 flex items-center gap-1">
@@ -421,10 +430,10 @@ Include:
           </div>
 
           {/* Page Body */}
-          <div className="space-y-3.5 my-auto py-2">
+          <div className="space-y-4 my-auto py-2">
             <div className="flex items-center justify-between border-b pb-2 border-slate-300">
               <h2 className="text-base font-black text-slate-950 uppercase tracking-tight font-mono">
-                1. Executive Summary &amp; Threat Posture
+                1. Executive Summary &amp; Strategic Threat Posture
               </h2>
               <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-cyan-100 text-cyan-900">
                 VERIFIED FINDINGS
@@ -438,7 +447,7 @@ Include:
             ) : (
               <>
                 {/* Executive Assessment Overview */}
-                <div className="space-y-1.5 text-xs text-slate-800 leading-relaxed font-sans break-words">
+                <div className="space-y-2 text-xs text-slate-800 leading-relaxed font-sans break-words">
                   <p>
                     Sennovate Autonomous Security Engine conducted an external penetration testing assessment against <strong>{companyName}</strong> (primary target: <code>{targetUrl}</code>). The scope covered the public digital perimeter, web applications, and integrated API endpoints.
                   </p>
@@ -449,7 +458,7 @@ Include:
 
                 {/* Top Risk Callout */}
                 {topVuln && (
-                  <div className="p-3 rounded-xl bg-amber-50 border-l-4 border-amber-500 text-slate-800 space-y-1 text-xs">
+                  <div className="p-3.5 rounded-xl bg-amber-50 border-l-4 border-amber-500 text-slate-800 space-y-1 text-xs">
                     <div className="font-bold text-amber-900 uppercase font-mono flex items-center gap-1.5 text-[11px]">
                       <ShieldAlert className="w-3.5 h-3.5 text-amber-600 flex-shrink-0" />
                       <span>Strategic Threat Assessment: {overallRiskLevel} Risk ({overallRiskScore}/10)</span>
@@ -461,14 +470,14 @@ Include:
                 )}
 
                 {/* Ordered Findings Breakdown */}
-                <div className="space-y-2 pt-0.5">
+                <div className="space-y-2.5 pt-1">
                   <h3 className="text-xs font-bold text-slate-950 font-mono uppercase tracking-wider">
                     Ordered Findings Breakdown for {companyName}
                   </h3>
 
                   <div className="space-y-2">
                     {highVulns.length > 0 && (
-                      <div className="p-2.5 rounded-xl border border-rose-200 bg-rose-50/50 space-y-1">
+                      <div className="p-3 rounded-xl border border-rose-200 bg-rose-50/50 space-y-1.5">
                         <div className="flex items-center justify-between text-[11px]">
                           <span className="font-bold text-rose-900 uppercase font-mono">
                             High Priority Security Risks ({highVulns.length} Finding{highVulns.length > 1 ? 's' : ''})
@@ -488,7 +497,7 @@ Include:
                     )}
 
                     {medVulns.length > 0 && (
-                      <div className="p-2.5 rounded-xl border border-amber-200 bg-amber-50/40 space-y-1">
+                      <div className="p-3 rounded-xl border border-amber-200 bg-amber-50/40 space-y-1.5">
                         <div className="flex items-center justify-between text-[11px]">
                           <span className="font-bold text-amber-900 uppercase font-mono">
                             Medium Priority Infrastructure &amp; Policy Findings ({medVulns.length} Finding{medVulns.length > 1 ? 's' : ''})
@@ -508,44 +517,6 @@ Include:
                     )}
                   </div>
                 </div>
-
-                {/* 3-Phase Remediation Roadmap */}
-                <div className="space-y-1.5 pt-0.5">
-                  <h3 className="text-xs font-bold text-slate-950 font-mono uppercase tracking-wider">
-                    Prioritized 3-Phase Remediation Roadmap
-                  </h3>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
-                    <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 space-y-1">
-                      <div className="font-bold text-rose-700 font-mono text-[10px] uppercase flex items-center gap-1">
-                        <Clock className="w-3 h-3 flex-shrink-0" />
-                        Phase 1: Immediate (&lt; 24h)
-                      </div>
-                      <p className="text-slate-700 text-[10px] leading-relaxed break-words">
-                        {topVuln ? `Remediate ${topVuln.title} on ${topVuln.endpoint}.` : 'Patch high priority vulnerabilities immediately.'}
-                      </p>
-                    </div>
-
-                    <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 space-y-1">
-                      <div className="font-bold text-amber-700 font-mono text-[10px] uppercase flex items-center gap-1">
-                        <Clock className="w-3 h-3 flex-shrink-0" />
-                        Phase 2: Short-Term (&lt; 7 Days)
-                      </div>
-                      <p className="text-slate-700 text-[10px] leading-relaxed break-words">
-                        Address medium severity findings across {companyName} endpoints, implementing strict input validation and access controls.
-                      </p>
-                    </div>
-
-                    <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 space-y-1">
-                      <div className="font-bold text-cyan-800 font-mono text-[10px] uppercase flex items-center gap-1">
-                        <Clock className="w-3 h-3 flex-shrink-0" />
-                        Phase 3: Strategic (&lt; 30 Days)
-                      </div>
-                      <p className="text-slate-700 text-[10px] leading-relaxed break-words">
-                        Deploy strict Content-Security-Policy (CSP), review CORS headers, and conduct scheduled automated regression testing.
-                      </p>
-                    </div>
-                  </div>
-                </div>
               </>
             )}
           </div>
@@ -560,14 +531,14 @@ Include:
 
 
         {/* ========================================================================= */}
-        {/* PAGE 3: VULNERABILITY SUMMARY MATRIX                                      */}
+        {/* PAGE 3: PRIORITIZED 3-PHASE ACTION ROADMAP & METHODOLOGY                  */}
         {/* ========================================================================= */}
-        <div className="pdf-page p-[18mm_16mm_18mm_16mm] bg-white text-slate-900 border border-slate-200">
+        <div className="pdf-page p-[16mm_14mm_16mm_14mm] bg-white text-slate-900 border border-slate-200">
           {/* Running Header */}
           <div className="flex items-center justify-between border-b pb-2.5 border-slate-200 text-[10px] font-mono text-slate-500 uppercase">
             <span className="font-bold text-cyan-700 flex items-center gap-1">
               <ShieldCheck className="w-3 h-3 text-cyan-600" />
-              Sennovate Autonomous VAPT Deliverable
+              Sennovate Autonomous VAPT Deliverable &bull; Strategic Remediation Roadmap
             </span>
             <span className="truncate max-w-[200px]">Target: {companyName}</span>
           </div>
@@ -576,7 +547,103 @@ Include:
           <div className="space-y-4 my-auto py-2">
             <div className="flex items-center justify-between border-b pb-2 border-slate-300">
               <h2 className="text-base font-black text-slate-950 uppercase tracking-tight font-mono">
-                2. Vulnerability Summary Matrix
+                2. Prioritized 3-Phase Remediation Roadmap
+              </h2>
+              <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-emerald-100 text-emerald-900">
+                ACTION PLAN
+              </span>
+            </div>
+
+            <p className="text-xs text-slate-700 leading-relaxed font-sans break-words">
+              To systematically eliminate security risks without impacting business operations, Sennovate recommends an agile 3-phase remediation lifecycle:
+            </p>
+
+            {/* 3-Phase Cards Stack */}
+            <div className="space-y-3">
+              <div className="p-3.5 rounded-xl bg-rose-50/70 border border-rose-200 space-y-1.5">
+                <div className="flex items-center justify-between text-xs font-mono">
+                  <span className="font-bold text-rose-900 uppercase flex items-center gap-1.5">
+                    <Clock className="w-3.5 h-3.5 text-rose-600" />
+                    Phase 1: Immediate Containment (&lt; 24 Hours)
+                  </span>
+                  <span className="bg-rose-200/80 text-rose-950 font-bold px-2 py-0.5 rounded text-[10px]">
+                    Critical Priority
+                  </span>
+                </div>
+                <p className="text-xs text-slate-800 leading-relaxed break-words">
+                  {topVuln ? `Remediate ${topVuln.title} on ${topVuln.endpoint}. Implement emergency input sanitization, WAF rules, and credential revocation.` : 'Patch high priority vulnerabilities and isolate vulnerable endpoints immediately.'}
+                </p>
+              </div>
+
+              <div className="p-3.5 rounded-xl bg-amber-50/70 border border-amber-200 space-y-1.5">
+                <div className="flex items-center justify-between text-xs font-mono">
+                  <span className="font-bold text-amber-900 uppercase flex items-center gap-1.5">
+                    <Clock className="w-3.5 h-3.5 text-amber-600" />
+                    Phase 2: Short-Term Remediation (&lt; 7 Days)
+                  </span>
+                  <span className="bg-amber-200/80 text-amber-950 font-bold px-2 py-0.5 rounded text-[10px]">
+                    High Priority
+                  </span>
+                </div>
+                <p className="text-xs text-slate-800 leading-relaxed break-words">
+                  Address medium severity findings across {companyName} endpoints. Refactor authentication workflows, enforce strict parameterized queries, and patch outdated server dependencies.
+                </p>
+              </div>
+
+              <div className="p-3.5 rounded-xl bg-cyan-50/70 border border-cyan-200 space-y-1.5">
+                <div className="flex items-center justify-between text-xs font-mono">
+                  <span className="font-bold text-cyan-900 uppercase flex items-center gap-1.5">
+                    <Clock className="w-3.5 h-3.5 text-cyan-600" />
+                    Phase 3: Strategic Hardening (&lt; 30 Days)
+                  </span>
+                  <span className="bg-cyan-200/80 text-cyan-950 font-bold px-2 py-0.5 rounded text-[10px]">
+                    Medium Priority
+                  </span>
+                </div>
+                <p className="text-xs text-slate-800 leading-relaxed break-words">
+                  Deploy strict Content-Security-Policy (CSP) headers, configure restrictive CORS policies, integrate automated CI/CD SAST/DAST pipelines, and schedule recurring penetration audits.
+                </p>
+              </div>
+            </div>
+
+            {/* Scope Boundaries Note */}
+            <div className="p-3 rounded-xl border border-slate-200 bg-slate-50 space-y-1 text-xs">
+              <span className="font-bold text-slate-900 font-mono text-[10px] uppercase tracking-wider block">
+                Testing Methodology &amp; Scope Confirmation:
+              </span>
+              <p className="text-slate-600 text-[11px] leading-relaxed break-words">
+                All tests were non-destructive and performed strictly against authorized assets within the contracted scope. Remediation verification should be validated through re-testing.
+              </p>
+            </div>
+          </div>
+
+          {/* Running Footer */}
+          <div className="flex items-center justify-between border-t pt-2.5 border-slate-200 text-[10px] font-mono text-slate-500">
+            <span>CONFIDENTIAL &bull; PROPRIETARY</span>
+            <span>Audited by Sennovate Autonomous VAPT Platform</span>
+            <span>Page 3 of {totalPages}</span>
+          </div>
+        </div>
+
+
+        {/* ========================================================================= */}
+        {/* PAGE 4: VULNERABILITY SUMMARY MATRIX & CVSS RATING GUIDE                  */}
+        {/* ========================================================================= */}
+        <div className="pdf-page p-[16mm_14mm_16mm_14mm] bg-white text-slate-900 border border-slate-200">
+          {/* Running Header */}
+          <div className="flex items-center justify-between border-b pb-2.5 border-slate-200 text-[10px] font-mono text-slate-500 uppercase">
+            <span className="font-bold text-cyan-700 flex items-center gap-1">
+              <ShieldCheck className="w-3 h-3 text-cyan-600" />
+              Sennovate Autonomous VAPT Deliverable &bull; Vulnerability Matrix
+            </span>
+            <span className="truncate max-w-[200px]">Target: {companyName}</span>
+          </div>
+
+          {/* Page Body */}
+          <div className="space-y-4 my-auto py-2">
+            <div className="flex items-center justify-between border-b pb-2 border-slate-300">
+              <h2 className="text-base font-black text-slate-950 uppercase tracking-tight font-mono">
+                3. Vulnerability Summary Matrix
               </h2>
               <span className="text-xs font-mono text-slate-500 font-bold">{sortedVulns.length} Confirmed Findings</span>
             </div>
@@ -652,21 +719,21 @@ Include:
           <div className="flex items-center justify-between border-t pt-2.5 border-slate-200 text-[10px] font-mono text-slate-500">
             <span>CONFIDENTIAL &bull; PROPRIETARY</span>
             <span>Audited by Sennovate Autonomous VAPT Platform</span>
-            <span>Page 3 of {totalPages}</span>
+            <span>Page 4 of {totalPages}</span>
           </div>
         </div>
 
 
         {/* ========================================================================= */}
-        {/* PAGES 4 TO N: TECHNICAL VULNERABILITY FINDING SHEETS (1 Page per Finding) */}
+        {/* PAGES 5 TO N: TECHNICAL VULNERABILITY FINDING SHEETS (1 Fixed A4 per Vuln)*/}
         {/* ========================================================================= */}
         {sortedVulns.map((vuln, index) => {
-          const pageNum = 4 + index;
+          const pageNum = 5 + index;
 
           return (
             <div 
               key={vuln.id} 
-              className="pdf-page p-[18mm_16mm_18mm_16mm] bg-white text-slate-900 border border-slate-200"
+              className="pdf-page p-[16mm_14mm_16mm_14mm] bg-white text-slate-900 border border-slate-200"
             >
               {/* Running Header */}
               <div className="flex items-center justify-between border-b pb-2.5 border-slate-200 text-[10px] font-mono text-slate-500 uppercase">
@@ -677,8 +744,8 @@ Include:
                 <span className="truncate max-w-[200px]">Target: {companyName}</span>
               </div>
 
-              {/* Finding Content Container (Designed to fit cleanly in 1 A4 page) */}
-              <div className="space-y-2.5 my-auto py-1.5">
+              {/* Finding Content Container (Fits exactly in 1 A4 Page) */}
+              <div className="space-y-2.5 my-auto py-1">
                 {/* 1. Header with Badges & Metadata */}
                 <div className="flex flex-wrap items-start justify-between gap-2 border-b border-slate-200 pb-2">
                   <div className="space-y-1 max-w-[70%]">
