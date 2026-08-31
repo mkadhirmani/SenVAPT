@@ -525,9 +525,9 @@ export default function StrixConnectionModal({ isOpen, onClose, onConnected, the
                   <code className="block text-cyan-300/90 whitespace-pre-wrap break-all leading-relaxed p-2 rounded bg-[#02050C] border border-slate-800/80">
                     curl -X POST \{'\n'}
                     &nbsp;&nbsp;'{config.n8nWebhookUrl || 'https://n8n-route-soc-pub-vms.apps.corp.sennovate.com/webhook/...'}' \{'\n'}
-                    {config.n8nAuthType === 'basic' ? `  -u '${config.n8nCredential ? (showN8nPassword ? config.n8nCredential : config.n8nCredential.replace(/./g, '•')) : 'strix:a+b=c'}' \\\n` : ''}
+                    {config.n8nAuthType === 'basic' ? `  -u '${config.n8nCredential ? (showN8nPassword ? config.n8nCredential : config.n8nCredential.replace(/./g, '•')) : 'username:password'}' \\\n` : ''}
                     &nbsp;&nbsp;-H 'Content-Type: application/json' \{'\n'}
-                    &nbsp;&nbsp;-d '{'{"domain": "sennovate.com"}'}'
+                    &nbsp;&nbsp;-d '{'{"domain": "example.com"}'}'
                   </code>
                 </div>
 
@@ -538,10 +538,10 @@ export default function StrixConnectionModal({ isOpen, onClose, onConnected, the
                   <code className="block text-emerald-300/90 whitespace-pre-wrap break-all leading-relaxed p-2 rounded bg-[#02050C] border border-slate-800/80">
                     curl -X POST \{'\n'}
                     &nbsp;&nbsp;'{config.n8nFetchWebhookUrl || 'https://n8n-route-soc-pub-vms.apps.corp.sennovate.com/webhook/1bc30fe0-e31f-4cdb-91fd-d15d4f20ede3'}' \{'\n'}
-                    {config.n8nAuthType === 'basic' ? `  -u '${config.n8nCredential ? (showN8nPassword ? config.n8nCredential : config.n8nCredential.replace(/./g, '•')) : 'strix:a+b=c'}' \\\n` : ''}
+                    {config.n8nAuthType === 'basic' ? `  -u '${config.n8nCredential ? (showN8nPassword ? config.n8nCredential : config.n8nCredential.replace(/./g, '•')) : 'username:password'}' \\\n` : ''}
                     &nbsp;&nbsp;-H 'Content-Type: application/json' \{'\n'}
-                    &nbsp;&nbsp;-d '{'{"domain": "sennovate.com"}'}' \{'\n'}
-                    &nbsp;&nbsp;-o sennovate.com-scan.zip
+                    &nbsp;&nbsp;-d '{'{"domain": "example.com"}'}' \{'\n'}
+                    &nbsp;&nbsp;-o example.com-scan.zip
                   </code>
                 </div>
               </div>
