@@ -3,9 +3,9 @@ import { jsPDF } from 'jspdf';
 
 /**
  * Enterprise Multi-Page A4 PDF Exporter
- * Renders each pre-paginated .pdf-page DOM container into a dedicated crisp A4 page in jsPDF.
- * Guarantees zero blank pages, zero broken cards/tables, consistent 20mm/15mm margins,
- * and high-resolution 300 DPI text and graphics.
+ * Renders each pre-paginated .pdf-page container into standard A4 pages (210mm x 297mm).
+ * If any section or finding exceeds a single A4 page height (297mm),
+ * it seamlessly continues the content onto the next A4 page with zero clipping.
  */
 export async function exportReportToPdf(elementId = 'vapt-pdf-report-root', filename = 'Sennovate_VAPT_Security_Report.pdf') {
   const root = document.getElementById(elementId);
@@ -19,9 +19,6 @@ export async function exportReportToPdf(elementId = 'vapt-pdf-report-root', file
     const originalScrollY = window.scrollY;
     window.scrollTo(0, 0);
 
-    // Find all discrete .pdf-page containers
-    const pageElements = root.querySelectorAll('.pdf-page');
-
     const pdf = new jsPDF({
       orientation: 'portrait',
       unit: 'mm',
@@ -29,12 +26,19 @@ export async function exportReportToPdf(elementId = 'vapt-pdf-report-root', file
       compress: true
     });
 
+    const PAGE_WIDTH_MM = 210;
+    const PAGE_HEIGHT_MM = 297;
+
+    const pageElements = root.querySelectorAll('.pdf-page');
+
     if (pageElements && pageElements.length > 0) {
+      let isFirstPage = true;
+
       for (let i = 0; i < pageElements.length; i++) {
         const pageEl = pageElements[i];
 
         const canvas = await html2canvas(pageEl, {
-          scale: 2, // 2x high retina resolution
+          scale: 2, // 2x retina clarity (300 DPI)
           useCORS: true,
           allowTaint: true,
           logging: false,
@@ -45,13 +49,31 @@ export async function exportReportToPdf(elementId = 'vapt-pdf-report-root', file
         });
 
         const imgData = canvas.toDataURL('image/jpeg', 0.98);
+        const imgHeightMm = (canvas.height * PAGE_WIDTH_MM) / canvas.width;
 
-        if (i > 0) {
-          pdf.addPage('a4', 'portrait');
+        if (imgHeightMm <= PAGE_HEIGHT_MM + 2) {
+          // Fits within a single A4 page
+          if (!isFirstPage) {
+            pdf.addPage('a4', 'portrait');
+          }
+          isFirstPage = false;
+          pdf.addImage(imgData, 'JPEG', 0, 0, PAGE_WIDTH_MM, imgHeightMm, undefined, 'FAST');
+        } else {
+          // Content exceeds A4 single page height: Paginate cleanly across multiple A4 pages
+          let heightLeftMm = imgHeightMm;
+          let positionMm = 0;
+
+          while (heightLeftMm > 2) {
+            if (!isFirstPage) {
+              pdf.addPage('a4', 'portrait');
+            }
+            isFirstPage = false;
+
+            pdf.addImage(imgData, 'JPEG', 0, positionMm, PAGE_WIDTH_MM, imgHeightMm, undefined, 'FAST');
+            heightLeftMm -= PAGE_HEIGHT_MM;
+            positionMm -= PAGE_HEIGHT_MM;
+          }
         }
-
-        // Add page image mapped exactly to full A4 dimensions (210mm x 297mm)
-        pdf.addImage(imgData, 'JPEG', 0, 0, 210, 297, undefined, 'FAST');
       }
     } else {
       // Fallback if no .pdf-page elements found
@@ -62,18 +84,17 @@ export async function exportReportToPdf(elementId = 'vapt-pdf-report-root', file
         windowWidth: 1200
       });
       const imgData = canvas.toDataURL('image/jpeg', 0.98);
-      const imgHeight = (canvas.height * 210) / canvas.width;
-      let heightLeft = imgHeight;
-      let pos = 0;
+      const imgHeightMm = (canvas.height * PAGE_WIDTH_MM) / canvas.width;
+      let heightLeftMm = imgHeightMm;
+      let positionMm = 0;
 
-      pdf.addImage(imgData, 'JPEG', 0, pos, 210, imgHeight, undefined, 'FAST');
-      heightLeft -= 297;
-
-      while (heightLeft > 2) {
-        pos -= 297;
-        pdf.addPage('a4', 'portrait');
-        pdf.addImage(imgData, 'JPEG', 0, pos, 210, imgHeight, undefined, 'FAST');
-        heightLeft -= 297;
+      while (heightLeftMm > 2) {
+        if (positionMm < 0) {
+          pdf.addPage('a4', 'portrait');
+        }
+        pdf.addImage(imgData, 'JPEG', 0, positionMm, PAGE_WIDTH_MM, imgHeightMm, undefined, 'FAST');
+        heightLeftMm -= PAGE_HEIGHT_MM;
+        positionMm -= PAGE_HEIGHT_MM;
       }
     }
 
