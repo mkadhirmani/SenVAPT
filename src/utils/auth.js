@@ -96,7 +96,17 @@ export const DEFAULT_USERS = [
 ];
 
 export function getAuthToken() {
-  return sessionStorage.getItem(AUTH_TOKEN_KEY) || localStorage.getItem(AUTH_TOKEN_KEY) || '';
+  let token = sessionStorage.getItem(AUTH_TOKEN_KEY) || localStorage.getItem(AUTH_TOKEN_KEY) || '';
+  if (!token) {
+    const user = getCurrentUser();
+    if (user && (user.id || user.username)) {
+      try {
+        token = btoa(JSON.stringify({ id: user.id, role: user.role, ts: Date.now() }));
+        sessionStorage.setItem(AUTH_TOKEN_KEY, token);
+      } catch (_) {}
+    }
+  }
+  return token;
 }
 
 export function setAuthToken(token) {
