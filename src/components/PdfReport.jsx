@@ -132,7 +132,25 @@ export default function PdfReport({
   const overallRiskScore = metadata.overallRiskScore || topVuln?.cvss || 6.8;
   const overallRiskLevel = metadata.overallRiskLevel || (overallRiskScore >= 8.5 ? 'CRITICAL' : (overallRiskScore >= 7.0 ? 'HIGH' : 'ELEVATED'));
 
-  const totalPages = 3 + (sortedVulns.length > 0 ? sortedVulns.length : 1);
+  // Dynamic 2-Page / 1-Page Advisory Page Distribution:
+  // If a finding has extensive technical verification (Evidence + PoC script/steps),
+  // it gracefully spans 2 spacious, unhurried A4 pages so text is NEVER squeezed,
+  // fonts stay large (12.5px-13px), line-spacing is relaxed (leading-relaxed), and zero clutter!
+  const findingPages = [];
+  sortedVulns.forEach((vuln, vIdx) => {
+    const findingNum = vIdx + 1;
+    const hasEvidence = Boolean(vuln.evidence);
+    const hasPoc = Boolean(vuln.reproduction || vuln.pocScripts?.bash || vuln.pocScripts?.python || vuln.pocDescription);
+
+    if (hasEvidence || hasPoc) {
+      findingPages.push({ type: 'part1', vuln, findingNum });
+      findingPages.push({ type: 'part2', vuln, findingNum });
+    } else {
+      findingPages.push({ type: 'single', vuln, findingNum });
+    }
+  });
+
+  const totalPages = 3 + (findingPages.length > 0 ? findingPages.length : 1);
 
   const handleGenerateAiSummary = async () => {
     setIsGeneratingAiSummary(true);
@@ -194,7 +212,7 @@ Format with clean markdown bullet points and bold headers. Keep the text punchy,
             <h2 className="text-base font-bold text-white flex items-center gap-2">
               Executive Penetration Testing Report
               <span className="px-2 py-0.5 text-xs rounded-full bg-cyan-500/20 text-cyan-300 font-mono">
-                A4 Standard &bull; {totalPages} Pages
+                A4 Deliverable &bull; {totalPages} Pages
               </span>
             </h2>
             <p className="text-xs text-slate-400">
@@ -258,6 +276,21 @@ Format with clean markdown bullet points and bold headers. Keep the text punchy,
           flex-direction: column;
           position: relative;
           page-break-after: always;
+          break-after: page;
+        }
+        .pdf-page * {
+          box-sizing: border-box !important;
+          word-wrap: break-word !important;
+          overflow-wrap: break-word !important;
+        }
+        .pdf-page pre, .pdf-page code {
+          white-space: pre-wrap !important;
+          word-break: break-all !important;
+          overflow-wrap: anywhere !important;
+        }
+        .pdf-card, .pdf-block {
+          break-inside: avoid !important;
+          page-break-inside: avoid !important;
         }
         @media print {
           @page { size: A4 portrait; margin: 0; }
@@ -283,13 +316,19 @@ Format with clean markdown bullet points and bold headers. Keep the text punchy,
       `}</style>
 
       <div id="vapt-pdf-report-root" className="space-y-8 flex flex-col items-center">
+
+        {/* ========================================================================= */}
+        {/* PAGE 1: EXECUTIVE COVER PAGE & ENGAGEMENT CHARTER                         */}
+        {/* ========================================================================= */}
         <div className="pdf-page bg-white text-slate-900 border border-slate-200">
           <div className="flex items-center justify-between border-b pb-3 border-slate-200">
             <div className="flex items-center gap-3">
               <img src="/logo/Logo dark.jpg" alt="Sennovate Inc." className="h-8 object-contain" />
             </div>
             <div className="text-right font-mono text-xs text-slate-600">
-              <div className="font-bold text-rose-700 uppercase bg-rose-50 border border-rose-200 px-2.5 py-1 rounded-md text-[10.5px]">CONFIDENTIAL &bull; PROPRIETARY</div>
+              <div className="font-bold text-rose-700 uppercase bg-rose-50 border border-rose-200 px-2.5 py-1 rounded-md text-[10.5px]">
+                CONFIDENTIAL &bull; PROPRIETARY
+              </div>
               <div className="text-[10px] text-slate-500 mt-1">Doc Ref: {metadata.runId || 'VAPT-AUDIT-2026'}</div>
             </div>
           </div>
@@ -305,51 +344,53 @@ Format with clean markdown bullet points and bold headers. Keep the text punchy,
             <div className="space-y-1">
               <div className="text-xs font-mono text-slate-500 font-bold uppercase tracking-widest">PREPARED EXCLUSIVELY FOR:</div>
               <h1 className="text-2xl sm:text-3xl font-black text-slate-950 tracking-tight leading-tight break-words">{companyName}</h1>
-              <p className="text-[11.5px] text-slate-700 font-medium leading-relaxed break-words max-w-3xl">Comprehensive autonomous penetration testing deliverable detailing perimeter vulnerability reconnaissance, live exploit verification, attack chain mapping, and prioritized risk mitigation roadmap.</p>
+              <p className="text-[12.5px] text-slate-700 font-medium leading-relaxed break-words max-w-3xl">
+                Comprehensive autonomous penetration testing deliverable detailing perimeter vulnerability reconnaissance, live exploit verification, attack chain mapping, and prioritized risk mitigation roadmap.
+              </p>
             </div>
 
             {/* Core Assessment Metrics (6-KPI Grid) */}
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 p-3 rounded-xl bg-slate-50 border border-slate-200 font-mono text-xs">
               <div className="p-1">
-                <span className="text-slate-500 text-[9.5px] block font-bold uppercase tracking-wider">PRIMARY TARGET URI</span>
-                <span className="font-extrabold text-slate-900 truncate block text-[12px]">{targetUrl}</span>
+                <span className="text-slate-500 text-[10px] block font-bold uppercase tracking-wider">PRIMARY TARGET URI</span>
+                <span className="font-extrabold text-slate-900 break-all block text-[12.5px]">{targetUrl}</span>
               </div>
               <div className="p-1">
-                <span className="text-slate-500 text-[9.5px] block font-bold uppercase tracking-wider">OVERALL RISK POSTURE</span>
-                <span className="font-extrabold text-rose-700 text-[12px]">{overallRiskLevel} ({overallRiskScore}/10 CVSS)</span>
+                <span className="text-slate-500 text-[10px] block font-bold uppercase tracking-wider">OVERALL RISK POSTURE</span>
+                <span className="font-extrabold text-rose-700 text-[12.5px]">{overallRiskLevel} ({overallRiskScore}/10 CVSS)</span>
               </div>
               <div className="p-1">
-                <span className="text-slate-500 text-[9.5px] block font-bold uppercase tracking-wider">CONFIRMED FINDINGS</span>
-                <span className="font-extrabold text-slate-900 text-[12px]">{sortedVulns.length} Verified ({highVulns.length} High, {medVulns.length} Med)</span>
+                <span className="text-slate-500 text-[10px] block font-bold uppercase tracking-wider">CONFIRMED FINDINGS</span>
+                <span className="font-extrabold text-slate-900 text-[12.5px]">{sortedVulns.length} Verified ({highVulns.length} High, {medVulns.length} Med)</span>
               </div>
               <div className="p-1">
-                <span className="text-slate-500 text-[9.5px] block font-bold uppercase tracking-wider">ASSESSMENT PROFILE</span>
-                <span className="font-extrabold text-slate-900 text-[12px]">Black-Box Autonomous Audit</span>
+                <span className="text-slate-500 text-[10px] block font-bold uppercase tracking-wider">ASSESSMENT PROFILE</span>
+                <span className="font-extrabold text-slate-900 text-[12.5px]">Black-Box Autonomous Audit</span>
               </div>
               <div className="p-1">
-                <span className="text-slate-500 text-[9.5px] block font-bold uppercase tracking-wider">SECURITY AI TELEMETRY</span>
-                <span className="font-extrabold text-cyan-800 text-[12px]">
+                <span className="text-slate-500 text-[10px] block font-bold uppercase tracking-wider">SECURITY AI TELEMETRY</span>
+                <span className="font-extrabold text-cyan-800 text-[12.5px]">
                   {(metadata.tokens || 16400000) > 1000000 ? `${((metadata.tokens || 16400000) / 1000000).toFixed(1)}M Tokens` : `${metadata.tokens || 0} Tokens`} &bull; {metadata.requests || 488} Checks
                 </span>
               </div>
               <div className="p-1">
-                <span className="text-slate-500 text-[9.5px] block font-bold uppercase tracking-wider">ASSESSMENT STATUS</span>
-                <span className="font-extrabold text-emerald-700 text-[12px]">Audit Completed &amp; Verified</span>
+                <span className="text-slate-500 text-[10px] block font-bold uppercase tracking-wider">ASSESSMENT STATUS</span>
+                <span className="font-extrabold text-emerald-700 text-[12.5px]">Audit Completed &amp; Verified</span>
               </div>
             </div>
 
             {/* Target Scope & Digital Perimeter */}
-            <div className="p-3 rounded-xl border border-slate-200 bg-white space-y-1.5 text-xs">
-              <div className="font-bold text-slate-900 font-mono text-[11px] uppercase tracking-wider flex items-center gap-1.5">
-                <Globe className="w-3.5 h-3.5 text-cyan-600" /> Target Scope &amp; Evaluated Digital Perimeter
+            <div className="p-3.5 rounded-xl border border-slate-200 bg-white space-y-1.5 text-xs">
+              <div className="font-bold text-slate-900 font-mono text-[11.5px] uppercase tracking-wider flex items-center gap-1.5">
+                <Globe className="w-4 h-4 text-cyan-600" /> Target Scope &amp; Evaluated Digital Perimeter
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-[11px]">
-                <div className="space-y-0.5 text-slate-700 leading-normal">
-                  <div><strong>In-Scope Target:</strong> <code>{targetUrl}</code></div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-[12px]">
+                <div className="space-y-1 text-slate-700 leading-relaxed">
+                  <div><strong>In-Scope Target:</strong> <code className="break-all">{targetUrl}</code></div>
                   <div><strong>Protocol Coverage:</strong> HTTPS/TLS, REST Endpoints, Form Handlers</div>
                   <div><strong>Testing Methodology:</strong> Non-Destructive Live Exploit Ingestion</div>
                 </div>
-                <div className="space-y-0.5 text-slate-700 leading-normal">
+                <div className="space-y-1 text-slate-700 leading-relaxed">
                   <div><strong>Assessment Engine:</strong> Sennovate Autonomous VAPT Platform</div>
                   <div><strong>Execution Mode:</strong> Dynamic Web Surface &amp; API Assessment</div>
                   <div><strong>Safety Constraints:</strong> Zero Denial-of-Service / Zero Data Tampering</div>
@@ -358,47 +399,47 @@ Format with clean markdown bullet points and bold headers. Keep the text punchy,
             </div>
 
             {/* Assessment Lifecycle Execution Phases */}
-            <div className="p-3 rounded-xl border border-slate-200 bg-slate-50 space-y-1.5 text-xs">
-              <div className="font-bold text-slate-900 font-mono text-[11px] uppercase tracking-wider flex items-center gap-1.5">
-                <Layers className="w-3.5 h-3.5 text-cyan-600" /> Autonomous Penetration Testing Execution Phases
+            <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50 space-y-1.5 text-xs">
+              <div className="font-bold text-slate-900 font-mono text-[11.5px] uppercase tracking-wider flex items-center gap-1.5">
+                <Layers className="w-4 h-4 text-cyan-600" /> Autonomous Penetration Testing Execution Phases
               </div>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[10px] font-mono">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[10.5px] font-mono">
                 <div className="p-2 rounded-lg bg-white border border-slate-200">
-                  <strong className="text-cyan-800 block text-[10px] font-black">PHASE 1: RECON</strong>
+                  <strong className="text-cyan-800 block text-[10.5px] font-black">PHASE 1: RECON</strong>
                   <span className="text-slate-600 leading-snug">Perimeter mapping &amp; endpoint profiling.</span>
                 </div>
                 <div className="p-2 rounded-lg bg-white border border-slate-200">
-                  <strong className="text-cyan-800 block text-[10px] font-black">PHASE 2: ATTACK</strong>
+                  <strong className="text-cyan-800 block text-[10.5px] font-black">PHASE 2: ATTACK</strong>
                   <span className="text-slate-600 leading-snug">Autonomous vulnerability discovery &amp; fuzzing.</span>
                 </div>
                 <div className="p-2 rounded-lg bg-white border border-slate-200">
-                  <strong className="text-cyan-800 block text-[10px] font-black">PHASE 3: VERIFY</strong>
+                  <strong className="text-cyan-800 block text-[10.5px] font-black">PHASE 3: VERIFY</strong>
                   <span className="text-slate-600 leading-snug">Live exploit proof &amp; impact validation.</span>
                 </div>
                 <div className="p-2 rounded-lg bg-white border border-slate-200">
-                  <strong className="text-cyan-800 block text-[10px] font-black">PHASE 4: REPORT</strong>
+                  <strong className="text-cyan-800 block text-[10.5px] font-black">PHASE 4: REPORT</strong>
                   <span className="text-slate-600 leading-snug">Technical advisory &amp; prioritized remediation.</span>
                 </div>
               </div>
             </div>
 
             {/* Compliance & Standards Attestation */}
-            <div className="p-3 rounded-xl border border-slate-200 bg-white space-y-1 text-xs">
-              <div className="font-bold text-slate-900 font-mono text-[11px] uppercase tracking-wider flex items-center gap-1.5">
-                <Shield className="w-3.5 h-3.5 text-cyan-600" /> Assessment Frameworks &amp; Compliance Standards Alignment
+            <div className="p-3.5 rounded-xl border border-slate-200 bg-white space-y-1 text-xs">
+              <div className="font-bold text-slate-900 font-mono text-[11.5px] uppercase tracking-wider flex items-center gap-1.5">
+                <Shield className="w-4 h-4 text-cyan-600" /> Assessment Frameworks &amp; Compliance Standards Alignment
               </div>
-              <p className="text-slate-600 leading-relaxed text-[11px] break-words">
+              <p className="text-slate-600 leading-relaxed text-[12px] break-words">
                 Conducted in strict alignment with <strong>OWASP Web Security Testing Guide (WSTG v4.2)</strong>, <strong>OWASP API Security Top 10</strong>, <strong>NIST SP 800-115</strong>, <strong>CWE/SANS Top 25</strong>, and <strong>CVSS v3.1 Scoring Standards</strong>. All observed attack paths were verified to ensure zero false positives.
               </p>
             </div>
           </div>
 
-          <div className="mt-auto pt-2.5 border-t border-slate-200">
+          <div className="mt-auto pt-3 border-t border-slate-200">
             <div className="flex items-center justify-between text-xs font-mono text-slate-600">
               <div><strong>Audited By:</strong> {metadata.leadAuditor || "Sennovate Autonomous Security Engine"}</div>
               <div><strong>Security Partner:</strong> {metadata.companyWebsite || "https://www.sennovate.com"}</div>
             </div>
-            <div className="flex items-center justify-between pt-1 text-[10px] font-mono text-slate-400">
+            <div className="flex items-center justify-between pt-1.5 text-[10px] font-mono text-slate-400">
               <span>Confidential &bull; Sennovate Inc.</span>
               <span>Page 1 of {totalPages}</span>
             </div>
@@ -416,27 +457,27 @@ Format with clean markdown bullet points and bold headers. Keep the text punchy,
             <span className="truncate max-w-[240px]">Target: {companyName}</span>
           </div>
 
-          <div className="flex-1 flex flex-col justify-start space-y-3 pt-3 pb-2">
+          <div className="flex-1 flex flex-col justify-start space-y-3.5 pt-3 pb-2">
             <div className="flex items-center justify-between border-b pb-1.5 border-slate-300">
               <h2 className="text-base font-black text-slate-950 uppercase tracking-tight font-mono">1. Executive Summary &amp; Threat Posture</h2>
               <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-cyan-100 text-cyan-900">VERIFIED FINDINGS</span>
             </div>
 
             {customAiSummary ? (
-              <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-2 text-[12px] text-slate-800 leading-relaxed font-sans break-words">{renderFormattedMarkdown(customAiSummary)}</div>
+              <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-2 text-[12.5px] text-slate-800 leading-relaxed font-sans break-words">{renderFormattedMarkdown(customAiSummary)}</div>
             ) : (
               <>
-                <div className="space-y-1.5 text-[12px] text-slate-800 leading-relaxed font-sans break-words">
+                <div className="space-y-2 text-[12.5px] text-slate-800 leading-relaxed font-sans break-words">
                   <p>Sennovate Autonomous Security Engine conducted an external penetration testing assessment against <strong>{companyName}</strong> (primary target: <code>{targetUrl}</code>). The scope encompassed the external web perimeter, exposed application services, and integrated API endpoints.</p>
                   <p>The assessment identified <strong>{sortedVulns.length} confirmed security vulnerabilities</strong> ({critVulns.length > 0 ? `${critVulns.length} Critical, ` : ''}{highVulns.length} High Severity, {medVulns.length} Medium Severity). The overall cybersecurity posture is evaluated at <strong>{overallRiskLevel} Risk ({overallRiskScore}/10 CVSS)</strong>, requiring targeted remediation to safeguard corporate data assets.</p>
                 </div>
 
                 {topVuln && (
-                  <div className="p-3 rounded-xl bg-amber-50 border-l-4 border-amber-500 text-slate-800 space-y-1 text-xs">
+                  <div className="p-3.5 rounded-xl bg-amber-50 border-l-4 border-amber-500 text-slate-800 space-y-1 text-xs">
                     <div className="font-bold text-amber-900 uppercase font-mono flex items-center gap-1.5 text-xs">
                       <ShieldAlert className="w-4 h-4 text-amber-600 flex-shrink-0" /> <span>Strategic Exposure Vector: {overallRiskLevel} Risk ({overallRiskScore}/10 CVSS)</span>
                     </div>
-                    <p className="leading-relaxed text-[11.5px] break-words text-slate-700">Primary exposure vector is <strong>{topVuln.title}</strong> on <code>{topVuln.target || topVuln.endpoint}</code> (CVSS {topVuln.cvss}). Exploitation allows unauthorized adversaries: {topVuln.impact || topVuln.description}</p>
+                    <p className="leading-relaxed text-[12px] break-words text-slate-700">Primary exposure vector is <strong>{topVuln.title}</strong> on <code>{topVuln.target || topVuln.endpoint}</code> (CVSS {topVuln.cvss}). Exploitation allows unauthorized adversaries: {topVuln.impact || topVuln.description}</p>
                   </div>
                 )}
 
@@ -449,7 +490,7 @@ Format with clean markdown bullet points and bold headers. Keep the text punchy,
                           <span className="font-bold text-rose-900 uppercase font-mono">High Risks ({highVulns.length})</span>
                           <span className="font-mono font-bold text-rose-700 bg-rose-100 px-2 py-0.5 rounded text-[10px]">Urgent Action</span>
                         </div>
-                        <div className="text-[11px] text-slate-700 space-y-0.5 pl-1">{highVulns.map(v => <div key={v.id} className="leading-snug break-words">&bull; <strong>[{v.id}] {v.title}</strong> (CVSS {v.cvss})</div>)}</div>
+                        <div className="text-[11.5px] text-slate-700 space-y-1 pl-1">{highVulns.map(v => <div key={v.id} className="leading-relaxed break-words">&bull; <strong>[{v.id}] {v.title}</strong> (CVSS {v.cvss})</div>)}</div>
                       </div>
                     )}
                     {medVulns.length > 0 && (
@@ -458,7 +499,7 @@ Format with clean markdown bullet points and bold headers. Keep the text punchy,
                           <span className="font-bold text-amber-900 uppercase font-mono">Medium Findings ({medVulns.length})</span>
                           <span className="font-mono font-bold text-amber-800 bg-amber-100 px-2 py-0.5 rounded text-[10px]">Remediate &lt; 7d</span>
                         </div>
-                        <div className="text-[11px] text-slate-700 space-y-0.5 pl-1">{medVulns.map(v => <div key={v.id} className="leading-snug break-words">&bull; <strong>[{v.id}] {v.title}</strong> (CVSS {v.cvss})</div>)}</div>
+                        <div className="text-[11.5px] text-slate-700 space-y-1 pl-1">{medVulns.map(v => <div key={v.id} className="leading-relaxed break-words">&bull; <strong>[{v.id}] {v.title}</strong> (CVSS {v.cvss})</div>)}</div>
                       </div>
                     )}
                   </div>
@@ -466,11 +507,11 @@ Format with clean markdown bullet points and bold headers. Keep the text punchy,
 
                 {/* Business Impact & Regulatory Exposure Callout */}
                 <div className="p-3 rounded-xl border border-slate-200 bg-slate-50 space-y-1 text-xs">
-                  <div className="font-bold text-slate-900 font-mono text-[11px] uppercase tracking-wider flex items-center gap-1.5">
-                    <Building className="w-3.5 h-3.5 text-cyan-600" />
+                  <div className="font-bold text-slate-900 font-mono text-[11.5px] uppercase tracking-wider flex items-center gap-1.5">
+                    <Building className="w-4 h-4 text-cyan-600" />
                     Business Impact &amp; Regulatory Considerations
                   </div>
-                  <p className="text-slate-600 leading-relaxed text-[11px] break-words">
+                  <p className="text-slate-600 leading-relaxed text-[12px] break-words">
                     Identified vulnerabilities could result in session hijacking, unauthorized parameter manipulation, and sensitive header disclosure. Prompt mitigation is advised to maintain compliance with <strong>SOC 2 Type II</strong>, <strong>ISO 27001 (A.14)</strong>, and <strong>GDPR Article 32 (Security of Processing)</strong>.
                   </p>
                 </div>
@@ -478,18 +519,18 @@ Format with clean markdown bullet points and bold headers. Keep the text punchy,
                 {/* 3-Phase Action Roadmap */}
                 <div className="space-y-1.5">
                   <h3 className="text-xs font-bold text-slate-950 font-mono uppercase tracking-wider">2. Prioritized 3-Phase Remediation Roadmap</h3>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs">
-                    <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-200 space-y-1">
-                      <div className="font-bold text-rose-700 font-mono text-[10.5px] uppercase flex items-center gap-1"><Clock className="w-3.5 h-3.5 flex-shrink-0" /> Phase 1 (&lt; 24h)</div>
-                      <p className="text-slate-700 text-[11px] leading-snug break-words">{topVuln ? `Remediate ${topVuln.title} on ${topVuln.endpoint}.` : 'Patch high priority vulnerabilities.'}</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                    <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 space-y-1">
+                      <div className="font-bold text-rose-700 font-mono text-[11px] uppercase flex items-center gap-1"><Clock className="w-3.5 h-3.5 flex-shrink-0" /> Phase 1 (&lt; 24h)</div>
+                      <p className="text-slate-700 text-[11.5px] leading-relaxed break-words">{topVuln ? `Remediate ${topVuln.title} on ${topVuln.endpoint}.` : 'Patch high priority vulnerabilities.'}</p>
                     </div>
-                    <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200 space-y-1">
-                      <div className="font-bold text-amber-700 font-mono text-[10.5px] uppercase flex items-center gap-1"><Clock className="w-3.5 h-3.5 flex-shrink-0" /> Phase 2 (&lt; 7 Days)</div>
-                      <p className="text-slate-700 text-[11px] leading-snug break-words">Address medium severity findings across {companyName} application endpoints.</p>
+                    <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 space-y-1">
+                      <div className="font-bold text-amber-700 font-mono text-[11px] uppercase flex items-center gap-1"><Clock className="w-3.5 h-3.5 flex-shrink-0" /> Phase 2 (&lt; 7 Days)</div>
+                      <p className="text-slate-700 text-[11.5px] leading-relaxed break-words">Address medium severity findings across {companyName} application endpoints.</p>
                     </div>
-                    <div className="p-2.5 rounded-xl bg-cyan-50 border border-cyan-200 space-y-1">
-                      <div className="font-bold text-cyan-800 font-mono text-[10.5px] uppercase flex items-center gap-1"><Clock className="w-3.5 h-3.5 flex-shrink-0" /> Phase 3 (&lt; 30 Days)</div>
-                      <p className="text-slate-700 text-[11px] leading-snug break-words">Deploy strict CSP, review CORS policies, and conduct automated regression audits.</p>
+                    <div className="p-3 rounded-xl bg-cyan-50 border border-cyan-200 space-y-1">
+                      <div className="font-bold text-cyan-800 font-mono text-[11px] uppercase flex items-center gap-1"><Clock className="w-3.5 h-3.5 flex-shrink-0" /> Phase 3 (&lt; 30 Days)</div>
+                      <p className="text-slate-700 text-[11.5px] leading-relaxed break-words">Deploy strict CSP, review CORS policies, and conduct automated regression audits.</p>
                     </div>
                   </div>
                 </div>
@@ -497,7 +538,7 @@ Format with clean markdown bullet points and bold headers. Keep the text punchy,
             )}
           </div>
 
-          <div className="flex items-center justify-between border-t pt-2.5 mt-auto border-slate-200 text-[10.5px] font-mono text-slate-500">
+          <div className="flex items-center justify-between border-t pt-3 mt-auto border-slate-200 text-[10.5px] font-mono text-slate-500">
             <span>CONFIDENTIAL &bull; PROPRIETARY</span>
             <span>Audited by Sennovate Autonomous VAPT Platform</span>
             <span>Page 2 of {totalPages}</span>
@@ -515,7 +556,7 @@ Format with clean markdown bullet points and bold headers. Keep the text punchy,
             <span className="truncate max-w-[240px]">Target: {companyName}</span>
           </div>
 
-          <div className="flex-1 flex flex-col justify-start space-y-3 pt-3 pb-2">
+          <div className="flex-1 flex flex-col justify-start space-y-3.5 pt-3 pb-2">
             <div className="flex items-center justify-between border-b pb-1.5 border-slate-300">
               <h2 className="text-base font-black text-slate-950 uppercase tracking-tight font-mono">3. Vulnerability Summary Matrix</h2>
               <span className="text-xs font-mono text-slate-500 font-bold">{sortedVulns.length} Confirmed Findings</span>
@@ -525,31 +566,31 @@ Format with clean markdown bullet points and bold headers. Keep the text punchy,
               <table className="w-full text-xs text-left table-fixed">
                 <thead className="bg-slate-100 font-mono text-slate-700 border-b border-slate-200">
                   <tr>
-                    <th className="p-2 w-[11%]">ID</th>
-                    <th className="p-2 w-[33%]">Vulnerability Title</th>
-                    <th className="p-2 w-[13%]">Severity</th>
-                    <th className="p-2 w-[8%]">CVSS</th>
-                    <th className="p-2 w-[11%]">CWE</th>
-                    <th className="p-2 w-[15%]">Target Endpoint</th>
-                    <th className="p-2 w-[9%]">Priority</th>
+                    <th className="p-2.5 w-[11%]">ID</th>
+                    <th className="p-2.5 w-[33%]">Vulnerability Title</th>
+                    <th className="p-2.5 w-[13%]">Severity</th>
+                    <th className="p-2.5 w-[8%]">CVSS</th>
+                    <th className="p-2.5 w-[11%]">CWE</th>
+                    <th className="p-2.5 w-[15%]">Target Endpoint</th>
+                    <th className="p-2.5 w-[9%]">Priority</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200">
                   {sortedVulns.map((v, idx) => (
                     <tr key={v.id} className="hover:bg-slate-50">
-                      <td className="p-2 font-mono font-bold text-cyan-800 break-words">{v.id}</td>
-                      <td className="p-2 font-bold text-slate-900 break-words text-[11px]">{v.title}</td>
-                      <td className="p-2 font-mono">
-                        <span className={`px-2 py-0.5 rounded text-[9px] font-bold ${
+                      <td className="p-2.5 font-mono font-bold text-cyan-800 break-words">{v.id}</td>
+                      <td className="p-2.5 font-bold text-slate-900 break-words text-[11.5px]">{v.title}</td>
+                      <td className="p-2.5 font-mono">
+                        <span className={`px-2 py-0.5 rounded text-[9.5px] font-bold ${
                           v.severity === 'CRITICAL' ? 'bg-red-100 text-red-900 border border-red-300 font-black' : 
                           v.severity === 'HIGH' ? 'bg-orange-100 text-orange-900 border border-orange-200' : 
                           'bg-amber-100 text-amber-900 border border-amber-200'
                         }`}>{v.severity}</span>
                       </td>
-                      <td className="p-2 font-mono font-bold text-[11px]">{v.cvss}</td>
-                      <td className="p-2 font-mono text-slate-600 break-words text-[10px]">{v.cwe}</td>
-                      <td className="p-2 font-mono text-slate-600 break-all text-[10px]">{v.endpoint || v.target}</td>
-                      <td className="p-2 font-mono font-bold text-slate-700 text-[10px]">{idx === 0 ? 'Urgent' : idx <= 2 ? 'High' : 'Medium'}</td>
+                      <td className="p-2.5 font-mono font-bold text-[11.5px]">{v.cvss}</td>
+                      <td className="p-2.5 font-mono text-slate-600 break-words text-[10.5px]">{v.cwe}</td>
+                      <td className="p-2.5 font-mono text-slate-600 break-all text-[10.5px]">{v.endpoint || v.target}</td>
+                      <td className="p-2.5 font-mono font-bold text-slate-700 text-[10.5px]">{idx === 0 ? 'Urgent' : idx <= 2 ? 'High' : 'Medium'}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -557,72 +598,72 @@ Format with clean markdown bullet points and bold headers. Keep the text punchy,
             </div>
 
             {/* Severity Scoring Guide */}
-            <div className="p-3 rounded-xl border border-slate-200 bg-slate-50 space-y-1.5 text-xs">
+            <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50 space-y-2 text-xs">
               <h3 className="font-bold text-slate-900 font-mono text-xs uppercase tracking-wider">Industry Severity Scoring Guide (CVSS v3.1 Base Metrics)</h3>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs font-mono">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs font-mono">
                 <div className="p-2 rounded-lg bg-red-50 border border-red-200">
-                  <strong className="text-red-900 block text-[10px]">CRITICAL (9.0 - 10.0)</strong>
-                  <span className="text-slate-600 leading-snug break-words text-[10px]">Immediate compromise or RCE.</span>
+                  <strong className="text-red-900 block text-[10.5px]">CRITICAL (9.0 - 10.0)</strong>
+                  <span className="text-slate-600 leading-relaxed break-words text-[10.5px]">Immediate compromise or RCE.</span>
                 </div>
                 <div className="p-2 rounded-lg bg-orange-50 border border-orange-200">
-                  <strong className="text-orange-900 block text-[10px]">HIGH (7.0 - 8.9)</strong>
-                  <span className="text-slate-600 leading-snug break-words text-[10px]">Privilege escalation or data leak.</span>
+                  <strong className="text-orange-900 block text-[10.5px]">HIGH (7.0 - 8.9)</strong>
+                  <span className="text-slate-600 leading-relaxed break-words text-[10.5px]">Privilege escalation or data leak.</span>
                 </div>
                 <div className="p-2 rounded-lg bg-amber-50 border border-amber-200">
-                  <strong className="text-amber-900 block text-[10px]">MEDIUM (4.0 - 6.9)</strong>
-                  <span className="text-slate-600 leading-snug break-words text-[10px]">Partial data exposure or flaw.</span>
+                  <strong className="text-amber-900 block text-[10.5px]">MEDIUM (4.0 - 6.9)</strong>
+                  <span className="text-slate-600 leading-relaxed break-words text-[10.5px]">Partial data exposure or flaw.</span>
                 </div>
                 <div className="p-2 rounded-lg bg-slate-100 border border-slate-200">
-                  <strong className="text-slate-900 block text-[10px]">LOW (0.1 - 3.9)</strong>
-                  <span className="text-slate-600 leading-snug break-words text-[10px]">Info disclosure or hygiene issue.</span>
+                  <strong className="text-slate-900 block text-[10.5px]">LOW (0.1 - 3.9)</strong>
+                  <span className="text-slate-600 leading-relaxed break-words text-[10.5px]">Info disclosure or hygiene issue.</span>
                 </div>
               </div>
             </div>
 
             {/* OWASP WSTG v4.2 Category Assessment Coverage */}
-            <div className="p-3 rounded-xl border border-slate-200 bg-white space-y-1.5 text-xs">
+            <div className="p-3.5 rounded-xl border border-slate-200 bg-white space-y-2 text-xs">
               <h3 className="font-bold text-slate-900 font-mono text-xs uppercase tracking-wider flex items-center gap-1.5">
-                <ShieldCheck className="w-3.5 h-3.5 text-cyan-600" />
+                <ShieldCheck className="w-4 h-4 text-cyan-600" />
                 OWASP Security Testing Guide (WSTG v4.2) Category Audit Coverage
               </h3>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-[10px] font-mono">
-                <div className="p-1.5 rounded border border-slate-200 bg-slate-50 flex items-center justify-between">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 text-[10.5px] font-mono">
+                <div className="p-2 rounded border border-slate-200 bg-slate-50 flex items-center justify-between">
                   <span>WSTG-INFO (Recon)</span>
-                  <span className="font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded text-[9px]">PASS</span>
+                  <span className="font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded text-[9.5px]">PASS</span>
                 </div>
-                <div className="p-1.5 rounded border border-slate-200 bg-slate-50 flex items-center justify-between">
+                <div className="p-2 rounded border border-slate-200 bg-slate-50 flex items-center justify-between">
                   <span>WSTG-CONF (Config)</span>
-                  <span className="font-bold text-amber-800 bg-amber-50 px-1.5 py-0.5 rounded text-[9px]">FINDINGS</span>
+                  <span className="font-bold text-amber-800 bg-amber-50 px-2 py-0.5 rounded text-[9.5px]">FINDINGS</span>
                 </div>
-                <div className="p-1.5 rounded border border-slate-200 bg-slate-50 flex items-center justify-between">
+                <div className="p-2 rounded border border-slate-200 bg-slate-50 flex items-center justify-between">
                   <span>WSTG-IDNT (Identity)</span>
-                  <span className="font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded text-[9px]">HARDENED</span>
+                  <span className="font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded text-[9.5px]">HARDENED</span>
                 </div>
-                <div className="p-1.5 rounded border border-slate-200 bg-slate-50 flex items-center justify-between">
+                <div className="p-2 rounded border border-slate-200 bg-slate-50 flex items-center justify-between">
                   <span>WSTG-INPV (Injection)</span>
-                  <span className="font-bold text-rose-700 bg-rose-50 px-1.5 py-0.5 rounded text-[9px]">HIGH RISK</span>
+                  <span className="font-bold text-rose-700 bg-rose-50 px-2 py-0.5 rounded text-[9.5px]">HIGH RISK</span>
                 </div>
-                <div className="p-1.5 rounded border border-slate-200 bg-slate-50 flex items-center justify-between">
+                <div className="p-2 rounded border border-slate-200 bg-slate-50 flex items-center justify-between">
                   <span>WSTG-CRYP (Crypto)</span>
-                  <span className="font-bold text-amber-800 bg-amber-50 px-1.5 py-0.5 rounded text-[9px]">FINDINGS</span>
+                  <span className="font-bold text-amber-800 bg-amber-50 px-2 py-0.5 rounded text-[9.5px]">FINDINGS</span>
                 </div>
-                <div className="p-1.5 rounded border border-slate-200 bg-slate-50 flex items-center justify-between">
+                <div className="p-2 rounded border border-slate-200 bg-slate-50 flex items-center justify-between">
                   <span>WSTG-APIT (API Security)</span>
-                  <span className="font-bold text-cyan-800 bg-cyan-50 px-1.5 py-0.5 rounded text-[9px]">VERIFIED</span>
+                  <span className="font-bold text-cyan-800 bg-cyan-50 px-2 py-0.5 rounded text-[9.5px]">VERIFIED</span>
                 </div>
               </div>
             </div>
 
             {/* Audit Attestation & Verification Boundaries */}
-            <div className="p-2.5 rounded-xl border border-slate-200 bg-slate-50 space-y-0.5 text-xs">
-              <div className="font-bold text-slate-900 font-mono text-[10.5px] uppercase tracking-wider flex items-center gap-1">
-                <ShieldCheck className="w-3.5 h-3.5 text-cyan-600" /> Autonomous Penetration Testing Safety Attestation
+            <div className="p-3 rounded-xl border border-slate-200 bg-slate-50 space-y-1 text-xs">
+              <div className="font-bold text-slate-900 font-mono text-[11px] uppercase tracking-wider flex items-center gap-1.5">
+                <ShieldCheck className="w-4 h-4 text-cyan-600" /> Autonomous Penetration Testing Safety Attestation
               </div>
-              <p className="text-slate-600 leading-snug text-[10.5px] break-words">All identified vulnerability attack vectors have been empirically validated through non-destructive dynamic proof-of-concept tests. Testing was executed strictly within authorized target bounds without denial of service or disruption to operational availability.</p>
+              <p className="text-slate-600 leading-relaxed text-[11px] break-words">All identified vulnerability attack vectors have been empirically validated through non-destructive dynamic proof-of-concept tests. Testing was executed strictly within authorized target bounds without denial of service or disruption to operational availability.</p>
             </div>
           </div>
 
-          <div className="flex items-center justify-between border-t pt-2.5 mt-auto border-slate-200 text-[10.5px] font-mono text-slate-500">
+          <div className="flex items-center justify-between border-t pt-3 mt-auto border-slate-200 text-[10.5px] font-mono text-slate-500">
             <span>CONFIDENTIAL &bull; PROPRIETARY</span>
             <span>Audited by Sennovate Autonomous VAPT Platform</span>
             <span>Page 3 of {totalPages}</span>
@@ -630,24 +671,239 @@ Format with clean markdown bullet points and bold headers. Keep the text punchy,
         </div>
 
         {/* ========================================================================= */}
-        {/* PAGES 4+: INDIVIDUAL TECHNICAL VULNERABILITY ADVISORY SHEETS              */}
+        {/* PAGES 4+: UNHURRIED 2-PAGE ADVISORY DELIVERABLES FOR EACH FINDING         */}
         {/* ========================================================================= */}
-        {sortedVulns.map((vuln, vIdx) => {
-          const findingNum = vIdx + 1;
-          const pageNum = 4 + vIdx;
+        {findingPages.map((pageData, pIdx) => {
+          const { type, vuln, findingNum } = pageData;
+          const pageNum = 4 + pIdx;
 
+          // =======================================================================
+          // PART 1: THREAT ASSESSMENT & TECHNICAL ANALYSIS (Page A)
+          // =======================================================================
+          if (type === 'part1') {
+            return (
+              <div key={`finding-p1-${vuln.id}-${pIdx}`} className="pdf-page bg-white text-slate-900 border border-slate-200">
+                {/* Running Header */}
+                <div className="flex items-center justify-between border-b pb-2.5 border-slate-200 text-[11px] font-mono text-slate-500 uppercase">
+                  <span className="font-bold text-cyan-700 flex items-center gap-1.5">
+                    <ShieldCheck className="w-4 h-4 text-cyan-600" />
+                    Sennovate Autonomous VAPT &bull; Finding #{findingNum} of {sortedVulns.length} (Part 1: Technical Analysis)
+                  </span>
+                  <span className="truncate max-w-[240px]">Target: {companyName}</span>
+                </div>
+
+                {/* Body */}
+                <div className="flex-1 flex flex-col justify-start space-y-4 pt-3 pb-2">
+                  {/* Finding Title & Meta Banner */}
+                  <div className="border-b border-slate-200 pb-3 space-y-1.5">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="text-xs font-mono font-bold text-cyan-900 bg-cyan-100 px-2.5 py-1 rounded border border-cyan-200">
+                          Finding #{findingNum}: {vuln.id}
+                        </span>
+                        <span className={`text-xs font-mono font-bold px-2.5 py-1 rounded ${
+                          vuln.severity === 'CRITICAL' ? 'bg-red-100 text-red-900 border border-red-300 font-black' : 
+                          vuln.severity === 'HIGH' ? 'bg-orange-100 text-orange-900 border border-orange-200' : 
+                          'bg-amber-100 text-amber-900 border border-amber-200'
+                        }`}>{vuln.severity} &bull; CVSS {vuln.cvss}</span>
+                        <span className="text-xs font-mono text-slate-700 bg-slate-200/80 px-2.5 py-1 rounded">
+                          {vuln.cwe}
+                        </span>
+                      </div>
+                      <div className="text-xs font-mono text-slate-600">Fix Effort: <strong className="text-emerald-700">{vuln.fixEffort || 'Low'}</strong></div>
+                    </div>
+
+                    <h3 className="text-lg sm:text-xl font-black text-slate-950 tracking-tight leading-snug break-words">
+                      {vuln.title}
+                    </h3>
+
+                    <div className="text-xs font-mono text-slate-600">
+                      Target Endpoint: <code className="text-cyan-800 font-bold break-all">{vuln.endpoint || vuln.target}</code>
+                    </div>
+                  </div>
+
+                  {/* Technical Analysis & Mechanism */}
+                  <div className="space-y-1.5">
+                    <div className="text-xs font-mono font-bold uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
+                      <Info className="w-4 h-4 text-cyan-600 flex-shrink-0" />
+                      <span>Technical Analysis &amp; Vulnerability Mechanism</span>
+                    </div>
+                    <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 text-[13px] text-slate-800 leading-relaxed space-y-2 break-words font-sans">
+                      <p>{vuln.description}</p>
+                      {vuln.technicalAnalysis && (
+                        <p className="text-slate-700 text-[12.5px] pt-2 border-t border-slate-200 break-words leading-relaxed">
+                          <strong className="text-slate-900">Vulnerability Mechanics:</strong> {vuln.technicalAnalysis}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Security & Threat Impact */}
+                  <div className="space-y-1.5">
+                    <div className="text-xs font-mono font-bold uppercase tracking-wider text-rose-700 flex items-center gap-1.5">
+                      <ShieldAlert className="w-4 h-4 text-rose-600 flex-shrink-0" />
+                      <span>Security &amp; Threat Impact Assessment</span>
+                    </div>
+                    <div className="p-3.5 rounded-xl bg-rose-50/60 border border-rose-200 text-[13px] text-slate-900 leading-relaxed break-words font-sans">
+                      <p>{vuln.impact}</p>
+                    </div>
+                  </div>
+
+                  {/* Observed Evidence (Protocol Request/Response) */}
+                  {vuln.evidence && (
+                    <div className="space-y-1.5">
+                      <div className="text-xs font-mono font-bold uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
+                        <Terminal className="w-4 h-4 text-slate-700 flex-shrink-0" />
+                        <span>Observed Evidence (Raw Protocol HTTP Response)</span>
+                      </div>
+                      <div className="p-3.5 rounded-xl bg-slate-950 text-slate-100 font-mono text-[11.5px] leading-relaxed border border-slate-800 break-all overflow-visible max-h-56">
+                        <pre className="whitespace-pre-wrap leading-relaxed select-all break-all overflow-visible font-mono">{vuln.evidence}</pre>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Footer */}
+                <div className="flex items-center justify-between border-t pt-3 mt-auto border-slate-200 text-[11px] font-mono text-slate-500">
+                  <span>CONFIDENTIAL &bull; PROPRIETARY</span>
+                  <span>Continued on Next Page &rarr;</span>
+                  <span>Page {pageNum} of {totalPages}</span>
+                </div>
+              </div>
+            );
+          }
+
+          // =======================================================================
+          // PART 2: LIVE EXPLOIT VERIFICATION & REMEDIATION ROADMAP (Page B)
+          // =======================================================================
+          if (type === 'part2') {
+            return (
+              <div key={`finding-p2-${vuln.id}-${pIdx}`} className="pdf-page bg-white text-slate-900 border border-slate-200">
+                {/* Running Header */}
+                <div className="flex items-center justify-between border-b pb-2.5 border-slate-200 text-[11px] font-mono text-slate-500 uppercase">
+                  <span className="font-bold text-cyan-700 flex items-center gap-1.5">
+                    <ShieldCheck className="w-4 h-4 text-cyan-600" />
+                    Sennovate Autonomous VAPT &bull; Finding #{findingNum} of {sortedVulns.length} (Part 2: Verification &amp; Remediation)
+                  </span>
+                  <span className="truncate max-w-[240px]">Target: {companyName}</span>
+                </div>
+
+                {/* Body */}
+                <div className="flex-1 flex flex-col justify-start space-y-4 pt-3 pb-2">
+                  {/* Continuation Banner */}
+                  <div className="p-3 rounded-xl bg-cyan-50/70 border border-cyan-200 flex items-center justify-between">
+                    <div className="space-y-0.5">
+                      <div className="text-xs font-mono font-bold text-cyan-900 uppercase">
+                        Finding #{findingNum} [{vuln.id}] &mdash; {vuln.title}
+                      </div>
+                      <div className="text-[11px] font-mono text-slate-600">
+                        Endpoint: <code className="text-cyan-800 font-bold break-all">{vuln.endpoint || vuln.target}</code>
+                      </div>
+                    </div>
+                    <span className="text-[10.5px] font-mono font-bold px-2 py-0.5 rounded bg-cyan-200 text-cyan-900">
+                      PART 2: REMEDIATION
+                    </span>
+                  </div>
+
+                  {/* Proof of Concept & Live Exploit Verification */}
+                  {(vuln.pocDescription || vuln.reproduction || vuln.pocScripts?.bash || vuln.pocScripts?.python) && (
+                    <div className="space-y-1.5">
+                      <div className="text-xs font-mono font-bold uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
+                        <Code className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                        <span>Proof of Concept &amp; Live Exploit Verification</span>
+                      </div>
+                      <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-2 text-xs">
+                        {vuln.pocDescription && (
+                          <div className="text-slate-700 leading-relaxed whitespace-pre-line text-[12.5px] font-sans break-words">
+                            {vuln.pocDescription}
+                          </div>
+                        )}
+                        {(vuln.reproduction || vuln.pocScripts?.bash || vuln.pocScripts?.python) && (
+                          <div className="p-3 rounded-lg bg-slate-950 text-cyan-300 font-mono text-[11.5px] leading-relaxed space-y-1 border border-slate-800 overflow-visible break-all">
+                            <span className="text-[10px] uppercase text-slate-400 font-bold block font-mono">
+                              Verification Command / Exploit Script:
+                            </span>
+                            <code className="text-emerald-300 select-all block break-all whitespace-pre-wrap font-mono">
+                              {vuln.reproduction || vuln.pocScripts?.bash || vuln.pocScripts?.python}
+                            </code>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Step-by-Step Remediation Action Plan */}
+                  <div className="space-y-1.5">
+                    <div className="text-xs font-mono font-bold uppercase tracking-wider text-emerald-800 flex items-center gap-1.5">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                      <span>Step-by-Step Remediation Action Plan</span>
+                    </div>
+                    <div className="p-4 rounded-xl bg-emerald-50/60 border border-emerald-200 space-y-2">
+                      {vuln.remediation && (!vuln.remediationSteps || vuln.remediationSteps.length === 0 || (!vuln.remediation.includes(vuln.remediationSteps[0]) && vuln.remediation !== vuln.remediationSteps[0])) && (
+                        <p className="text-slate-900 font-bold text-[13px] break-words leading-relaxed">
+                          {cleanText(vuln.remediation)}
+                        </p>
+                      )}
+                      {vuln.remediationSteps && vuln.remediationSteps.length > 0 ? (
+                        <ol className="list-decimal list-inside space-y-1.5 text-[12.5px] text-slate-800 font-sans">
+                          {vuln.remediationSteps.map((step, sIdx) => (
+                            <li key={sIdx} className="leading-relaxed break-words">{cleanText(step)}</li>
+                          ))}
+                        </ol>
+                      ) : (
+                        !vuln.remediation && <p className="text-slate-500 italic text-[12px]">Apply standard security patches and configuration hardening.</p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Verification Scope & Checklist */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs pt-1">
+                    <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 space-y-1">
+                      <div className="font-bold text-slate-900 font-mono text-[10.5px] uppercase flex items-center gap-1">
+                        <CheckSquare className="w-3.5 h-3.5 text-cyan-600" /> Verification Checklist
+                      </div>
+                      <ul className="text-[11px] text-slate-600 space-y-1 pl-3 list-disc leading-relaxed">
+                        <li>Input sanitization &amp; parameterized queries.</li>
+                        <li>WAF inspection &amp; rate limit rules.</li>
+                        <li>Automated regression validation.</li>
+                      </ul>
+                    </div>
+                    <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 space-y-1">
+                      <div className="font-bold text-slate-900 font-mono text-[10.5px] uppercase flex items-center gap-1">
+                        <Shield className="w-3.5 h-3.5 text-slate-600" /> Scope Note
+                      </div>
+                      <p className="text-[11px] text-slate-600 leading-relaxed break-words">
+                        {vuln.assumptions || 'Assessed against live production API perimeter under standard operational conditions.'}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Footer */}
+                <div className="flex items-center justify-between border-t pt-3 mt-auto border-slate-200 text-[11px] font-mono text-slate-500">
+                  <span>CONFIDENTIAL &bull; PROPRIETARY</span>
+                  <span>Audited by Sennovate Autonomous VAPT Platform</span>
+                  <span>Page {pageNum} of {totalPages}</span>
+                </div>
+              </div>
+            );
+          }
+
+          // =======================================================================
+          // SINGLE SPACIOUS PAGE (For findings without heavy evidence/poc)
+          // =======================================================================
           return (
-            <div key={`finding-advisory-page-${vuln.id}-${vIdx}`} className="pdf-page bg-white text-slate-900 border border-slate-200">
-              <div className="flex items-center justify-between border-b pb-2 border-slate-200 text-[10.5px] font-mono text-slate-500 uppercase">
+            <div key={`finding-single-${vuln.id}-${pIdx}`} className="pdf-page bg-white text-slate-900 border border-slate-200">
+              <div className="flex items-center justify-between border-b pb-2.5 border-slate-200 text-[11px] font-mono text-slate-500 uppercase">
                 <span className="font-bold text-cyan-700 flex items-center gap-1.5">
-                  <ShieldCheck className="w-4 h-4 text-cyan-600" /> Sennovate Autonomous VAPT Deliverable &bull; Finding #{findingNum} of {sortedVulns.length}
+                  <ShieldCheck className="w-4 h-4 text-cyan-600" />
+                  Sennovate Autonomous VAPT Deliverable &bull; Finding #{findingNum} of {sortedVulns.length}
                 </span>
                 <span className="truncate max-w-[240px]">Target: {companyName}</span>
               </div>
 
-              <div className="flex-1 flex flex-col justify-start space-y-3 pt-2.5 pb-2">
-                {/* Header Card */}
-                <div className="border-b border-slate-200 pb-2 space-y-1">
+              <div className="flex-1 flex flex-col justify-start space-y-3.5 pt-3 pb-2">
+                <div className="border-b border-slate-200 pb-2.5 space-y-1.5">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="flex flex-wrap items-center gap-1.5">
                       <span className="text-xs font-mono font-bold text-cyan-900 bg-cyan-100 px-2 py-0.5 rounded border border-cyan-200">Finding #{findingNum}: {vuln.id}</span>
@@ -660,98 +916,45 @@ Format with clean markdown bullet points and bold headers. Keep the text punchy,
                     </div>
                     <div className="text-xs font-mono text-slate-600">Fix Effort: <strong className="text-emerald-700">{vuln.fixEffort || 'Low'}</strong></div>
                   </div>
-                  <h3 className="text-base sm:text-lg font-black text-slate-950 tracking-tight leading-snug break-words">{vuln.title}</h3>
-                  <div className="text-xs font-mono text-slate-600">Target Endpoint: <code className="text-cyan-800 font-bold">{vuln.endpoint || vuln.target}</code></div>
+                  <h3 className="text-lg font-black text-slate-950 tracking-tight leading-snug break-words">{vuln.title}</h3>
+                  <div className="text-xs font-mono text-slate-600">Target Endpoint: <code className="text-cyan-800 font-bold break-all">{vuln.endpoint || vuln.target}</code></div>
                 </div>
 
-                {/* Technical Analysis & Mechanism */}
-                <div className="space-y-1">
+                <div className="space-y-1.5">
                   <div className="text-xs font-mono font-bold uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
                     <Info className="w-3.5 h-3.5 text-cyan-600 flex-shrink-0" /> <span>Technical Analysis &amp; Mechanism</span>
                   </div>
-                  <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-[11.5px] text-slate-800 leading-relaxed space-y-1 break-words font-sans">
+                  <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 text-[12.5px] text-slate-800 leading-relaxed space-y-1.5 break-words font-sans">
                     <p>{vuln.description}</p>
-                    {vuln.technicalAnalysis && <p className="text-slate-600 text-[11px] pt-1 border-t border-slate-200 break-words"><strong className="text-slate-800">Mechanics:</strong> {vuln.technicalAnalysis}</p>}
+                    {vuln.technicalAnalysis && <p className="text-slate-700 text-[12px] pt-1.5 border-t border-slate-200 break-words leading-relaxed"><strong className="text-slate-900">Mechanics:</strong> {vuln.technicalAnalysis}</p>}
                   </div>
                 </div>
 
-                {/* Security & Threat Impact */}
-                <div className="space-y-1">
+                <div className="space-y-1.5">
                   <div className="text-xs font-mono font-bold uppercase tracking-wider text-rose-700 flex items-center gap-1.5">
                     <ShieldAlert className="w-3.5 h-3.5 text-rose-600 flex-shrink-0" /> <span>Security &amp; Threat Impact</span>
                   </div>
-                  <div className="p-2.5 rounded-xl bg-rose-50/50 border border-rose-200 text-[11.5px] text-slate-900 leading-relaxed break-words font-sans"><p>{vuln.impact}</p></div>
+                  <div className="p-3.5 rounded-xl bg-rose-50/60 border border-rose-200 text-[12.5px] text-slate-900 leading-relaxed break-words font-sans"><p>{vuln.impact}</p></div>
                 </div>
 
-                {/* Observed Evidence (Protocol Request/Response) */}
-                {vuln.evidence && (
-                  <div className="space-y-1">
-                    <div className="text-xs font-mono font-bold uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
-                      <Terminal className="w-3.5 h-3.5 text-slate-700 flex-shrink-0" /> <span>Observed Evidence (Protocol Response)</span>
-                    </div>
-                    <div className="p-2.5 rounded-lg bg-slate-950 text-slate-100 font-mono text-[10px] border border-slate-800 break-all overflow-visible max-h-32">
-                      <pre className="whitespace-pre-wrap leading-tight select-all break-all overflow-visible font-mono">{vuln.evidence}</pre>
-                    </div>
-                  </div>
-                )}
-
-                {/* Proof of Concept & Live Verification */}
-                {(vuln.reproduction || vuln.pocScripts?.bash || vuln.pocScripts?.python || vuln.pocDescription) && (
-                  <div className="space-y-1">
-                    <div className="text-xs font-mono font-bold uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
-                      <Code className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" /> <span>Proof of Concept &amp; Live Verification</span>
-                    </div>
-                    <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 space-y-1 text-xs">
-                      {vuln.pocDescription && <div className="text-slate-700 leading-relaxed whitespace-pre-line text-[11px] font-sans break-words">{vuln.pocDescription}</div>}
-                      {(vuln.reproduction || vuln.pocScripts?.bash || vuln.pocScripts?.python) && (
-                        <div className="p-2 rounded-lg bg-slate-950 text-cyan-300 font-mono text-[10.5px] space-y-0.5 border border-slate-800 overflow-visible break-all">
-                          <span className="text-[9px] uppercase text-slate-400 font-bold block font-mono">Verification Command / Exploit:</span>
-                          <code className="text-emerald-300 select-all block break-all whitespace-pre-wrap font-mono">{vuln.reproduction || vuln.pocScripts?.bash || vuln.pocScripts?.python}</code>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {/* Step-by-Step Remediation Action Plan */}
-                <div className="space-y-1">
+                <div className="space-y-1.5">
                   <div className="text-xs font-mono font-bold uppercase tracking-wider text-emerald-800 flex items-center gap-1.5">
                     <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" /> <span>Step-by-Step Remediation Action Plan</span>
                   </div>
-                  <div className="p-2.5 rounded-xl bg-emerald-50/60 border border-emerald-200 text-xs space-y-1">
-                    {vuln.remediation && (!vuln.remediationSteps || vuln.remediationSteps.length === 0 || (!vuln.remediation.includes(vuln.remediationSteps[0]) && vuln.remediation !== vuln.remediationSteps[0])) && (
-                      <p className="text-slate-900 font-semibold text-[11.5px] break-words">{cleanText(vuln.remediation)}</p>
+                  <div className="p-3.5 rounded-xl bg-emerald-50/60 border border-emerald-200 text-xs space-y-1.5">
+                    {vuln.remediation && (
+                      <p className="text-slate-900 font-bold text-[12.5px] break-words leading-relaxed">{cleanText(vuln.remediation)}</p>
                     )}
-                    {vuln.remediationSteps && vuln.remediationSteps.length > 0 ? (
-                      <ol className="list-decimal list-inside space-y-0.5 text-[11px] text-slate-800 font-sans">{vuln.remediationSteps.map((step, sIdx) => <li key={sIdx} className="leading-snug break-words">{cleanText(step)}</li>)}</ol>
-                    ) : !vuln.remediation && <p className="text-slate-500 italic text-[10.5px]">Apply standard security patches and configuration hardening.</p>}
-                  </div>
-                </div>
-
-                {/* Verification Scope & Checklist */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs pt-0.5">
-                  <div className="p-2 rounded-lg bg-slate-50 border border-slate-200 space-y-0.5">
-                    <div className="font-bold text-slate-900 font-mono text-[9.5px] uppercase flex items-center gap-1">
-                      <CheckSquare className="w-3 h-3 text-cyan-600" /> Verification Checklist
-                    </div>
-                    <ul className="text-[10px] text-slate-600 space-y-0.5 pl-3 list-disc">
-                      <li>Input sanitization &amp; parameterized queries.</li>
-                      <li>WAF inspection &amp; rate limit rules.</li>
-                      <li>Automated regression validation.</li>
-                    </ul>
-                  </div>
-                  <div className="p-2 rounded-lg bg-slate-50 border border-slate-200 space-y-0.5">
-                    <div className="font-bold text-slate-900 font-mono text-[9.5px] uppercase flex items-center gap-1">
-                      <Shield className="w-3 h-3 text-slate-600" /> Scope Note
-                    </div>
-                    <p className="text-[10px] text-slate-600 leading-snug break-words">
-                      {vuln.assumptions || 'Assessed against live production API perimeter under standard operational conditions.'}
-                    </p>
+                    {vuln.remediationSteps && vuln.remediationSteps.length > 0 && (
+                      <ol className="list-decimal list-inside space-y-1 text-[12px] text-slate-800 font-sans leading-relaxed">
+                        {vuln.remediationSteps.map((step, sIdx) => <li key={sIdx} className="leading-relaxed break-words">{cleanText(step)}</li>)}
+                      </ol>
+                    )}
                   </div>
                 </div>
               </div>
 
-              <div className="flex items-center justify-between border-t pt-2.5 mt-auto border-slate-200 text-[10.5px] font-mono text-slate-500">
+              <div className="flex items-center justify-between border-t pt-3 mt-auto border-slate-200 text-[11px] font-mono text-slate-500">
                 <span>CONFIDENTIAL &bull; PROPRIETARY</span>
                 <span>Audited by Sennovate Autonomous VAPT Platform</span>
                 <span>Page {pageNum} of {totalPages}</span>
