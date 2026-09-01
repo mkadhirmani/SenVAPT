@@ -104,29 +104,100 @@ export function saveGlobalServerConfig(newConfig) {
 }
 
 /**
+ * Helper to build robust SSH connection options with enhanced timeout and cipher negotiation
+ */
+export function buildSshConnectionOptions(config = {}) {
+  const effConfig = { ...globalStrixConfig, ...(config || {}) };
+  if (!config?.password && globalStrixConfig.password) {
+    effConfig.password = globalStrixConfig.password;
+  }
+  if (!config?.privateKey && globalStrixConfig.privateKey) {
+    effConfig.privateKey = globalStrixConfig.privateKey;
+  }
+
+  let formattedKey = effConfig.privateKey;
+  if (formattedKey && typeof formattedKey === 'string' && !formattedKey.includes('\n') && formattedKey.includes('\\n')) {
+    formattedKey = formattedKey.replace(/\\n/g, '\n');
+  }
+
+  const connOptions = {
+    host: effConfig.host,
+    port: effConfig.port ? parseInt(effConfig.port) : 22,
+    username: effConfig.username || 'ubuntu',
+    readyTimeout: 35000,
+    keepaliveInterval: 10000,
+    keepaliveCountMax: 5,
+    algorithms: {
+      kex: [
+        'curve25519-sha256',
+        'curve25519-sha256@libssh.org',
+        'ecdh-sha2-nistp256',
+        'ecdh-sha2-nistp384',
+        'ecdh-sha2-nistp521',
+        'diffie-hellman-group-exchange-sha256',
+        'diffie-hellman-group14-sha256',
+        'diffie-hellman-group14-sha1',
+        'diffie-hellman-group1-sha1'
+      ],
+      cipher: [
+        'chacha20-poly1305@openssh.com',
+        'aes128-gcm',
+        'aes128-gcm@openssh.com',
+        'aes256-gcm',
+        'aes256-gcm@openssh.com',
+        'aes128-ctr',
+        'aes192-ctr',
+        'aes256-ctr',
+        'aes256-cbc',
+        'aes128-cbc',
+        '3des-cbc'
+      ],
+      serverHostKey: [
+        'ssh-ed25519',
+        'ecdsa-sha2-nistp256',
+        'ecdsa-sha2-nistp384',
+        'ecdsa-sha2-nistp521',
+        'rsa-sha2-512',
+        'rsa-sha2-256',
+        'ssh-rsa',
+        'ssh-dss'
+      ],
+      hmac: [
+        'hmac-sha2-256',
+        'hmac-sha2-512',
+        'hmac-sha1',
+        'hmac-sha1-96'
+      ]
+    }
+  };
+
+  if (formattedKey) connOptions.privateKey = formattedKey;
+  else if (effConfig.password) connOptions.password = effConfig.password;
+
+  return { effConfig, connOptions };
+}
+
+/**
  * Step 1: Connect as ubuntu@<host>
  * Step 2: Test sudo -i elevation to root
  * Step 3: Verify strix in root environment
  */
 export function testSshConnection(config) {
   return new Promise((resolve, reject) => {
-    const effConfig = { ...globalStrixConfig, ...(config || {}) };
-    if (!config?.password && globalStrixConfig.password) {
-      effConfig.password = globalStrixConfig.password;
-    }
-    if (!config?.privateKey && globalStrixConfig.privateKey) {
-      effConfig.privateKey = globalStrixConfig.privateKey;
-    }
+    const { effConfig, connOptions } = buildSshConnectionOptions(config);
 
     if (!effConfig.host) {
       return reject(new Error('No SSH Host specified. Please configure your server IP in Settings.'));
     }
 
+    // Always persist configured server parameters immediately so they are never lost
+    saveGlobalServerConfig(effConfig);
+
     const conn = new Client();
     const timeout = setTimeout(() => {
       conn.end();
-      reject(new Error(`SSH Connection timed out after 20 seconds to ${effConfig.username || 'ubuntu'}@${effConfig.host}. Note: Private internal IP (${effConfig.host}) requires VPC/VPN network routing. For Cloud deployment, use 'Enterprise n8n Webhook' mode.`));
-    }, 20000);
+      reject(new Error(`SSH Connection timed out after 35 seconds to ${effConfig.username || 'ubuntu'}@${effConfig.host}. Note: Private internal IP (${effConfig.host}) requires VPN/VPC routing. You can also use 'Enterprise n8n Webhook' mode to run scans on this VM.`));
+    }, 40000);
 
     conn.on('ready', () => {
       clearTimeout(timeout);
@@ -172,9 +243,9 @@ export function testSshConnection(config) {
           const hostMatch = output.match(/===STEP1_HOST===\n([^\n]+)/);
 
           const connectedUser = userMatch ? userMatch[1].trim() : username;
-          const machineHost = hostMatch ? hostMatch[1].trim() : config.host;
+          const machineHost = hostMatch ? hostMatch[1].trim() : effConfig.host;
 
-          saveGlobalServerConfig(config);
+          saveGlobalServerConfig(effConfig);
 
           resolve({
             success: true,
@@ -193,16 +264,6 @@ export function testSshConnection(config) {
       clearTimeout(timeout);
       reject(new Error(`SSH Connection Failed: ${err.message}`));
     });
-
-    const connOptions = {
-      host: config.host,
-      port: config.port ? parseInt(config.port) : 22,
-      username: config.username || 'ubuntu',
-      readyTimeout: 10000
-    };
-
-    if (config.privateKey) connOptions.privateKey = config.privateKey;
-    else if (config.password) connOptions.password = config.password;
 
     try {
       conn.connect(connOptions);
@@ -1969,20 +2030,20 @@ export function extractFindingsFromAllSources(raw, actualTargetUrl) {
 
 export function fetchRemoteStrixResults(config, targetUrl, runDir) {
   return new Promise((resolve, reject) => {
-    const effectiveConfig = { ...globalStrixConfig, ...(config || {}) };
-    if (!effectiveConfig || !effectiveConfig.host) {
+    const { effConfig, connOptions } = buildSshConnectionOptions(config);
+    if (!effConfig || !effConfig.host) {
       return reject(new Error('No SSH Server configured. Please enter your remote server IP and credentials in Settings.'));
     }
 
     const conn = new Client();
     const timeout = setTimeout(() => {
       conn.end();
-      reject(new Error(`Remote findings fetch timed out after 15 seconds to ${effectiveConfig.host}. Verify SSH host and network connection.`));
-    }, 15000);
+      reject(new Error(`Remote findings fetch timed out after 35 seconds to ${effConfig.host}. Verify SSH host and network connection.`));
+    }, 40000);
 
     conn.on('ready', () => {
       clearTimeout(timeout);
-      const password = effectiveConfig.password || '';
+      const password = effConfig.password || '';
 
       const extractScript = `
 import json, os, glob, sys
@@ -2376,16 +2437,6 @@ print("===END_JSON===")
       reject(err);
     });
 
-    const connOptions = {
-      host: config.host,
-      port: config.port ? parseInt(config.port) : 22,
-      username: config.username || 'ubuntu',
-      readyTimeout: 10000
-    };
-
-    if (config.privateKey) connOptions.privateKey = config.privateKey;
-    else if (config.password) connOptions.password = config.password;
-
     try {
       conn.connect(connOptions);
     } catch (e) {
@@ -2399,20 +2450,20 @@ print("===END_JSON===")
  */
 export function fetchAllRemoteScanRuns(config) {
   return new Promise((resolve, reject) => {
-    const effectiveConfig = { ...globalStrixConfig, ...(config || {}) };
-    if (!effectiveConfig || !effectiveConfig.host) {
+    const { effConfig, connOptions } = buildSshConnectionOptions(config);
+    if (!effConfig || !effConfig.host) {
       return reject(new Error('No SSH Host configured.'));
     }
 
     const conn = new Client();
     const timeout = setTimeout(() => {
       conn.end();
-      reject(new Error(`Fetch all remote scan runs timed out after 15 seconds to ${effectiveConfig.host}.`));
-    }, 15000);
+      reject(new Error(`Fetch all remote scan runs timed out after 35 seconds to ${effConfig.host}.`));
+    }, 40000);
 
     conn.on('ready', () => {
       clearTimeout(timeout);
-      const password = effectiveConfig.password || '';
+      const password = effConfig.password || '';
 
       const extractAllScript = `
 import json, os, glob, sys, time
@@ -2671,17 +2722,12 @@ print("===END_ALL_JSON===")
       reject(err);
     });
 
-    const connOptions = {
-      host: config.host,
-      port: config.port ? parseInt(config.port) : 22,
-      username: config.username || 'ubuntu',
-      readyTimeout: 10000
-    };
-
-    if (config.privateKey) connOptions.privateKey = config.privateKey;
-    else if (config.password) connOptions.password = config.password;
-
-    conn.connect(connOptions);
+    try {
+      conn.connect(connOptions);
+    } catch (e) {
+      clearTimeout(timeout);
+      reject(e);
+    }
   });
 }
 
@@ -3102,15 +3148,13 @@ export function startRemoteStrixScan(rawParams = {}) {
       reject(err);
     });
 
-    const connOptions = {
-      host: host,
-      port: port ? parseInt(port) : 22,
-      username: username || 'ubuntu',
-      readyTimeout: 10000
-    };
-
-    if (privateKey) connOptions.privateKey = privateKey;
-    else if (password) connOptions.password = password;
+    const { connOptions } = buildSshConnectionOptions({
+      host,
+      port,
+      username,
+      password,
+      privateKey
+    });
 
     try {
       conn.connect(connOptions);
