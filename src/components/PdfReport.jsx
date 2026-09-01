@@ -127,133 +127,115 @@ function estimateListHeight(steps, baseHeight = 20) {
   return baseHeight + (steps.length * 18);
 }
 
-// Continuously flow and pack all finding sections into optimal discrete A4 pages
+// Smart Logical Grouping: Prevents orphan headers, ensures natural continuation, and maximizes usable A4 page density
 function packFindingPages(sortedVulns) {
-  // Realistic usable content height utilizing standard A4 space efficiently
-  const MAX_PAGE_HEIGHT = 820;
+  // Target usable height per A4 page (~960px at standard 96 DPI with 10mm top/bottom padding)
+  const MAX_PAGE_HEIGHT = 960;
   const pages = [];
-  const allBlocks = [];
+  let currentPageBlocks = [];
+  let currentHeight = 0;
 
-  // Step 1: Decompose all findings into an ordered stream of atomic component blocks
   sortedVulns.forEach((vuln, vIdx) => {
     const findingNum = vIdx + 1;
 
-    // Block 1: Header Block
-    allBlocks.push({
-      type: 'header',
-      height: 70,
-      vuln,
-      findingNum
-    });
+    // Unit 1: Assessment Unit (Header + Technical Analysis + Security Impact)
+    // CRITICAL: Header and Technical Analysis are strictly kept together so headings never appear alone!
+    const descLines = Math.ceil((vuln.description || '').length / 90);
+    const techLines = Math.ceil((vuln.technicalAnalysis || '').length / 90);
+    const impactLines = Math.ceil((vuln.impact || '').length / 90);
+    const unit1Height = 55 + (descLines * 13) + (techLines ? techLines * 12 + 15 : 0) + (impactLines * 13 + 20);
 
-    // Block 2: Technical Analysis Block
-    const descH = estimateTextHeight(vuln.description, 25);
-    const techH = vuln.technicalAnalysis ? estimateTextHeight(vuln.technicalAnalysis, 15) : 0;
-    allBlocks.push({
-      type: 'analysis',
-      height: descH + techH,
-      vuln,
-      findingNum
-    });
+    const unit1Blocks = [
+      { type: 'header', height: 55, vuln, findingNum },
+      { type: 'analysis', height: (descLines * 13) + (techLines ? techLines * 12 + 15 : 0), vuln, findingNum },
+      { type: 'impact', height: (impactLines * 13 + 20), vuln, findingNum }
+    ];
 
-    // Block 3: Threat Impact Block
-    allBlocks.push({
-      type: 'impact',
-      height: estimateTextHeight(vuln.impact, 25),
-      vuln,
-      findingNum
-    });
-
-    // Block 4: Observed Evidence Block
-    if (vuln.evidence) {
-      allBlocks.push({
-        type: 'evidence',
-        height: estimateCodeHeight(vuln.evidence, 35),
-        vuln,
-        findingNum
-      });
-    }
-
-    // Block 5: Proof of Concept Block
-    const pocDescH = vuln.pocDescription ? estimateTextHeight(vuln.pocDescription, 15) : 0;
-    const pocCodeH = (vuln.reproduction || vuln.pocScripts?.bash || vuln.pocScripts?.python) 
-      ? estimateCodeHeight(vuln.reproduction || vuln.pocScripts?.bash || vuln.pocScripts?.python, 25) 
+    // Unit 2: Verification & Evidence Unit (Observed Evidence + Proof of Concept Exploit)
+    const evLines = vuln.evidence ? (vuln.evidence.match(/\n/g) || []).length + 1 : 0;
+    const pocLines = (vuln.reproduction || vuln.pocScripts?.bash || vuln.pocScripts?.python) 
+      ? ((vuln.reproduction || vuln.pocScripts?.bash || vuln.pocScripts?.python).match(/\n/g) || []).length + 1 
       : 0;
-    allBlocks.push({
-      type: 'poc',
-      height: 25 + pocDescH + pocCodeH,
-      vuln,
-      findingNum
-    });
+    const evHeight = vuln.evidence ? Math.min(160, 25 + evLines * 11) : 0;
+    const pocDescLines = Math.ceil((vuln.pocDescription || '').length / 90);
+    const pocHeight = (pocDescLines ? pocDescLines * 12 : 0) + (pocLines ? Math.min(110, 25 + pocLines * 11) : 0) + 15;
+    const unit2Height = evHeight + pocHeight;
 
-    // Block 6: Remediation Plan Block
-    const remDescH = vuln.remediation ? estimateTextHeight(vuln.remediation, 15) : 0;
-    const remStepsH = vuln.remediationSteps ? estimateListHeight(vuln.remediationSteps, 10) : 25;
-    allBlocks.push({
-      type: 'remediation',
-      height: 25 + remDescH + remStepsH,
-      vuln,
-      findingNum
-    });
-
-    // Block 7: Scope & Verification Block
-    allBlocks.push({
-      type: 'scope',
-      height: 75,
-      vuln,
-      findingNum
-    });
-  });
-
-  // Step 2: Continuously pack all blocks into pages without premature page breaks
-  let currentPageBlocks = [];
-  let currentHeight = 0;
-  let activeFindingNum = null;
-
-  allBlocks.forEach((block) => {
-    const isNewFindingHeader = block.type === 'header';
-    const isContinuation = !isNewFindingHeader && activeFindingNum !== block.findingNum;
-    const continuationHeaderHeight = isContinuation ? 32 : 0;
-    const neededHeight = block.height + continuationHeaderHeight + 10;
-
-    if (currentPageBlocks.length > 0 && (currentHeight + neededHeight > MAX_PAGE_HEIGHT)) {
-      // Current page is full: push completed page
-      pages.push({
-        blocks: currentPageBlocks
-      });
-
-      // Start new page cleanly
-      if (!isNewFindingHeader) {
-        currentPageBlocks = [
-          { type: 'continuation_header', height: 32, vuln: block.vuln, findingNum: block.findingNum },
-          block
-        ];
-        currentHeight = 32 + block.height + 10;
-      } else {
-        currentPageBlocks = [block];
-        currentHeight = block.height + 10;
-      }
-      activeFindingNum = block.findingNum;
-    } else {
-      if (isContinuation) {
-        currentPageBlocks.push({
-          type: 'continuation_header',
-          height: 32,
-          vuln: block.vuln,
-          findingNum: block.findingNum
-        });
-        currentHeight += 32;
-      }
-      currentPageBlocks.push(block);
-      currentHeight += block.height + 10;
-      activeFindingNum = block.findingNum;
+    const unit2Blocks = [];
+    if (vuln.evidence) {
+      unit2Blocks.push({ type: 'evidence', height: evHeight, vuln, findingNum });
     }
+    unit2Blocks.push({ type: 'poc', height: pocHeight, vuln, findingNum });
+
+    // Unit 3: Remediation & Scope Unit (Action Plan + Scope Note)
+    const remStepsCount = vuln.remediationSteps?.length || (vuln.remediation ? 2 : 1);
+    const remHeight = 25 + (remStepsCount * 14);
+    const scopeHeight = 45;
+    const unit3Height = remHeight + scopeHeight;
+
+    const unit3Blocks = [
+      { type: 'remediation', height: remHeight, vuln, findingNum },
+      { type: 'scope', height: scopeHeight, vuln, findingNum }
+    ];
+
+    const totalFindingHeight = unit1Height + unit2Height + unit3Height;
+
+    // Case 1: Entire finding fits on current page cleanly
+    if (currentHeight + totalFindingHeight <= MAX_PAGE_HEIGHT) {
+      currentPageBlocks.push(...unit1Blocks, ...unit2Blocks, ...unit3Blocks);
+      currentHeight += totalFindingHeight + 16;
+      return;
+    }
+
+    // Case 2: Finding doesn't fit completely.
+    // If the current page already has substantial content (over 560px), start this finding fresh at top of next page
+    if (currentHeight > 560) {
+      if (currentPageBlocks.length > 0) {
+        pages.push({ blocks: currentPageBlocks });
+      }
+      currentPageBlocks = [];
+      currentHeight = 0;
+    }
+
+    // Check if Unit 1 + Unit 2 fit together on current page
+    if (currentHeight + unit1Height + unit2Height <= MAX_PAGE_HEIGHT) {
+      currentPageBlocks.push(...unit1Blocks, ...unit2Blocks);
+      pages.push({ blocks: currentPageBlocks });
+      
+      // Unit 3 (Remediation) naturally continues on next page with a clean continuation banner
+      currentPageBlocks = [
+        { type: 'continuation_header', height: 28, vuln, findingNum, subtitle: 'Remediation Plan & Scope' },
+        ...unit3Blocks
+      ];
+      currentHeight = 28 + unit3Height + 16;
+      return;
+    }
+
+    // If only Unit 1 fits on current page (with ample room to prevent awkward cutoff)
+    if (currentHeight + unit1Height <= MAX_PAGE_HEIGHT && (MAX_PAGE_HEIGHT - currentHeight) >= unit1Height) {
+      currentPageBlocks.push(...unit1Blocks);
+      pages.push({ blocks: currentPageBlocks });
+
+      // Unit 2 + Unit 3 naturally continue on next page
+      currentPageBlocks = [
+        { type: 'continuation_header', height: 28, vuln, findingNum, subtitle: 'Verification & Remediation Plan' },
+        ...unit2Blocks,
+        ...unit3Blocks
+      ];
+      currentHeight = 28 + unit2Height + unit3Height + 16;
+      return;
+    }
+
+    // Otherwise, push current page and start fresh finding at top of new page
+    if (currentPageBlocks.length > 0) {
+      pages.push({ blocks: currentPageBlocks });
+    }
+    currentPageBlocks = [...unit1Blocks, ...unit2Blocks, ...unit3Blocks];
+    currentHeight = totalFindingHeight + 16;
   });
 
   if (currentPageBlocks.length > 0) {
-    pages.push({
-      blocks: currentPageBlocks
-    });
+    pages.push({ blocks: currentPageBlocks });
   }
 
   return pages;
@@ -285,15 +267,19 @@ export default function PdfReport({
   const dynamicFindingPages = packFindingPages(sortedVulns);
   const totalPages = 3 + (dynamicFindingPages.length > 0 ? dynamicFindingPages.length : 1);
 
-  // Trigger Live LLM RAG Synthesis for Executive Summary
+  // Trigger Live LLM RAG Synthesis for Executive Summary & Alignment
   const handleGenerateAiSummary = async () => {
     setIsGeneratingAiSummary(true);
     try {
-      const prompt = `Generate a concise, crystal-clear, structured Executive Findings Summary for the VAPT report of ${companyName}.
-Include:
-1. Executive Risk Overview (2 paragraphs)
-2. Ordered breakdown of findings categorized by severity.
-3. Prioritized 3-Phase Action Roadmap (Immediate 24h, Short-term 7d, Medium-term 30d).`;
+      const prompt = `You are a Principal Security Consultant creating an executive penetration testing deliverable for ${companyName} (Target: ${targetUrl}).
+Generate a concise, crisp, perfectly proportioned Executive Summary and Threat Alignment that fits Page 2 of a standard A4 deliverable without awkward cutoffs or overflow:
+1. Executive Threat Overview (2 concise paragraphs evaluating overall posture, highest risk attack vectors, and business impact).
+2. Key Risk Breakdown (concise bulleted breakdown of confirmed Critical, High, and Medium vulnerabilities with exact mechanics).
+3. Strategic 3-Phase Action Roadmap:
+   - Phase 1 (< 24h Immediate Containment)
+   - Phase 2 (< 7 Days Architectural Remediation)
+   - Phase 3 (< 30 Days Governance & Regression Testing)
+Format with clean markdown bullet points and bold headers. Keep the text punchy, technical, and well-balanced.`;
 
       const res = await askLlmWithRag({
         userMessage: prompt,
@@ -338,19 +324,24 @@ Include:
     switch (block.type) {
       case 'continuation_header':
         return (
-          <div key={`cont-${findingNum}-${bIdx}`} className="flex items-center justify-between p-1.5 rounded-lg bg-slate-50 border border-slate-200 text-[10px] font-mono">
-            <span className="font-bold text-slate-900 truncate max-w-[65%]">
-              Continuation: Finding #{findingNum} [{vuln.id}] &mdash; {vuln.title}
-            </span>
-            <span className="font-bold text-cyan-800 bg-cyan-100 px-1.5 py-0.5 rounded text-[9px]">
-              Endpoint: {vuln.endpoint}
+          <div key={`cont-${findingNum}-${bIdx}`} className="flex items-center justify-between p-2 rounded-lg bg-cyan-50/70 border border-cyan-200 text-[10px] font-mono pdf-block">
+            <div className="flex items-center gap-1.5 truncate max-w-[70%]">
+              <span className="font-bold text-cyan-900 bg-cyan-200/70 px-1.5 py-0.5 rounded text-[8.5px] uppercase">
+                {block.subtitle || 'Continued'}
+              </span>
+              <span className="font-bold text-slate-900 truncate">
+                Finding #{findingNum} [{vuln.id}] &mdash; {vuln.title}
+              </span>
+            </div>
+            <span className="font-mono font-bold text-slate-600 text-[9px] truncate">
+              Endpoint: <code className="text-cyan-800 font-bold">{vuln.endpoint || vuln.target}</code>
             </span>
           </div>
         );
 
       case 'header':
         return (
-          <div key={`hdr-${findingNum}-${bIdx}`} className="flex flex-wrap items-start justify-between gap-1.5 border-b border-slate-200 pb-1.5 pt-0.5">
+          <div key={`hdr-${findingNum}-${bIdx}`} className="flex flex-wrap items-start justify-between gap-1.5 border-b border-slate-200 pb-1.5 pt-0.5 pdf-block">
             <div className="space-y-0.5 max-w-[72%]">
               <div className="flex flex-wrap items-center gap-1">
                 <span className="text-[9px] font-mono font-bold text-cyan-900 bg-cyan-100 px-1.5 py-0.5 rounded border border-cyan-200">
@@ -595,17 +586,15 @@ Include:
           min-width: 210mm;
           max-width: 210mm;
           min-height: 297mm;
-          margin: 0 auto 32px auto;
-          padding: 16mm 14mm 16mm 14mm;
+          margin: 0 auto 24px auto;
+          padding: 10mm 12mm 10mm 12mm;
           background: #ffffff;
-          box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.12), 0 8px 10px -6px rgba(0, 0, 0, 0.08);
-          border-radius: 4px;
+          box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.08);
+          border-radius: 3px;
           box-sizing: border-box;
           display: flex;
           flex-direction: column;
-          justify-content: space-between;
           position: relative;
-          overflow: visible !important;
           page-break-after: always;
           break-after: page;
         }
@@ -618,6 +607,10 @@ Include:
           white-space: pre-wrap !important;
           word-break: break-all !important;
           overflow-wrap: anywhere !important;
+        }
+        .pdf-card, .pdf-block {
+          break-inside: avoid !important;
+          page-break-inside: avoid !important;
         }
         @media print {
           @page {
@@ -645,7 +638,8 @@ Include:
             min-width: 210mm !important;
             max-width: 210mm !important;
             min-height: 297mm !important;
-            padding: 16mm 14mm 16mm 14mm !important;
+            height: 297mm !important;
+            padding: 10mm 12mm 10mm 12mm !important;
             page-break-after: always !important;
             break-after: page !important;
             box-sizing: border-box !important;
@@ -655,8 +649,6 @@ Include:
             border-radius: 0 !important;
             display: flex !important;
             flex-direction: column !important;
-            justify-content: space-between !important;
-            overflow: visible !important;
           }
         }
       `}</style>
@@ -667,9 +659,9 @@ Include:
         {/* ========================================================================= */}
         {/* PAGE 1: EXECUTIVE COVER PAGE                                              */}
         {/* ========================================================================= */}
-        <div className="pdf-page p-[16mm_14mm_16mm_14mm] bg-white text-slate-900 border border-slate-200">
+        <div className="pdf-page p-[10mm_12mm_10mm_12mm] bg-white text-slate-900 border border-slate-200">
           {/* Cover Header */}
-          <div className="flex items-center justify-between border-b pb-3.5 border-slate-200">
+          <div className="flex items-center justify-between border-b pb-2.5 border-slate-200">
             <div className="flex items-center gap-3">
               <img
                 src="/logo/Logo dark.jpg"
@@ -678,21 +670,21 @@ Include:
               />
             </div>
             <div className="text-right font-mono text-xs text-slate-600">
-              <div className="font-bold text-rose-700 uppercase bg-rose-50 border border-rose-200 px-2 py-0.5 rounded inline-block text-[9.5px]">
+              <div className="font-bold text-rose-700 uppercase bg-rose-50 border border-rose-200 px-2 py-0.5 rounded inline-block text-[9px]">
                 CONFIDENTIAL &bull; PROPRIETARY
               </div>
-              <div className="text-[9.5px] text-slate-500 mt-0.5">Doc Ref: {metadata.runId || 'VAPT-AUDIT-2026'}</div>
+              <div className="text-[9px] text-slate-500 mt-0.5">Doc Ref: {metadata.runId || 'VAPT-AUDIT-2026'}</div>
             </div>
           </div>
 
-          {/* Cover Body */}
-          <div className="space-y-4 my-auto py-2">
+          {/* Cover Body: Starts at top and naturally flows without artificial centering */}
+          <div className="flex-1 flex flex-col justify-start space-y-4 pt-4 pb-2">
             <div className="inline-block px-2.5 py-0.5 bg-cyan-50 border border-cyan-200 rounded-md text-[10px] font-mono font-bold text-cyan-900 uppercase tracking-wider">
               {metadata.assessmentType || "External Web Application & API Penetration Test"}
             </div>
 
             <div className="space-y-1">
-              <div className="text-[10.5px] font-mono text-slate-500 font-bold uppercase tracking-widest">
+              <div className="text-[10px] font-mono text-slate-500 font-bold uppercase tracking-widest">
                 PREPARED EXCLUSIVELY FOR:
               </div>
               <h1 className="text-2xl sm:text-3xl font-black text-slate-950 tracking-tight leading-tight break-words">
@@ -707,19 +699,19 @@ Include:
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs font-mono">
               <div>
                 <span className="text-slate-500 text-[9px] block font-bold">PRIMARY TARGET</span>
-                <span className="font-bold text-slate-900 truncate block text-[10.5px]">{targetUrl}</span>
+                <span className="font-bold text-slate-900 truncate block text-[10px]">{targetUrl}</span>
               </div>
               <div>
                 <span className="text-slate-500 text-[9px] block font-bold">OVERALL RISK POSTURE</span>
-                <span className="font-bold text-rose-700 text-[10.5px]">{overallRiskLevel} ({overallRiskScore}/10)</span>
+                <span className="font-bold text-rose-700 text-[10px]">{overallRiskLevel} ({overallRiskScore}/10)</span>
               </div>
               <div>
                 <span className="text-slate-500 text-[9px] block font-bold">CONFIRMED FINDINGS</span>
-                <span className="font-bold text-slate-900 text-[10.5px]">{sortedVulns.length} Verified</span>
+                <span className="font-bold text-slate-900 text-[10px]">{sortedVulns.length} Verified</span>
               </div>
               <div>
                 <span className="text-slate-500 text-[9px] block font-bold">ASSESSMENT STATUS</span>
-                <span className="font-bold text-emerald-700 text-[10.5px]">Audit Completed</span>
+                <span className="font-bold text-emerald-700 text-[10px]">Audit Completed</span>
               </div>
             </div>
 
@@ -728,15 +720,15 @@ Include:
                 <Shield className="w-3.5 h-3.5 text-cyan-600" />
                 Assessment Frameworks &amp; Compliance Standards
               </div>
-              <p className="text-slate-600 leading-relaxed text-[10.5px] break-words">
+              <p className="text-slate-600 leading-relaxed text-[10px] break-words">
                 Executed in alignment with the <strong>OWASP Web Security Testing Guide (WSTG v4.2)</strong>, <strong>OWASP API Security Top 10</strong>, <strong>NIST SP 800-115</strong>, and <strong>CVSS v3.1 Scoring Standards</strong>.
               </p>
             </div>
           </div>
 
-          {/* Cover Footer */}
-          <div>
-            <div className="flex items-center justify-between border-t pt-2.5 border-slate-200 text-xs font-mono text-slate-600">
+          {/* Cover Footer Anchored to bottom */}
+          <div className="mt-auto">
+            <div className="flex items-center justify-between border-t pt-2 border-slate-200 text-xs font-mono text-slate-600">
               <div>
                 <strong>Audited By:</strong> {metadata.leadAuditor || "Sennovate Autonomous Security Engine"}
               </div>
@@ -744,7 +736,7 @@ Include:
                 <strong>Security Partner:</strong> {metadata.companyWebsite || "https://www.sennovate.com"}
               </div>
             </div>
-            <div className="flex items-center justify-between pt-1.5 text-[9.5px] font-mono text-slate-400">
+            <div className="flex items-center justify-between pt-1.5 text-[9px] font-mono text-slate-400">
               <span>Confidential &bull; Sennovate Inc.</span>
               <span>Page 1 of {totalPages}</span>
             </div>
@@ -755,7 +747,7 @@ Include:
         {/* ========================================================================= */}
         {/* PAGE 2: EXECUTIVE SUMMARY, THREAT POSTURE & 3-PHASE ROADMAP               */}
         {/* ========================================================================= */}
-        <div className="pdf-page p-[16mm_14mm_16mm_14mm] bg-white text-slate-900 border border-slate-200">
+        <div className="pdf-page p-[10mm_12mm_10mm_12mm] bg-white text-slate-900 border border-slate-200">
           {/* Running Header */}
           <div className="flex items-center justify-between border-b pb-2 border-slate-200 text-[9.5px] font-mono text-slate-500 uppercase">
             <span className="font-bold text-cyan-700 flex items-center gap-1">
@@ -765,8 +757,8 @@ Include:
             <span className="truncate max-w-[200px]">Target: {companyName}</span>
           </div>
 
-          {/* Page Body */}
-          <div className="space-y-3 my-auto py-1">
+          {/* Page Body: Content begins under header and flows down naturally */}
+          <div className="flex-1 flex flex-col justify-start space-y-3 pt-2 pb-2">
             <div className="flex items-center justify-between border-b pb-1.5 border-slate-300">
               <h2 className="text-sm font-black text-slate-950 uppercase tracking-tight font-mono">
                 1. Executive Summary &amp; Threat Posture
@@ -895,8 +887,8 @@ Include:
             )}
           </div>
 
-          {/* Running Footer */}
-          <div className="flex items-center justify-between border-t pt-2 border-slate-200 text-[9.5px] font-mono text-slate-500">
+          {/* Running Footer Anchored cleanly to bottom */}
+          <div className="flex items-center justify-between border-t pt-2 mt-auto border-slate-200 text-[9.5px] font-mono text-slate-500">
             <span>CONFIDENTIAL &bull; PROPRIETARY</span>
             <span>Audited by Sennovate Autonomous VAPT Platform</span>
             <span>Page 2 of {totalPages}</span>
@@ -907,7 +899,7 @@ Include:
         {/* ========================================================================= */}
         {/* PAGE 3: VULNERABILITY SUMMARY MATRIX & CVSS RATING GUIDE                  */}
         {/* ========================================================================= */}
-        <div className="pdf-page p-[16mm_14mm_16mm_14mm] bg-white text-slate-900 border border-slate-200">
+        <div className="pdf-page p-[10mm_12mm_10mm_12mm] bg-white text-slate-900 border border-slate-200">
           {/* Running Header */}
           <div className="flex items-center justify-between border-b pb-2 border-slate-200 text-[9.5px] font-mono text-slate-500 uppercase">
             <span className="font-bold text-cyan-700 flex items-center gap-1">
@@ -917,8 +909,8 @@ Include:
             <span className="truncate max-w-[200px]">Target: {companyName}</span>
           </div>
 
-          {/* Page Body */}
-          <div className="space-y-3.5 my-auto py-1">
+          {/* Page Body: Content begins under header and flows down naturally */}
+          <div className="flex-1 flex flex-col justify-start space-y-3 pt-2 pb-2">
             <div className="flex items-center justify-between border-b pb-1.5 border-slate-300">
               <h2 className="text-sm font-black text-slate-950 uppercase tracking-tight font-mono">
                 3. Vulnerability Summary Matrix
@@ -993,8 +985,8 @@ Include:
             </div>
           </div>
 
-          {/* Running Footer */}
-          <div className="flex items-center justify-between border-t pt-2 border-slate-200 text-[9.5px] font-mono text-slate-500">
+          {/* Running Footer Anchored cleanly to bottom */}
+          <div className="flex items-center justify-between border-t pt-2 mt-auto border-slate-200 text-[9.5px] font-mono text-slate-500">
             <span>CONFIDENTIAL &bull; PROPRIETARY</span>
             <span>Audited by Sennovate Autonomous VAPT Platform</span>
             <span>Page 3 of {totalPages}</span>
@@ -1012,7 +1004,7 @@ Include:
           return (
             <div 
               key={`dense-finding-page-${pIdx}`}
-              className="pdf-page p-[16mm_14mm_16mm_14mm] bg-white text-slate-900 border border-slate-200"
+              className="pdf-page p-[10mm_12mm_10mm_12mm] bg-white text-slate-900 border border-slate-200"
             >
               {/* Running Header */}
               <div className="flex items-center justify-between border-b pb-2 border-slate-200 text-[9.5px] font-mono text-slate-500 uppercase">
@@ -1023,13 +1015,13 @@ Include:
                 <span className="truncate max-w-[200px]">Target: {companyName}</span>
               </div>
 
-              {/* Space-Optimized Content Body (High-Density continuous unbroken blocks) */}
-              <div className="space-y-2.5 my-auto py-1">
+              {/* Space-Optimized Content Body: Starts under header and flows down naturally */}
+              <div className="flex-1 flex flex-col justify-start space-y-2.5 pt-2 pb-2">
                 {blocks.map((block, bIdx) => renderFindingBlock(block, bIdx))}
               </div>
 
-              {/* Running Footer */}
-              <div className="flex items-center justify-between border-t pt-2 border-slate-200 text-[9.5px] font-mono text-slate-500">
+              {/* Running Footer Anchored cleanly to bottom */}
+              <div className="flex items-center justify-between border-t pt-2 mt-auto border-slate-200 text-[9.5px] font-mono text-slate-500">
                 <span>CONFIDENTIAL &bull; PROPRIETARY</span>
                 <span>Audited by Sennovate Autonomous VAPT Platform</span>
                 <span>Page {pageNum} of {totalPages}</span>
