@@ -127,10 +127,10 @@ function estimateListHeight(steps, baseHeight = 20) {
   return baseHeight + (steps.length * 18);
 }
 
-// Smart Logical Grouping: Strictly respects A4 height (297mm = 1122px), prevents orphan headers, and ensures seamless flow
+// Atomic Finding Packing: Keeps findings cohesive, maximizes page capacity, and eliminates premature cutoffs
 function packFindingPages(sortedVulns) {
-  // Safe usable height budget per A4 page (conservative 840px leaves generous margin for headers, footers & 10mm padding)
-  const MAX_PAGE_HEIGHT = 840;
+  // Target usable height per A4 page (~900px at standard 96 DPI with 10mm margins, header & footer)
+  const MAX_PAGE_HEIGHT = 900;
   const pages = [];
   let currentPageBlocks = [];
   let currentHeight = 0;
@@ -139,26 +139,24 @@ function packFindingPages(sortedVulns) {
     const findingNum = vIdx + 1;
 
     // Unit 1: Assessment Unit (Header + Technical Analysis + Security Impact)
-    // CRITICAL: Header and Technical Analysis are strictly kept together so headings never appear alone!
-    const descLines = Math.ceil((vuln.description || '').length / 75);
-    const techLines = Math.ceil((vuln.technicalAnalysis || '').length / 75);
-    const impactLines = Math.ceil((vuln.impact || '').length / 75);
-    const unit1Height = 60 + (descLines * 15) + (techLines ? techLines * 14 + 20 : 0) + (impactLines * 15 + 20);
+    const descLines = Math.ceil((vuln.description || '').length / 80);
+    const techLines = vuln.technicalAnalysis ? Math.ceil(vuln.technicalAnalysis.length / 80) : 0;
+    const impactLines = Math.ceil((vuln.impact || '').length / 80);
+    const unit1Height = 55 + (descLines * 14) + (techLines ? techLines * 13 + 18 : 0) + (impactLines * 14 + 18);
 
     const unit1Blocks = [
-      { type: 'header', height: 60, vuln, findingNum },
-      { type: 'analysis', height: (descLines * 15) + (techLines ? techLines * 14 + 20 : 0), vuln, findingNum },
-      { type: 'impact', height: (impactLines * 15 + 20), vuln, findingNum }
+      { type: 'header', height: 55, vuln, findingNum },
+      { type: 'analysis', height: (descLines * 14) + (techLines ? techLines * 13 + 18 : 0), vuln, findingNum },
+      { type: 'impact', height: (impactLines * 14 + 18), vuln, findingNum }
     ];
 
-    // Unit 2: Verification & Evidence Unit (Observed Evidence + Proof of Concept Exploit)
-    const evLines = vuln.evidence ? (vuln.evidence.match(/\n/g) || []).length + 1 : 0;
-    const pocLines = (vuln.reproduction || vuln.pocScripts?.bash || vuln.pocScripts?.python) 
-      ? ((vuln.reproduction || vuln.pocScripts?.bash || vuln.pocScripts?.python).match(/\n/g) || []).length + 1 
-      : 0;
-    const evHeight = vuln.evidence ? Math.min(160, 30 + evLines * 13) : 0;
-    const pocDescLines = Math.ceil((vuln.pocDescription || '').length / 75);
-    const pocHeight = (pocDescLines ? pocDescLines * 14 : 0) + (pocLines ? Math.min(120, 30 + pocLines * 13) : 0) + 20;
+    // Unit 2: Verification & Evidence Unit (Observed Evidence + PoC Exploit)
+    const evLines = vuln.evidence ? Math.min(10, (vuln.evidence.match(/\n/g) || []).length + 1) : 0;
+    const pocScript = vuln.reproduction || vuln.pocScripts?.bash || vuln.pocScripts?.python;
+    const pocLines = pocScript ? Math.min(10, (pocScript.match(/\n/g) || []).length + 1) : 0;
+    const evHeight = vuln.evidence ? Math.min(150, 25 + evLines * 12) : 0;
+    const pocDescLines = vuln.pocDescription ? Math.min(5, Math.ceil(vuln.pocDescription.length / 80)) : 0;
+    const pocHeight = (pocDescLines ? pocDescLines * 13 : 0) + (pocLines ? Math.min(110, 25 + pocLines * 12) : 0) + 15;
     const unit2Height = evHeight + pocHeight;
 
     const unit2Blocks = [];
@@ -169,8 +167,8 @@ function packFindingPages(sortedVulns) {
 
     // Unit 3: Remediation & Scope Unit (Action Plan + Scope Note)
     const remStepsCount = vuln.remediationSteps?.length || (vuln.remediation ? 2 : 1);
-    const remHeight = 30 + (remStepsCount * 18);
-    const scopeHeight = 45;
+    const remHeight = 25 + (remStepsCount * 16);
+    const scopeHeight = 35;
     const unit3Height = remHeight + scopeHeight;
 
     const unit3Blocks = [
@@ -178,60 +176,44 @@ function packFindingPages(sortedVulns) {
       { type: 'scope', height: scopeHeight, vuln, findingNum }
     ];
 
+    const totalFindingBlocks = [...unit1Blocks, ...unit2Blocks, ...unit3Blocks];
     const totalFindingHeight = unit1Height + unit2Height + unit3Height;
 
-    // Case 1: Entire finding fits on current page cleanly
+    // Case 1: Entire finding fits comfortably in remaining space of current page
     if (currentHeight + totalFindingHeight <= MAX_PAGE_HEIGHT) {
-      currentPageBlocks.push(...unit1Blocks, ...unit2Blocks, ...unit3Blocks);
+      currentPageBlocks.push(...totalFindingBlocks);
       currentHeight += totalFindingHeight + 14;
       return;
     }
 
-    // Case 2: Finding doesn't fit completely.
-    // If current page already has substantial content (over 480px), start this finding fresh at top of next page
-    if (currentHeight > 480) {
-      if (currentPageBlocks.length > 0) {
-        pages.push({ blocks: currentPageBlocks });
-      }
+    // Case 2: Entire finding does NOT fit in remaining space.
+    // If the page already has content, push current page and start fresh on the next page
+    if (currentPageBlocks.length > 0) {
+      pages.push({ blocks: currentPageBlocks });
       currentPageBlocks = [];
       currentHeight = 0;
     }
 
-    // Check if Unit 1 + Unit 2 fit together on current page
-    if (currentHeight + unit1Height + unit2Height <= MAX_PAGE_HEIGHT) {
-      currentPageBlocks.push(...unit1Blocks, ...unit2Blocks);
-      pages.push({ blocks: currentPageBlocks });
-      
-      // Unit 3 (Remediation) naturally continues on next page with a clean continuation banner
-      currentPageBlocks = [
-        { type: 'continuation_header', height: 26, vuln, findingNum, subtitle: 'Remediation Plan & Scope' },
-        ...unit3Blocks
-      ];
-      currentHeight = 26 + unit3Height + 14;
+    // On a fresh page:
+    // If entire finding fits on a single page (the standard case for 95% of findings):
+    if (totalFindingHeight <= MAX_PAGE_HEIGHT) {
+      currentPageBlocks.push(...totalFindingBlocks);
+      currentHeight = totalFindingHeight + 14;
       return;
     }
 
-    // If only Unit 1 fits on current page (with ample room to prevent awkward cutoff)
-    if (currentHeight + unit1Height <= MAX_PAGE_HEIGHT && (MAX_PAGE_HEIGHT - currentHeight) >= unit1Height) {
-      currentPageBlocks.push(...unit1Blocks);
-      pages.push({ blocks: currentPageBlocks });
+    // Case 3: Finding is exceptionally large (> 900px) and cannot fit alone on one page.
+    // Only in this rare case, split gracefully without orphaning headings:
+    // Page 1: Unit 1 + Unit 2 (Header, Analysis, Impact, Evidence, PoC)
+    currentPageBlocks.push(...unit1Blocks, ...unit2Blocks);
+    pages.push({ blocks: currentPageBlocks });
 
-      // Unit 2 + Unit 3 naturally continue on next page
-      currentPageBlocks = [
-        { type: 'continuation_header', height: 26, vuln, findingNum, subtitle: 'Verification & Remediation Plan' },
-        ...unit2Blocks,
-        ...unit3Blocks
-      ];
-      currentHeight = 26 + unit2Height + unit3Height + 14;
-      return;
-    }
-
-    // Otherwise, push current page and start fresh finding at top of new page
-    if (currentPageBlocks.length > 0) {
-      pages.push({ blocks: currentPageBlocks });
-    }
-    currentPageBlocks = [...unit1Blocks, ...unit2Blocks, ...unit3Blocks];
-    currentHeight = totalFindingHeight + 14;
+    // Page 2: Continuation Banner + Unit 3 (Remediation & Scope)
+    currentPageBlocks = [
+      { type: 'continuation_header', height: 26, vuln, findingNum, subtitle: 'Remediation Plan & Scope' },
+      ...unit3Blocks
+    ];
+    currentHeight = 26 + unit3Height + 14;
   });
 
   if (currentPageBlocks.length > 0) {
@@ -582,24 +564,21 @@ Format with clean markdown bullet points and bold headers. Keep the text punchy,
       {/* Embedded Print & Page Styling Rules */}
       <style>{`
         .pdf-page {
-          width: 210mm !important;
-          min-width: 210mm !important;
-          max-width: 210mm !important;
-          height: 297mm !important;
-          min-height: 297mm !important;
-          max-height: 297mm !important;
-          overflow: hidden !important;
+          width: 210mm;
+          min-width: 210mm;
+          max-width: 210mm;
+          min-height: 297mm;
           margin: 0 auto 24px auto;
-          padding: 10mm 12mm 10mm 12mm !important;
+          padding: 10mm 12mm 10mm 12mm;
           background: #ffffff;
           box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.08);
           border-radius: 3px;
-          box-sizing: border-box !important;
-          display: flex !important;
-          flex-direction: column !important;
+          box-sizing: border-box;
+          display: flex;
+          flex-direction: column;
           position: relative;
-          page-break-after: always !important;
-          break-after: page !important;
+          page-break-after: always;
+          break-after: page;
         }
         .pdf-page * {
           box-sizing: border-box !important;
@@ -640,10 +619,7 @@ Format with clean markdown bullet points and bold headers. Keep the text punchy,
             width: 210mm !important;
             min-width: 210mm !important;
             max-width: 210mm !important;
-            height: 297mm !important;
             min-height: 297mm !important;
-            max-height: 297mm !important;
-            overflow: hidden !important;
             padding: 10mm 12mm 10mm 12mm !important;
             page-break-after: always !important;
             break-after: page !important;
