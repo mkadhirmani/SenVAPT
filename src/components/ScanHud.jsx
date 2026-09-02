@@ -487,10 +487,12 @@ export default function ScanHud({
         const resolvedFolder = results.outputFolderPath || results.metadata?.remoteRunDir || targetPath;
         const actualScanId = results.folderName || results.metadata?.runId || resolvedFolder.split('/').filter(Boolean).pop();
         const vulns = results.vulnerabilities || [];
-        const highCount = results.highCount || vulns.filter(v => v.severity === 'HIGH' || v.severity === 'CRITICAL').length;
+        const critCount = results.critCount || vulns.filter(v => v.severity === 'CRITICAL').length;
+        const highCount = results.highCount || vulns.filter(v => v.severity === 'HIGH').length;
         const medCount = results.medCount || vulns.filter(v => v.severity === 'MEDIUM').length;
-        const riskLevel = results.riskLevel || (highCount > 0 ? 'HIGH' : medCount > 0 ? 'ELEVATED' : 'LOW');
-        const riskScore = results.riskScore || (highCount > 0 ? 8.2 : medCount > 0 ? 6.5 : 4.0);
+        const lowCount = results.lowCount || vulns.filter(v => v.severity === 'LOW').length;
+        const riskLevel = results.riskLevel || (critCount > 0 ? 'CRITICAL' : highCount > 0 ? 'HIGH' : medCount > 0 ? 'ELEVATED' : 'LOW');
+        const riskScore = results.riskScore || (critCount > 0 ? 9.2 : highCount > 0 ? 8.2 : medCount > 0 ? 6.5 : 4.0);
 
         const newScan = {
           id: actualScanId,
@@ -503,9 +505,10 @@ export default function ScanHud({
           riskLevel: riskLevel,
           riskScore: riskScore,
           findingsCount: vulns.length,
+          critCount: critCount,
           highCount: highCount,
           medCount: medCount,
-          lowCount: results.lowCount || 0,
+          lowCount: lowCount,
           tokens: results.tokens || 0,
           createdBy: currentUser?.username || 'user',
           scannedBy: currentUser?.username || 'user',
@@ -625,10 +628,12 @@ export default function ScanHud({
         appendLog(`[INVENTORY] Extracted and parsed all 7 files from: ${results.folderName}`);
 
         const vulns = results.vulnerabilities || [];
-        const highCount = results.highCount || vulns.filter(v => v.severity === 'HIGH' || v.severity === 'CRITICAL').length;
+        const critCount = results.critCount || vulns.filter(v => v.severity === 'CRITICAL').length;
+        const highCount = results.highCount || vulns.filter(v => v.severity === 'HIGH').length;
         const medCount = results.medCount || vulns.filter(v => v.severity === 'MEDIUM').length;
-        const riskLevel = results.riskLevel || (highCount > 0 ? 'HIGH' : medCount > 0 ? 'ELEVATED' : 'LOW');
-        const riskScore = results.riskScore || (highCount > 0 ? 8.2 : medCount > 0 ? 6.5 : 4.0);
+        const lowCount = results.lowCount || vulns.filter(v => v.severity === 'LOW').length;
+        const riskLevel = results.riskLevel || (critCount > 0 ? 'CRITICAL' : highCount > 0 ? 'HIGH' : medCount > 0 ? 'ELEVATED' : 'LOW');
+        const riskScore = results.riskScore || (critCount > 0 ? 9.2 : highCount > 0 ? 8.2 : medCount > 0 ? 6.5 : 4.0);
 
         let inferredCompany = results.companyName || companyName;
         if (!inferredCompany || inferredCompany === 'Target') {
@@ -650,9 +655,10 @@ export default function ScanHud({
           riskLevel: riskLevel,
           riskScore: riskScore,
           findingsCount: vulns.length,
+          critCount: critCount,
           highCount: highCount,
           medCount: medCount,
-          lowCount: results.lowCount || 0,
+          lowCount: lowCount,
           tokens: results.tokens || 0,
           requests: results.requests || 0,
           cost: results.cost || 0,
@@ -745,10 +751,12 @@ export default function ScanHud({
         appendLog(`[UPLOAD SUCCESS] Ingested ${results.vulnerabilities.length} findings from "${file.name}"!`);
 
         const vulns = results.vulnerabilities || [];
-        const highCount = results.highCount || vulns.filter(v => v.severity === 'HIGH' || v.severity === 'CRITICAL').length;
+        const critCount = results.critCount || vulns.filter(v => v.severity === 'CRITICAL').length;
+        const highCount = results.highCount || vulns.filter(v => v.severity === 'HIGH').length;
         const medCount = results.medCount || vulns.filter(v => v.severity === 'MEDIUM').length;
-        const riskLevel = results.riskLevel || (highCount > 0 ? 'HIGH' : medCount > 0 ? 'ELEVATED' : 'LOW');
-        const riskScore = results.riskScore || (highCount > 0 ? 8.2 : medCount > 0 ? 6.5 : 4.0);
+        const lowCount = results.lowCount || vulns.filter(v => v.severity === 'LOW').length;
+        const riskLevel = results.riskLevel || (critCount > 0 ? 'CRITICAL' : highCount > 0 ? 'HIGH' : medCount > 0 ? 'ELEVATED' : 'LOW');
+        const riskScore = results.riskScore || (critCount > 0 ? 9.2 : highCount > 0 ? 8.2 : medCount > 0 ? 6.5 : 4.0);
 
         let inferredCompany = results.companyName || companyName;
         if (!inferredCompany || inferredCompany === 'Target') {
@@ -770,9 +778,10 @@ export default function ScanHud({
           riskLevel: riskLevel,
           riskScore: riskScore,
           findingsCount: vulns.length,
+          critCount: critCount,
           highCount: highCount,
           medCount: medCount,
-          lowCount: results.lowCount || 0,
+          lowCount: lowCount,
           tokens: results.tokens || 0,
           requests: results.requests || 0,
           cost: results.cost || 0,
@@ -1001,10 +1010,12 @@ export default function ScanHud({
       }
 
       const parsedVulns = Array.from(findingsMap.values());
-      const highCount = parsedVulns.filter(v => v.severity === 'HIGH' || v.severity === 'CRITICAL').length;
+      const critCount = parsedVulns.filter(v => v.severity === 'CRITICAL').length;
+      const highCount = parsedVulns.filter(v => v.severity === 'HIGH').length;
       const medCount = parsedVulns.filter(v => v.severity === 'MEDIUM').length;
-      const riskLevel = highCount > 0 ? 'HIGH' : (medCount > 0 ? 'ELEVATED' : 'LOW');
-      const riskScore = highCount > 0 ? 8.2 : 6.5;
+      const lowCount = parsedVulns.filter(v => v.severity === 'LOW').length;
+      const riskLevel = critCount > 0 ? 'CRITICAL' : (highCount > 0 ? 'HIGH' : (medCount > 0 ? 'ELEVATED' : 'LOW'));
+      const riskScore = critCount > 0 ? 9.2 : (highCount > 0 ? 8.2 : 6.5);
 
       const detectedDomain = runJson?.target || targetUrl || folderName.replace(/^www-/, '').replace(/[-_](scan|runs?|[0-9a-f]{4,})$/i, '').replace(/-/g, '.');
 
@@ -1027,9 +1038,10 @@ export default function ScanHud({
         riskLevel: riskLevel,
         riskScore: riskScore,
         findingsCount: parsedVulns.length,
+        critCount: critCount,
         highCount: highCount,
         medCount: medCount,
-        lowCount: 0,
+        lowCount: lowCount,
         tokens: runJson?.total_tokens || runJson?.tokens || 0,
         requests: runJson?.requests || 0,
         cost: runJson?.cost || 0,
@@ -1276,10 +1288,12 @@ export default function ScanHud({
             }
 
             const vulns = results.vulnerabilities || [];
-            const highCount = results.highCount || vulns.filter(v => v.severity === 'HIGH' || v.severity === 'CRITICAL').length;
+            const critCount = results.critCount || vulns.filter(v => v.severity === 'CRITICAL').length;
+            const highCount = results.highCount || vulns.filter(v => v.severity === 'HIGH').length;
             const medCount = results.medCount || vulns.filter(v => v.severity === 'MEDIUM').length;
-            const riskLevel = results.riskLevel || (highCount > 0 ? 'HIGH' : medCount > 0 ? 'ELEVATED' : 'LOW');
-            const riskScore = results.riskScore || (highCount > 0 ? 8.2 : medCount > 0 ? 6.5 : 4.0);
+            const lowCount = results.lowCount || vulns.filter(v => v.severity === 'LOW').length;
+            const riskLevel = results.riskLevel || (critCount > 0 ? 'CRITICAL' : highCount > 0 ? 'HIGH' : medCount > 0 ? 'ELEVATED' : 'LOW');
+            const riskScore = results.riskScore || (critCount > 0 ? 9.2 : highCount > 0 ? 8.2 : medCount > 0 ? 6.5 : 4.0);
 
             const newScan = {
               id: results.folderName || `scan-${Date.now()}`,
@@ -1292,9 +1306,10 @@ export default function ScanHud({
               riskLevel: riskLevel,
               riskScore: riskScore,
               findingsCount: vulns.length,
+              critCount: critCount,
               highCount: highCount,
               medCount: medCount,
-              lowCount: results.lowCount || 0,
+              lowCount: lowCount,
               tokens: results.tokens || 44210000,
               requests: results.requests || 488,
               cost: results.cost || 6.50,

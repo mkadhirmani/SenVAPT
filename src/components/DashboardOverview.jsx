@@ -359,14 +359,29 @@ export default function DashboardOverview({
           </div>
           <div className="text-[11px] font-mono flex items-center gap-1.5 font-bold flex-wrap">
             {critVulns.length > 0 && (
-              <>
-                <span className="text-red-500 font-black">{critVulns.length} Critical</span>
-                <span className="text-slate-400">&bull;</span>
-              </>
+              <span className="text-red-500 font-black">{critVulns.length} Critical</span>
             )}
-            <span className="text-orange-500 dark:text-orange-400">{highVulns.length} High</span>
-            <span className="text-slate-400">&bull;</span>
-            <span className="text-amber-500 dark:text-amber-400">{medVulns.length} Med</span>
+            {critVulns.length > 0 && (highVulns.length > 0 || medVulns.length > 0 || lowVulns.length > 0) && (
+              <span className="text-slate-400">&bull;</span>
+            )}
+            {highVulns.length > 0 && (
+              <span className="text-orange-500 dark:text-orange-400">{highVulns.length} High</span>
+            )}
+            {highVulns.length > 0 && (medVulns.length > 0 || lowVulns.length > 0) && (
+              <span className="text-slate-400">&bull;</span>
+            )}
+            {medVulns.length > 0 && (
+              <span className="text-amber-500 dark:text-amber-400">{medVulns.length} Med</span>
+            )}
+            {medVulns.length > 0 && lowVulns.length > 0 && (
+              <span className="text-slate-400">&bull;</span>
+            )}
+            {lowVulns.length > 0 && (
+              <span className="text-emerald-500 dark:text-emerald-400">{lowVulns.length} Low</span>
+            )}
+            {vulnerabilities.length === 0 && (
+              <span className="text-slate-400">0 Findings</span>
+            )}
           </div>
         </div>
 

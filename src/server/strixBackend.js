@@ -788,8 +788,10 @@ export function parseLocalStrixFolder(folderPath) {
     ? calculatedCost 
     : (totalTokens > 0 ? ((inputTokens || Math.round(totalTokens * 0.95)) * 0.00000014) + ((outputTokens || Math.round(totalTokens * 0.05)) * 0.00000028) : 0);
 
-  const highCount = parsedVulns.filter(v => v.severity === 'HIGH' || v.severity === 'CRITICAL').length;
+  const critCount = parsedVulns.filter(v => v.severity === 'CRITICAL').length;
+  const highCount = parsedVulns.filter(v => v.severity === 'HIGH').length;
   const medCount = parsedVulns.filter(v => v.severity === 'MEDIUM').length;
+  const lowCount = parsedVulns.filter(v => v.severity === 'LOW' || v.severity === 'INFO').length;
   const maxCvss = parsedVulns.length > 0 ? (parsedVulns[0]?.cvss || 5.5) : 0.0;
 
   return {
@@ -801,12 +803,13 @@ export function parseLocalStrixFolder(folderPath) {
     requests: requests,
     cost: costNumber,
     duration: runData.duration || (runData.start_time && runData.end_time ? `${Math.round((new Date(runData.end_time) - new Date(runData.start_time)) / 60000)} min` : '38 min'),
-    riskLevel: maxCvss >= 7.0 ? 'HIGH' : maxCvss >= 4.0 ? 'ELEVATED' : 'LOW',
-    riskScore: maxCvss > 0 ? maxCvss : (highCount > 0 ? 8.2 : (medCount > 0 ? 6.5 : 4.0)),
+    riskLevel: critCount > 0 ? 'CRITICAL' : (maxCvss >= 7.0 || highCount > 0 ? 'HIGH' : maxCvss >= 4.0 || medCount > 0 ? 'ELEVATED' : 'LOW'),
+    riskScore: maxCvss > 0 ? maxCvss : (critCount > 0 ? 9.2 : (highCount > 0 ? 8.2 : (medCount > 0 ? 6.5 : 4.0))),
     findingsCount: parsedVulns.length,
+    critCount: critCount,
     highCount: highCount,
     medCount: medCount,
-    lowCount: parsedVulns.filter(v => v.severity === 'LOW' || v.severity === 'INFO').length,
+    lowCount: lowCount,
     vulnerabilities: parsedVulns,
     subdomains: Array.from(subdomainsSet),
     reportMarkdown: raw.report_md || '',
@@ -826,11 +829,13 @@ export function parseLocalStrixFolder(folderPath) {
       cost: costNumber,
       inputTokens: inputTokens,
       outputTokens: outputTokens,
-      overallRiskLevel: maxCvss >= 7.0 ? 'HIGH' : maxCvss >= 4.0 ? 'ELEVATED' : 'LOW',
-      overallRiskScore: maxCvss > 0 ? maxCvss : (highCount > 0 ? 8.2 : (medCount > 0 ? 6.5 : 4.0)),
+      overallRiskLevel: critCount > 0 ? 'CRITICAL' : (maxCvss >= 7.0 || highCount > 0 ? 'HIGH' : maxCvss >= 4.0 || medCount > 0 ? 'ELEVATED' : 'LOW'),
+      overallRiskScore: maxCvss > 0 ? maxCvss : (critCount > 0 ? 9.2 : (highCount > 0 ? 8.2 : (medCount > 0 ? 6.5 : 4.0))),
       totalFindings: parsedVulns.length,
+      critCount: critCount,
       highCount: highCount,
       medCount: medCount,
+      lowCount: lowCount,
       remoteRunDir: resolvedPath
     }
   };
@@ -2285,8 +2290,10 @@ print("===END_JSON===")
 
             const parsedVulns = extractFindingsFromAllSources(raw, actualTargetUrl);
 
-            const highCount = parsedVulns.filter(v => v.severity === 'HIGH' || v.severity === 'CRITICAL').length;
+            const critCount = parsedVulns.filter(v => v.severity === 'CRITICAL').length;
+            const highCount = parsedVulns.filter(v => v.severity === 'HIGH').length;
             const medCount = parsedVulns.filter(v => v.severity === 'MEDIUM').length;
+            const lowCount = parsedVulns.filter(v => v.severity === 'LOW' || v.severity === 'INFO').length;
             const maxCvss = parsedVulns.length > 0 ? (parsedVulns[0]?.cvss || 5.5) : 0.0;
 
             const totalTokens = runData.llm_usage?.total_tokens || (runData.llm_usage?.input_tokens ? (runData.llm_usage.input_tokens + (runData.llm_usage.output_tokens || 0)) : 0);
@@ -2380,12 +2387,13 @@ print("===END_JSON===")
               duration: "Remote Autonomous Scan",
               status: "Completed",
               profile: "Autonomous Penetration Test (OWASP WSTG)",
-              riskLevel: maxCvss >= 7.0 ? 'HIGH' : maxCvss >= 4.0 ? 'ELEVATED' : 'LOW',
-              riskScore: maxCvss > 0 ? maxCvss : (highCount > 0 ? 8.2 : (medCount > 0 ? 6.5 : 4.0)),
+              riskLevel: critCount > 0 ? 'CRITICAL' : (maxCvss >= 7.0 || highCount > 0 ? 'HIGH' : maxCvss >= 4.0 || medCount > 0 ? 'ELEVATED' : 'LOW'),
+              riskScore: maxCvss > 0 ? maxCvss : (critCount > 0 ? 9.2 : (highCount > 0 ? 8.2 : (medCount > 0 ? 6.5 : 4.0))),
               findingsCount: parsedVulns.length,
+              critCount,
               highCount,
               medCount,
-              lowCount: 0,
+              lowCount,
               tokens: totalTokens,
               requests: requests,
               cost: costNumber,
@@ -2412,11 +2420,13 @@ print("===END_JSON===")
                 inputTokens: inputTokens,
                 outputTokens: outputTokens,
                 cost: costNumber,
-                overallRiskLevel: maxCvss >= 7.0 ? 'HIGH' : maxCvss >= 4.0 ? 'ELEVATED' : 'LOW',
-                overallRiskScore: maxCvss > 0 ? maxCvss : (highCount > 0 ? 8.2 : (medCount > 0 ? 6.5 : 4.0)),
+                overallRiskLevel: critCount > 0 ? 'CRITICAL' : (maxCvss >= 7.0 || highCount > 0 ? 'HIGH' : maxCvss >= 4.0 || medCount > 0 ? 'ELEVATED' : 'LOW'),
+                overallRiskScore: maxCvss > 0 ? maxCvss : (critCount > 0 ? 9.2 : (highCount > 0 ? 8.2 : (medCount > 0 ? 6.5 : 4.0))),
                 totalFindings: parsedVulns.length,
+                critCount,
                 highCount,
                 medCount,
+                lowCount,
                 testedSubdomains: testedSubdomains,
                 subdomains: testedSubdomains,
                 remoteRunDir: raw.run_dir,
@@ -2620,10 +2630,11 @@ print("===END_ALL_JSON===")
               const runData = raw.run_json || {};
               let actualTargetUrl = runData.targets_info?.[0]?.details?.target_url || runData.targets_info?.[0]?.original || 'https://target.com';
 
-              const parsedVulns = extractFindingsFromAllSources(raw, actualTargetUrl);
-
-              const highCount = parsedVulns.filter(v => v.severity === 'HIGH' || v.severity === 'CRITICAL').length;
+              const parsedVulns = extractFindingsFromAllSources(raw);
+              const critCount = parsedVulns.filter(v => v.severity === 'CRITICAL').length;
+              const highCount = parsedVulns.filter(v => v.severity === 'HIGH').length;
               const medCount = parsedVulns.filter(v => v.severity === 'MEDIUM').length;
+              const lowCount = parsedVulns.filter(v => v.severity === 'LOW' || v.severity === 'INFO').length;
               const maxCvss = parsedVulns.length > 0 ? (parsedVulns[0]?.cvss || 5.5) : 0.0;
 
               let actualCompanyName = 'Target Organization';
@@ -2639,14 +2650,15 @@ print("===END_ALL_JSON===")
               const outputTokens = runData.llm_usage?.output_tokens || 0;
               const requests = runData.llm_usage?.requests || 0;
               
-              // Aggregated cost calculation from run.json
               let calculatedCost = null;
               if (typeof runData.llm_usage?.cost === 'number') {
                 calculatedCost = runData.llm_usage.cost;
               } else if (typeof runData.cost === 'number') {
                 calculatedCost = runData.cost;
-              } else if (Array.isArray(runData.llm_usage?.agents) && runData.llm_usage.agents.length > 0) {
-                const agentCostSum = runData.llm_usage.agents.reduce((sum, a) => sum + (typeof a.cost === 'number' ? a.cost : 0), 0);
+              } else if (typeof runData.total_cost === 'number') {
+                calculatedCost = runData.total_cost;
+              } else if (runData.agents && typeof runData.agents === 'object' && !Array.isArray(runData.agents)) {
+                const agentCostSum = Object.values(runData.agents).reduce((sum, a) => sum + (typeof a.cost === 'number' ? a.cost : 0), 0);
                 if (agentCostSum > 0) calculatedCost = agentCostSum;
               } else if (Array.isArray(runData.agents) && runData.agents.length > 0) {
                 const agentCostSum = runData.agents.reduce((sum, a) => sum + (typeof a.cost === 'number' ? a.cost : 0), 0);
@@ -2668,12 +2680,13 @@ print("===END_ALL_JSON===")
                 duration: "Autonomous Penetration Test",
                 status: "Completed",
                 profile: "Autonomous VAPT (OWASP WSTG v4.2)",
-                riskLevel: maxCvss >= 7.0 ? 'HIGH' : maxCvss >= 4.0 ? 'ELEVATED' : 'LOW',
-                riskScore: maxCvss > 0 ? maxCvss : (highCount > 0 ? 8.2 : (medCount > 0 ? 6.5 : 4.0)),
+                riskLevel: critCount > 0 ? 'CRITICAL' : (maxCvss >= 7.0 || highCount > 0 ? 'HIGH' : maxCvss >= 4.0 || medCount > 0 ? 'ELEVATED' : 'LOW'),
+                riskScore: maxCvss > 0 ? maxCvss : (critCount > 0 ? 9.2 : (highCount > 0 ? 8.2 : (medCount > 0 ? 6.5 : 4.0))),
                 findingsCount: parsedVulns.length,
+                critCount,
                 highCount,
                 medCount,
-                lowCount: 0,
+                lowCount,
                 tokens: totalTokens,
                 requests: requests,
                 cost: costNumber,
@@ -2697,11 +2710,13 @@ print("===END_ALL_JSON===")
                   inputTokens: inputTokens,
                   outputTokens: outputTokens,
                   cost: costNumber,
-                  overallRiskLevel: maxCvss >= 7.0 ? 'HIGH' : maxCvss >= 4.0 ? 'ELEVATED' : 'LOW',
-                  overallRiskScore: maxCvss > 0 ? maxCvss : (highCount > 0 ? 8.2 : (medCount > 0 ? 6.5 : 4.0)),
+                  overallRiskLevel: critCount > 0 ? 'CRITICAL' : (maxCvss >= 7.0 || highCount > 0 ? 'HIGH' : maxCvss >= 4.0 || medCount > 0 ? 'ELEVATED' : 'LOW'),
+                  overallRiskScore: maxCvss > 0 ? maxCvss : (critCount > 0 ? 9.2 : (highCount > 0 ? 8.2 : (medCount > 0 ? 6.5 : 4.0))),
                   totalFindings: parsedVulns.length,
+                  critCount,
                   highCount,
                   medCount,
+                  lowCount,
                   remoteRunDir: raw.run_dir
                 }
               };

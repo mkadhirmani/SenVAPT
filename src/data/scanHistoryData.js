@@ -269,147 +269,12 @@ export const SAMPLE_ALPHA_ATTACK_CHAIN = {
   ]
 };
 
-export const INITIAL_SCAN_HISTORY = [
-  {
-    id: "scan-alpha-corp_406f",
-    companyName: "Alpha Financial Cloud",
-    targetUrl: "https://cloud.alpha-corp.internal/",
-    timestamp: "2026-08-20 10:14:00 UTC",
-    duration: "41 min 18 sec",
-    durationSec: 2478,
-    status: "Completed",
-    createdBy: "admin",
-    scannedBy: "admin",
-    scannedByName: "Administrator",
-    userRole: "Administrator",
-    profile: "Autonomous Penetration Test (OWASP WSTG v4.2)",
-    riskLevel: "HIGH",
-    riskScore: 8.4,
-    findingsCount: 4,
-    highCount: 2,
-    medCount: 2,
-    lowCount: 0,
-    tokens: 44210000,
-    requests: 488,
-    cost: 6.50,
-    vulnerabilities: SAMPLE_ALPHA_VULNERABILITIES,
-    attackChain: SAMPLE_ALPHA_ATTACK_CHAIN,
-    outputFolderPath: "/root/scans/strix_runs/scan-alpha-corp_406f",
-    metadata: {
-      runId: "scan-alpha-corp_406f",
-      companyName: "Alpha Financial Cloud",
-      targetUrl: "https://cloud.alpha-corp.internal/",
-      totalFindings: 4,
-      highCount: 2,
-      medCount: 2,
-      lowCount: 0,
-      overallRiskLevel: "HIGH",
-      overallRiskScore: 8.4,
-      tokens: 44210000,
-      requests: 488,
-      cost: 6.50,
-      durationSec: 2478,
-      createdBy: "admin",
-      scannedBy: "admin",
-      scannedByName: "Administrator",
-      remoteRunDir: "/root/scans/strix_runs/scan-alpha-corp_406f"
-    }
-  },
-  {
-    id: "scan-beta-portal_81f4",
-    companyName: "Beta Energy Network",
-    targetUrl: "https://portal.beta-energy.internal/",
-    timestamp: "2026-08-19 10:51:24 UTC",
-    duration: "38 min 12 sec",
-    durationSec: 2292,
-    status: "Completed",
-    createdBy: "admin",
-    scannedBy: "admin",
-    scannedByName: "Administrator",
-    userRole: "Administrator",
-    profile: "Autonomous Penetration Test (OWASP WSTG v4.2)",
-    riskLevel: "HIGH",
-    riskScore: 8.2,
-    findingsCount: 4,
-    highCount: 1,
-    medCount: 3,
-    lowCount: 0,
-    tokens: 48920000,
-    requests: 524,
-    cost: 7.19,
-    vulnerabilities: SAMPLE_BETA_VULNERABILITIES,
-    attackChain: SAMPLE_BETA_ATTACK_CHAIN,
-    outputFolderPath: "/root/scans/strix_runs/scan-beta-portal_81f4",
-    metadata: {
-      runId: "scan-beta-portal_81f4",
-      companyName: "Beta Energy Network",
-      targetUrl: "https://portal.beta-energy.internal/",
-      totalFindings: 4,
-      highCount: 1,
-      medCount: 3,
-      lowCount: 0,
-      overallRiskLevel: "HIGH",
-      overallRiskScore: 8.2,
-      tokens: 48920000,
-      requests: 524,
-      cost: 7.19,
-      durationSec: 2292,
-      createdBy: "admin",
-      scannedBy: "admin",
-      scannedByName: "Administrator",
-      remoteRunDir: "/root/scans/strix_runs/scan-beta-portal_81f4"
-    }
-  },
-  {
-    id: "scan-gamma-estate_93f0",
-    companyName: "Gamma Enterprise Systems",
-    targetUrl: "https://demo.example-security.com/",
-    timestamp: "2026-08-11 09:59:52 UTC",
-    duration: "42 min 36 sec",
-    durationSec: 2556,
-    status: "Completed",
-    createdBy: "admin",
-    scannedBy: "admin",
-    scannedByName: "Administrator",
-    userRole: "Administrator",
-    profile: "Autonomous Penetration Test (OWASP WSTG v4.2)",
-    riskLevel: "ELEVATED",
-    riskScore: 6.8,
-    findingsCount: 7,
-    highCount: 1,
-    medCount: 6,
-    lowCount: 0,
-    tokens: 36420000,
-    requests: 404,
-    cost: 5.35,
-    vulnerabilities: VULNERABILITIES,
-    outputFolderPath: "/root/scans/strix_runs/scan-gamma-estate_93f0",
-    metadata: {
-      ...SCAN_METADATA,
-      runId: "scan-gamma-estate_93f0",
-      companyName: "Gamma Enterprise Systems",
-      targetUrl: "https://demo.example-security.com/",
-      totalFindings: 7,
-      highCount: 1,
-      medCount: 6,
-      overallRiskLevel: "ELEVATED",
-      overallRiskScore: 6.8,
-      tokens: 36420000,
-      requests: 404,
-      cost: 5.35,
-      durationSec: 2556,
-      createdBy: "admin",
-      scannedBy: "admin",
-      scannedByName: "Administrator",
-      remoteRunDir: "/root/scans/strix_runs/scan-gamma-estate_93f0"
-    }
-  }
-];
+export const INITIAL_SCAN_HISTORY = [];
 
 export function getStoredScanHistory() {
   try {
     const stored = localStorage.getItem('sennovate_scan_history');
-    let list = INITIAL_SCAN_HISTORY;
+    let list = [];
     if (stored) {
       try {
         const parsed = JSON.parse(stored);
@@ -419,31 +284,37 @@ export function getStoredScanHistory() {
       } catch (e) {}
     }
 
-    // Ensure default initial baseline scans are available if list was empty
-    const hasInitialScans = list.some(s => s.id === 'scan-gamma-estate_93f0' || s.id === 'scan-beta-portal_81f4');
-    if (!hasInitialScans) {
-      list = [...list, ...INITIAL_SCAN_HISTORY];
-    }
+    // Strictly filter out any default mock example scans (Alpha Financial Cloud, Beta Energy Network, Gamma Enterprise Systems)
+    const MOCK_SCAN_IDS = new Set([
+      'scan-alpha-corp_406f',
+      'scan-beta-portal_81f4',
+      'scan-gamma-estate_93f0'
+    ]);
+    const MOCK_NAMES = new Set([
+      'alpha financial cloud',
+      'beta energy network',
+      'gamma enterprise systems'
+    ]);
+
+    list = list.filter(s => {
+      if (!s) return false;
+      if (MOCK_SCAN_IDS.has(s.id)) return false;
+      const cName = (s.companyName || '').toLowerCase().trim();
+      if (MOCK_NAMES.has(cName)) return false;
+      return true;
+    });
 
     // Preserve each scan's distinct findings, tokens, cost, user attribution, and timestamps
     const enrichedList = list.map(scan => {
-      let vulns = Array.isArray(scan.vulnerabilities) ? scan.vulnerabilities : null;
-      if (!vulns) {
-        if (scan.id === 'scan-alpha-corp_406f') {
-          vulns = SAMPLE_ALPHA_VULNERABILITIES;
-        } else if (scan.id === 'scan-beta-portal_81f4') {
-          vulns = SAMPLE_BETA_VULNERABILITIES;
-        } else if (scan.id === 'scan-gamma-estate_93f0') {
-          vulns = VULNERABILITIES;
-        } else {
-          vulns = [];
-        }
-      }
+      let vulns = Array.isArray(scan.vulnerabilities) ? scan.vulnerabilities : [];
 
-      const highCount = vulns.filter(v => v.severity === 'HIGH' || v.severity === 'CRITICAL').length;
+      const critCount = vulns.filter(v => v.severity === 'CRITICAL').length;
+      const highCount = vulns.filter(v => v.severity === 'HIGH').length;
       const medCount = vulns.filter(v => v.severity === 'MEDIUM').length;
+      const lowCount = vulns.filter(v => v.severity === 'LOW').length;
+
       const riskScore = vulns.length > 0 ? (vulns[0]?.cvss || 5.5) : (scan.riskScore || 4.0);
-      const riskLevel = highCount > 0 ? 'HIGH' : (vulns.length > 0 ? 'ELEVATED' : (scan.riskLevel || 'LOW'));
+      const riskLevel = critCount > 0 ? 'CRITICAL' : (highCount > 0 ? 'HIGH' : (vulns.length > 0 ? 'ELEVATED' : (scan.riskLevel || 'LOW')));
 
       const tokens = typeof scan.tokens === 'number' ? scan.tokens : (typeof scan.metadata?.tokens === 'number' ? scan.metadata.tokens : 0);
       const requests = typeof scan.requests === 'number' ? scan.requests : (typeof scan.metadata?.requests === 'number' ? scan.metadata.requests : 0);
@@ -468,8 +339,10 @@ export function getStoredScanHistory() {
         duration,
         vulnerabilities: vulns,
         findingsCount: vulns.length,
+        critCount,
         highCount,
         medCount,
+        lowCount,
         riskScore,
         riskLevel,
         metadata: {
@@ -479,8 +352,10 @@ export function getStoredScanHistory() {
           scannedByName,
           userRole,
           totalFindings: vulns.length,
+          critCount,
           highCount,
           medCount,
+          lowCount,
           overallRiskScore: riskScore,
           overallRiskLevel: riskLevel,
           tokens,
@@ -497,8 +372,7 @@ export function getStoredScanHistory() {
     console.error('Error reading scan history:', e);
   }
 
-  saveScanHistory(INITIAL_SCAN_HISTORY);
-  return INITIAL_SCAN_HISTORY;
+  return [];
 }
 
 export function saveScanHistory(historyList) {

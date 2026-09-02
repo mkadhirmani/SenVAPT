@@ -275,17 +275,21 @@ export default function App() {
       ...scan,
       vulnerabilities: resolvedVulns,
       findingsCount: resolvedVulns.length,
-      highCount: resolvedVulns.filter(v => v.severity === 'HIGH' || v.severity === 'CRITICAL').length,
+      critCount: resolvedVulns.filter(v => v.severity === 'CRITICAL').length,
+      highCount: resolvedVulns.filter(v => v.severity === 'HIGH').length,
       medCount: resolvedVulns.filter(v => v.severity === 'MEDIUM').length,
-      riskLevel: resolvedVulns.some(v => v.severity === 'HIGH' || v.severity === 'CRITICAL') ? 'HIGH' : (resolvedVulns.length > 0 ? 'ELEVATED' : 'LOW'),
+      lowCount: resolvedVulns.filter(v => v.severity === 'LOW').length,
+      riskLevel: resolvedVulns.some(v => v.severity === 'CRITICAL') ? 'CRITICAL' : (resolvedVulns.some(v => v.severity === 'HIGH') ? 'HIGH' : (resolvedVulns.length > 0 ? 'ELEVATED' : 'LOW')),
       riskScore: resolvedVulns.length > 0 ? (resolvedVulns[0]?.cvss || 5.5) : 4.0,
       metadata: {
         ...(scan.metadata || {}),
         totalFindings: resolvedVulns.length,
-        highCount: resolvedVulns.filter(v => v.severity === 'HIGH' || v.severity === 'CRITICAL').length,
+        critCount: resolvedVulns.filter(v => v.severity === 'CRITICAL').length,
+        highCount: resolvedVulns.filter(v => v.severity === 'HIGH').length,
         medCount: resolvedVulns.filter(v => v.severity === 'MEDIUM').length,
+        lowCount: resolvedVulns.filter(v => v.severity === 'LOW').length,
         overallRiskScore: resolvedVulns.length > 0 ? (resolvedVulns[0]?.cvss || 5.5) : 4.0,
-        overallRiskLevel: resolvedVulns.some(v => v.severity === 'HIGH' || v.severity === 'CRITICAL') ? 'HIGH' : (resolvedVulns.length > 0 ? 'ELEVATED' : 'LOW')
+        overallRiskLevel: resolvedVulns.some(v => v.severity === 'CRITICAL') ? 'CRITICAL' : (resolvedVulns.some(v => v.severity === 'HIGH') ? 'HIGH' : (resolvedVulns.length > 0 ? 'ELEVATED' : 'LOW'))
       }
     };
 
@@ -369,9 +373,11 @@ export default function App() {
       userRole: newScanData.userRole || (currentUser?.role === 'admin' ? 'Administrator' : 'User'),
       vulnerabilities: resolvedVulns,
       findingsCount: resolvedVulns.length,
-      highCount: resolvedVulns.filter(v => v.severity === 'HIGH' || v.severity === 'CRITICAL').length,
+      critCount: resolvedVulns.filter(v => v.severity === 'CRITICAL').length,
+      highCount: resolvedVulns.filter(v => v.severity === 'HIGH').length,
       medCount: resolvedVulns.filter(v => v.severity === 'MEDIUM').length,
-      riskLevel: resolvedVulns.some(v => v.severity === 'HIGH' || v.severity === 'CRITICAL') ? 'HIGH' : (resolvedVulns.length > 0 ? 'ELEVATED' : 'LOW'),
+      lowCount: resolvedVulns.filter(v => v.severity === 'LOW').length,
+      riskLevel: resolvedVulns.some(v => v.severity === 'CRITICAL') ? 'CRITICAL' : (resolvedVulns.some(v => v.severity === 'HIGH') ? 'HIGH' : (resolvedVulns.length > 0 ? 'ELEVATED' : 'LOW')),
       riskScore: resolvedVulns.length > 0 ? (resolvedVulns[0]?.cvss || 5.5) : 4.0,
       metadata: {
         ...(newScanData.metadata || {}),
@@ -380,10 +386,12 @@ export default function App() {
         scannedByName: creatorName,
         userRole: newScanData.userRole || (currentUser?.role === 'admin' ? 'Administrator' : 'User'),
         totalFindings: resolvedVulns.length,
-        highCount: resolvedVulns.filter(v => v.severity === 'HIGH' || v.severity === 'CRITICAL').length,
+        critCount: resolvedVulns.filter(v => v.severity === 'CRITICAL').length,
+        highCount: resolvedVulns.filter(v => v.severity === 'HIGH').length,
         medCount: resolvedVulns.filter(v => v.severity === 'MEDIUM').length,
+        lowCount: resolvedVulns.filter(v => v.severity === 'LOW').length,
         overallRiskScore: resolvedVulns.length > 0 ? (resolvedVulns[0]?.cvss || 5.5) : 4.0,
-        overallRiskLevel: resolvedVulns.some(v => v.severity === 'HIGH' || v.severity === 'CRITICAL') ? 'HIGH' : (resolvedVulns.length > 0 ? 'ELEVATED' : 'LOW')
+        overallRiskLevel: resolvedVulns.some(v => v.severity === 'CRITICAL') ? 'CRITICAL' : (resolvedVulns.some(v => v.severity === 'HIGH') ? 'HIGH' : (resolvedVulns.length > 0 ? 'ELEVATED' : 'LOW'))
       }
     };
 
@@ -527,8 +535,10 @@ export default function App() {
     let customMeta = metadata || vulns?.metadata || {};
     let extra = extraData || {};
 
-    const highCount = customVulns.filter(v => v.severity === 'HIGH' || v.severity === 'CRITICAL').length;
+    const critCount = customVulns.filter(v => v.severity === 'CRITICAL').length;
+    const highCount = customVulns.filter(v => v.severity === 'HIGH').length;
     const medCount = customVulns.filter(v => v.severity === 'MEDIUM').length;
+    const lowCount = customVulns.filter(v => v.severity === 'LOW' || v.severity === 'INFO').length;
 
     let targetUrlVal = customMeta.targetUrl || extra.targetUrl || "https://custom-target.com/";
     let companyNameVal = customMeta.companyName || extra.companyName || "";
@@ -553,12 +563,13 @@ export default function App() {
       targetUrl: targetUrlVal,
       timestamp: customMeta.timestamp || new Date().toISOString().replace('T', ' ').slice(0, 16),
       duration: extra.duration || '38 min',
-      riskLevel: customMeta.overallRiskLevel || (highCount > 0 ? "HIGH" : "ELEVATED"),
-      riskScore: customMeta.overallRiskScore || (highCount > 0 ? 8.2 : 6.5),
+      riskLevel: customMeta.overallRiskLevel || (critCount > 0 ? "CRITICAL" : (highCount > 0 ? "HIGH" : (medCount > 0 ? "ELEVATED" : "LOW"))),
+      riskScore: customMeta.overallRiskScore || (critCount > 0 ? 9.2 : (highCount > 0 ? 8.2 : 6.5)),
       findingsCount: customVulns.length,
+      critCount: critCount,
       highCount: highCount,
       medCount: medCount,
-      lowCount: customVulns.filter(v => v.severity === 'LOW' || v.severity === 'INFO').length || 0,
+      lowCount: lowCount,
       tokens: extra.tokens || customMeta.tokens || 0,
       requests: extra.requests || customMeta.requests || 0,
       cost: extra.cost || customMeta.cost || 0,
@@ -573,7 +584,12 @@ export default function App() {
         ...customMeta,
         companyName: companyNameVal,
         targetUrl: targetUrlVal,
-        testedSubdomains: extra.subdomains || []
+        testedSubdomains: extra.subdomains || [],
+        totalFindings: customVulns.length,
+        critCount: critCount,
+        highCount: highCount,
+        medCount: medCount,
+        lowCount: lowCount
       }
     };
 
@@ -584,22 +600,18 @@ export default function App() {
   // Derived active scan parameters with robust fallback
   const resolveScanFindings = (scan) => {
     if (!scan) return [];
-    if (scan.vulnerabilities && Array.isArray(scan.vulnerabilities) && scan.vulnerabilities.length > 0) {
+    if (scan.vulnerabilities && Array.isArray(scan.vulnerabilities)) {
       return scan.vulnerabilities;
     }
-    if (scan.id === 'scan-alpha-corp_406f') {
-      return SAMPLE_ALPHA_VULNERABILITIES;
-    }
-    if (scan.id === 'scan-beta-portal_81f4') {
-      return SAMPLE_BETA_VULNERABILITIES;
-    }
-    if (scan.id === 'scan-gamma-estate_93f0') {
-      return VULNERABILITIES;
-    }
-    return Array.isArray(scan.vulnerabilities) ? scan.vulnerabilities : [];
+    return [];
   };
 
   const currentVulnerabilities = resolveScanFindings(activeScan);
+  const currentCritCount = currentVulnerabilities.filter(v => v.severity === 'CRITICAL').length;
+  const currentHighCount = currentVulnerabilities.filter(v => v.severity === 'HIGH').length;
+  const currentMedCount = currentVulnerabilities.filter(v => v.severity === 'MEDIUM').length;
+  const currentLowCount = currentVulnerabilities.filter(v => v.severity === 'LOW').length;
+
   const currentMetadata = activeScan ? {
     ...(activeScan.metadata || SCAN_METADATA),
     targetUrl: activeScan.targetUrl || (activeScan.metadata?.targetUrl || ""),
@@ -608,10 +620,12 @@ export default function App() {
     scannedBy: activeScan.scannedBy || activeScan.createdBy || (currentUser?.username || 'user'),
     scannedByName: activeScan.scannedByName || (currentUser?.role === 'admin' ? 'Administrator' : 'User'),
     totalFindings: currentVulnerabilities.length,
-    highCount: currentVulnerabilities.filter(v => v.severity === 'HIGH' || v.severity === 'CRITICAL').length,
-    medCount: currentVulnerabilities.filter(v => v.severity === 'MEDIUM').length,
+    critCount: currentCritCount,
+    highCount: currentHighCount,
+    medCount: currentMedCount,
+    lowCount: currentLowCount,
     overallRiskScore: currentVulnerabilities.length > 0 ? (currentVulnerabilities[0]?.cvss || 5.5) : (activeScan.riskScore || 0),
-    overallRiskLevel: currentVulnerabilities.some(v => v.severity === 'HIGH' || v.severity === 'CRITICAL') ? 'HIGH' : (currentVulnerabilities.length > 0 ? 'ELEVATED' : (activeScan.riskLevel || 'LOW')),
+    overallRiskLevel: currentCritCount > 0 ? 'CRITICAL' : (currentHighCount > 0 ? 'HIGH' : (currentMedCount > 0 ? 'ELEVATED' : (currentVulnerabilities.length > 0 ? 'LOW' : (activeScan.riskLevel || 'NONE')))),
     tokens: typeof activeScan.tokens === 'number' ? activeScan.tokens : (typeof activeScan.metadata?.tokens === 'number' ? activeScan.metadata.tokens : 0),
     requests: typeof activeScan.requests === 'number' ? activeScan.requests : (typeof activeScan.metadata?.requests === 'number' ? activeScan.metadata.requests : 0),
     cost: typeof activeScan.cost === 'number' ? activeScan.cost : (typeof activeScan.metadata?.cost === 'number' ? activeScan.metadata.cost : 0),
@@ -622,8 +636,10 @@ export default function App() {
     targetUrl: '',
     companyName: currentUser?.role === 'admin' ? 'Sennovate Autonomous Security' : 'My Security Audits',
     totalFindings: 0,
+    critCount: 0,
     highCount: 0,
     medCount: 0,
+    lowCount: 0,
     overallRiskScore: 0,
     overallRiskLevel: 'NONE',
     tokens: 0,

@@ -109,7 +109,58 @@ function renderFormattedMarkdown(markdownText) {
   return <div className="space-y-1.5">{elements}</div>;
 }
 
+// Helper to construct the complete target URL for any vulnerability
+function getCompleteTargetUrl(vuln, fallbackBaseUrl) {
+  if (!vuln) return fallbackBaseUrl || '';
+  const targetStr = (vuln.target || '').trim();
+  const endpointStr = (vuln.endpoint || '').trim();
 
+  // If vuln.target is already an absolute HTTP(S) URL
+  if (targetStr && /^https?:\/\//i.test(targetStr)) {
+    if (endpointStr && endpointStr.startsWith('/') && !targetStr.endsWith(endpointStr)) {
+      try {
+        const u = new URL(targetStr);
+        return `${u.origin}${endpointStr}`;
+      } catch (e) {
+        return targetStr;
+      }
+    }
+    return targetStr;
+  }
+
+  // If fallbackBaseUrl is provided
+  const base = fallbackBaseUrl && /^https?:\/\//i.test(fallbackBaseUrl)
+    ? fallbackBaseUrl
+    : (fallbackBaseUrl ? `https://${fallbackBaseUrl}` : '');
+
+  const path = endpointStr || targetStr || '/';
+  if (!base) return path;
+
+  try {
+    const u = new URL(base);
+    const cleanPath = path.startsWith('/') ? path : `/${path}`;
+    return `${u.origin}${cleanPath}`;
+  } catch (e) {
+    return `${base.replace(/\/+$/, '')}/${path.replace(/^\/+/, '')}`;
+  }
+}
+
+// Helper to accurately format severity breakdown without omitting critical or low findings
+function formatSeverityBreakdown(vulns) {
+  if (!vulns || vulns.length === 0) return '0 Findings';
+  const crit = vulns.filter(v => v.severity === 'CRITICAL').length;
+  const high = vulns.filter(v => v.severity === 'HIGH').length;
+  const med = vulns.filter(v => v.severity === 'MEDIUM').length;
+  const low = vulns.filter(v => v.severity === 'LOW').length;
+
+  const parts = [];
+  if (crit > 0) parts.push(`${crit} Critical`);
+  if (high > 0) parts.push(`${high} High`);
+  if (med > 0) parts.push(`${med} Medium`);
+  if (low > 0) parts.push(`${low} Low`);
+
+  return parts.length > 0 ? parts.join(', ') : '0 Findings';
+}
 
 export default function PdfReport({ 
   vulnerabilities = [], 
@@ -127,6 +178,7 @@ export default function PdfReport({
   const critVulns = sortedVulns.filter(v => v.severity === 'CRITICAL');
   const highVulns = sortedVulns.filter(v => v.severity === 'HIGH');
   const medVulns = sortedVulns.filter(v => v.severity === 'MEDIUM');
+  const lowVulns = sortedVulns.filter(v => v.severity === 'LOW');
   const topVuln = sortedVulns[0] || null;
 
   const targetUrl = metadata.targetUrl || (sortedVulns[0]?.target ? new URL(sortedVulns[0].target).origin : "https://target-system.internal");
@@ -396,7 +448,7 @@ Format with clean markdown bullet points and bold headers. Keep the text punchy,
                   </div>
                   <div className="p-1.5">
                     <span className="text-slate-500 text-[10px] block font-bold uppercase tracking-wider">CONFIRMED FINDINGS</span>
-                    <span className="font-extrabold text-slate-900 text-[13px]">{sortedVulns.length} Verified ({critVulns.length} Crit, {highVulns.length} High, {medVulns.length} Med)</span>
+                    <span className="font-extrabold text-slate-900 text-[13px]">{sortedVulns.length} Verified ({formatSeverityBreakdown(sortedVulns)})</span>
                   </div>
                   <div className="p-1.5">
                     <span className="text-slate-500 text-[10px] block font-bold uppercase tracking-wider">ASSESSMENT PROFILE</span>
@@ -428,11 +480,11 @@ Format with clean markdown bullet points and bold headers. Keep the text punchy,
                   </div>
                   <div className="space-y-1.5 text-[12.5px] text-slate-800 leading-relaxed font-sans break-words">
                     <p>
-                      Sennovate Autonomous Security Platform completed an external security assessment targeting <strong>{companyName}</strong>. The assessment discovered <strong>{sortedVulns.length} confirmed vulnerabilities</strong> across public endpoints.
+                      Sennovate Autonomous Security Platform completed an external security assessment targeting <strong>{companyName}</strong>. The assessment discovered <strong>{sortedVulns.length} confirmed vulnerabilities</strong> across public endpoints ({formatSeverityBreakdown(sortedVulns)}).
                     </p>
                     {topVuln ? (
                       <p className="text-slate-700 text-[12px]">
-                        The highest risk vector identified is <strong>{topVuln.title}</strong> (CVSS {topVuln.cvss}) on <code>{topVuln.endpoint || topVuln.target}</code>. Immediate remediation is advised to prevent potential unauthorized access or information leakage.
+                        The highest risk vector identified is <strong>{topVuln.title}</strong> (CVSS {topVuln.cvss}) on <code>{getCompleteTargetUrl(topVuln, targetUrl)}</code>. Immediate remediation is advised to prevent potential unauthorized access or information leakage.
                       </p>
                     ) : (
                       <p className="text-slate-700 text-[12px]">
@@ -494,10 +546,10 @@ Format with clean markdown bullet points and bold headers. Keep the text punchy,
                     <thead className="bg-slate-100 font-mono text-slate-700 border-b border-slate-200">
                       <tr>
                         <th className="p-3 w-[12%]">ID</th>
-                        <th className="p-3 w-[36%]">Vulnerability Title</th>
+                        <th className="p-3 w-[34%]">Vulnerability Title</th>
                         <th className="p-3 w-[14%]">Severity</th>
                         <th className="p-3 w-[8%]">CVSS</th>
-                        <th className="p-3 w-[18%]">Target Endpoint</th>
+                        <th className="p-3 w-[20%]">Complete Target URL</th>
                         <th className="p-3 w-[12%]">Fix Effort</th>
                       </tr>
                     </thead>
@@ -514,7 +566,7 @@ Format with clean markdown bullet points and bold headers. Keep the text punchy,
                             }`}>{v.severity}</span>
                           </td>
                           <td className="p-3 font-mono font-bold text-[12px]">{v.cvss}</td>
-                          <td className="p-3 font-mono text-slate-600 break-all text-[11px]">{v.endpoint || v.target}</td>
+                          <td className="p-3 font-mono text-slate-600 break-all text-[11px]">{getCompleteTargetUrl(v, targetUrl)}</td>
                           <td className="p-3 font-mono text-emerald-700 font-bold text-[11px]">{v.fixEffort || 'Low'}</td>
                         </tr>
                       ))}
@@ -607,7 +659,7 @@ Format with clean markdown bullet points and bold headers. Keep the text punchy,
                       </h3>
 
                       <div className="text-xs font-mono text-slate-600">
-                        Target Endpoint: <code className="text-cyan-800 font-bold break-all">{vuln.endpoint || vuln.target}</code>
+                        Complete Target URL: <code className="text-cyan-800 font-bold break-all">{getCompleteTargetUrl(vuln, targetUrl)}</code>
                       </div>
                     </div>
 
@@ -720,7 +772,7 @@ Format with clean markdown bullet points and bold headers. Keep the text punchy,
               </div>
               <div className="p-1">
                 <span className="text-slate-500 text-[10px] block font-bold uppercase tracking-wider">CONFIRMED FINDINGS</span>
-                <span className="font-extrabold text-slate-900 text-[12.5px]">{sortedVulns.length} Verified ({highVulns.length} High, {medVulns.length} Med)</span>
+                <span className="font-extrabold text-slate-900 text-[12.5px]">{sortedVulns.length} Verified ({formatSeverityBreakdown(sortedVulns)})</span>
               </div>
               <div className="p-1">
                 <span className="text-slate-500 text-[10px] block font-bold uppercase tracking-wider">ASSESSMENT PROFILE</span>
@@ -828,7 +880,7 @@ Format with clean markdown bullet points and bold headers. Keep the text punchy,
               <>
                 <div className="space-y-2 text-[12.5px] text-slate-800 leading-relaxed font-sans break-words">
                   <p>Sennovate Autonomous Security Engine conducted an external penetration testing assessment against <strong>{companyName}</strong> (primary target: <code>{targetUrl}</code>). The scope encompassed the external web perimeter, exposed application services, and integrated API endpoints.</p>
-                  <p>The assessment identified <strong>{sortedVulns.length} confirmed security vulnerabilities</strong> ({critVulns.length > 0 ? `${critVulns.length} Critical, ` : ''}{highVulns.length} High Severity, {medVulns.length} Medium Severity). The overall cybersecurity posture is evaluated at <strong>{overallRiskLevel} Risk ({overallRiskScore}/10 CVSS)</strong>, requiring targeted remediation to safeguard corporate data assets.</p>
+                  <p>The assessment identified <strong>{sortedVulns.length} confirmed security vulnerabilities</strong> ({formatSeverityBreakdown(sortedVulns)}). The overall cybersecurity posture is evaluated at <strong>{overallRiskLevel} Risk ({overallRiskScore}/10 CVSS)</strong>, requiring targeted remediation to safeguard corporate data assets.</p>
                 </div>
 
                 {topVuln && (
@@ -836,13 +888,22 @@ Format with clean markdown bullet points and bold headers. Keep the text punchy,
                     <div className="font-bold text-amber-900 uppercase font-mono flex items-center gap-1.5 text-xs">
                       <ShieldAlert className="w-4 h-4 text-amber-600 flex-shrink-0" /> <span>Strategic Exposure Vector: {overallRiskLevel} Risk ({overallRiskScore}/10 CVSS)</span>
                     </div>
-                    <p className="leading-relaxed text-[12px] break-words text-slate-700">Primary exposure vector is <strong>{topVuln.title}</strong> on <code>{topVuln.target || topVuln.endpoint}</code> (CVSS {topVuln.cvss}). Exploitation allows unauthorized adversaries: {topVuln.impact || topVuln.description}</p>
+                    <p className="leading-relaxed text-[12px] break-words text-slate-700">Primary exposure vector is <strong>{topVuln.title}</strong> on <code>{getCompleteTargetUrl(topVuln, targetUrl)}</code> (CVSS {topVuln.cvss}). Exploitation allows unauthorized adversaries: {topVuln.impact || topVuln.description}</p>
                   </div>
                 )}
 
                 <div className="space-y-1.5">
                   <h3 className="text-xs font-bold text-slate-950 font-mono uppercase tracking-wider">Categorized Risk Breakdown</h3>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {critVulns.length > 0 && (
+                      <div className="p-3 rounded-xl border border-red-200 bg-red-50/60 space-y-1.5">
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="font-bold text-red-900 uppercase font-mono">Critical Risks ({critVulns.length})</span>
+                          <span className="font-mono font-bold text-red-700 bg-red-100 px-2 py-0.5 rounded text-[10px]">Immediate Action</span>
+                        </div>
+                        <div className="text-[11.5px] text-slate-700 space-y-1 pl-1">{critVulns.map(v => <div key={v.id} className="leading-relaxed break-words">&bull; <strong>[{v.id}] {v.title}</strong> (CVSS {v.cvss})</div>)}</div>
+                      </div>
+                    )}
                     {highVulns.length > 0 && (
                       <div className="p-3 rounded-xl border border-rose-200 bg-rose-50/50 space-y-1.5">
                         <div className="flex items-center justify-between text-xs">
@@ -859,6 +920,15 @@ Format with clean markdown bullet points and bold headers. Keep the text punchy,
                           <span className="font-mono font-bold text-amber-800 bg-amber-100 px-2 py-0.5 rounded text-[10px]">Remediate &lt; 7d</span>
                         </div>
                         <div className="text-[11.5px] text-slate-700 space-y-1 pl-1">{medVulns.map(v => <div key={v.id} className="leading-relaxed break-words">&bull; <strong>[{v.id}] {v.title}</strong> (CVSS {v.cvss})</div>)}</div>
+                      </div>
+                    )}
+                    {lowVulns.length > 0 && (
+                      <div className="p-3 rounded-xl border border-emerald-200 bg-emerald-50/40 space-y-1.5">
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="font-bold text-emerald-900 uppercase font-mono">Low / Info Findings ({lowVulns.length})</span>
+                          <span className="font-mono font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded text-[10px]">Hygiene &lt; 30d</span>
+                        </div>
+                        <div className="text-[11.5px] text-slate-700 space-y-1 pl-1">{lowVulns.map(v => <div key={v.id} className="leading-relaxed break-words">&bull; <strong>[{v.id}] {v.title}</strong> (CVSS {v.cvss})</div>)}</div>
                       </div>
                     )}
                   </div>
@@ -881,7 +951,7 @@ Format with clean markdown bullet points and bold headers. Keep the text punchy,
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
                     <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 space-y-1">
                       <div className="font-bold text-rose-700 font-mono text-[11px] uppercase flex items-center gap-1"><Clock className="w-3.5 h-3.5 flex-shrink-0" /> Phase 1 (&lt; 24h)</div>
-                      <p className="text-slate-700 text-[11.5px] leading-relaxed break-words">{topVuln ? `Remediate ${topVuln.title} on ${topVuln.endpoint}.` : 'Patch high priority vulnerabilities.'}</p>
+                      <p className="text-slate-700 text-[11.5px] leading-relaxed break-words">{topVuln ? `Remediate ${topVuln.title} on ${getCompleteTargetUrl(topVuln, targetUrl)}.` : 'Patch high priority vulnerabilities.'}</p>
                     </div>
                     <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 space-y-1">
                       <div className="font-bold text-amber-700 font-mono text-[11px] uppercase flex items-center gap-1"><Clock className="w-3.5 h-3.5 flex-shrink-0" /> Phase 2 (&lt; 7 Days)</div>
@@ -926,12 +996,12 @@ Format with clean markdown bullet points and bold headers. Keep the text punchy,
                 <thead className="bg-slate-100 font-mono text-slate-700 border-b border-slate-200">
                   <tr>
                     <th className="p-2.5 w-[11%]">ID</th>
-                    <th className="p-2.5 w-[33%]">Vulnerability Title</th>
+                    <th className="p-2.5 w-[31%]">Vulnerability Title</th>
                     <th className="p-2.5 w-[13%]">Severity</th>
                     <th className="p-2.5 w-[8%]">CVSS</th>
                     <th className="p-2.5 w-[11%]">CWE</th>
-                    <th className="p-2.5 w-[15%]">Target Endpoint</th>
-                    <th className="p-2.5 w-[9%]">Priority</th>
+                    <th className="p-2.5 w-[18%]">Complete Target URL</th>
+                    <th className="p-2.5 w-[8%]">Priority</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200">
@@ -948,7 +1018,7 @@ Format with clean markdown bullet points and bold headers. Keep the text punchy,
                       </td>
                       <td className="p-2.5 font-mono font-bold text-[11.5px]">{v.cvss}</td>
                       <td className="p-2.5 font-mono text-slate-600 break-words text-[10.5px]">{v.cwe}</td>
-                      <td className="p-2.5 font-mono text-slate-600 break-all text-[10.5px]">{v.endpoint || v.target}</td>
+                      <td className="p-2.5 font-mono text-slate-600 break-all text-[10.5px]">{getCompleteTargetUrl(v, targetUrl)}</td>
                       <td className="p-2.5 font-mono font-bold text-slate-700 text-[10.5px]">{idx === 0 ? 'Urgent' : idx <= 2 ? 'High' : 'Medium'}</td>
                     </tr>
                   ))}
@@ -1077,7 +1147,7 @@ Format with clean markdown bullet points and bold headers. Keep the text punchy,
                     </h3>
 
                     <div className="text-xs font-mono text-slate-600">
-                      Target Endpoint: <code className="text-cyan-800 font-bold break-all">{vuln.endpoint || vuln.target}</code>
+                      Complete Target URL: <code className="text-cyan-800 font-bold break-all">{getCompleteTargetUrl(vuln, targetUrl)}</code>
                     </div>
                   </div>
 
@@ -1156,7 +1226,7 @@ Format with clean markdown bullet points and bold headers. Keep the text punchy,
                         Finding #{findingNum} [{vuln.id}] &mdash; {vuln.title}
                       </div>
                       <div className="text-[11px] font-mono text-slate-600">
-                        Endpoint: <code className="text-cyan-800 font-bold break-all">{vuln.endpoint || vuln.target}</code>
+                        Complete Target URL: <code className="text-cyan-800 font-bold break-all">{getCompleteTargetUrl(vuln, targetUrl)}</code>
                       </div>
                     </div>
                     <span className="text-[10.5px] font-mono font-bold px-2 py-0.5 rounded bg-cyan-200 text-cyan-900">
@@ -1276,7 +1346,7 @@ Format with clean markdown bullet points and bold headers. Keep the text punchy,
                     <div className="text-xs font-mono text-slate-600">Fix Effort: <strong className="text-emerald-700">{vuln.fixEffort || 'Low'}</strong></div>
                   </div>
                   <h3 className="text-lg font-black text-slate-950 tracking-tight leading-snug break-words">{vuln.title}</h3>
-                  <div className="text-xs font-mono text-slate-600">Target Endpoint: <code className="text-cyan-800 font-bold break-all">{vuln.endpoint || vuln.target}</code></div>
+                  <div className="text-xs font-mono text-slate-600">Complete Target URL: <code className="text-cyan-800 font-bold break-all">{getCompleteTargetUrl(vuln, targetUrl)}</code></div>
                 </div>
 
                 <div className="space-y-1.5">
