@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
-import { execSync } from 'child_process';
+import { execSync, execFileSync } from 'child_process';
 import { Client } from 'ssh2';
 
 // In-memory active scan sessions store with stream references for interactive input
@@ -438,7 +438,7 @@ export function parseVulnMarkdown(content, filename) {
  * Smart Path Resolver for downloaded Strix scan folders on user's computer
  */
 export function resolveLocalScanPath(inputPath) {
-  if (!inputPath || typeof inputPath !== 'string') return null;
+  if (!inputPath || typeof inputPath !== 'string' || inputPath.includes('\0')) return null;
   let clean = inputPath.trim().replace(/^['"]|['"]$/g, '');
   if (!clean) return null;
 
@@ -609,7 +609,17 @@ export function listLocalScanFolders() {
  * Ingest and parse a local scan output folder (All 7 Files Engine)
  */
 export function parseLocalStrixFolder(folderPath) {
+  if (!folderPath || typeof folderPath !== 'string' || folderPath.includes('\0')) {
+    throw new Error('Invalid folder path specified.');
+  }
   const resolvedPath = resolveLocalScanPath(folderPath) || path.resolve(folderPath);
+  
+  // Guard against traversal into critical system root directories
+  const forbiddenSystemDirs = ['/', '/etc', '/var', '/sys', '/proc', '/dev', '/usr', '/bin', '/sbin', '/System', '/Library', '/private'];
+  if (forbiddenSystemDirs.includes(path.normalize(resolvedPath))) {
+    throw new Error('Access Denied: Cannot parse sensitive system directory.');
+  }
+
   if (!fs.existsSync(resolvedPath)) {
     throw new Error(`Scan output folder does not exist: ${resolvedPath}. Please verify the folder name or path in your Downloads/Desktop directory.`);
   }
@@ -1477,7 +1487,7 @@ export async function fetchN8nScanResultsProxy(payload) {
     if (!fs.existsSync(extractDir)) fs.mkdirSync(extractDir, { recursive: true });
 
     try {
-      execSync(`unzip -o "${zipPath}" -d "${extractDir}"`, { stdio: 'pipe' });
+      execFileSync('unzip', ['-o', zipPath, '-d', extractDir], { stdio: 'pipe' });
     } catch (unzipErr) {
       console.warn('Unzip command warning:', unzipErr.message);
     }
@@ -1560,7 +1570,7 @@ export async function uploadScanZipProxy(payload) {
   if (!fs.existsSync(extractDir)) fs.mkdirSync(extractDir, { recursive: true });
 
   try {
-    execSync(`unzip -o "${zipPath}" -d "${extractDir}"`, { stdio: 'pipe' });
+    execFileSync('unzip', ['-o', zipPath, '-d', extractDir], { stdio: 'pipe' });
   } catch (e) {
     console.warn('Unzip warning:', e.message);
   }
@@ -1698,7 +1708,7 @@ export async function testN8nFetchWebhookProxy(payload) {
           fs.unlinkSync(userFolder);
         }
         if (!fs.existsSync(userFolder)) fs.mkdirSync(userFolder, { recursive: true });
-        execSync(`unzip -o "${zipPath}" -d "${userFolder}"`, { stdio: 'pipe' });
+        execFileSync('unzip', ['-o', zipPath, '-d', userFolder], { stdio: 'pipe' });
         savedLocalPath = userFolder;
       } catch (_) {}
     } else if (buffer.length > 0 && norm.raw.includes('.')) {

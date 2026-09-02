@@ -96,17 +96,7 @@ export const DEFAULT_USERS = [
 ];
 
 export function getAuthToken() {
-  let token = sessionStorage.getItem(AUTH_TOKEN_KEY) || localStorage.getItem(AUTH_TOKEN_KEY) || '';
-  if (!token) {
-    const user = getCurrentUser();
-    if (user && (user.id || user.username)) {
-      try {
-        token = btoa(JSON.stringify({ id: user.id, role: user.role, ts: Date.now() }));
-        sessionStorage.setItem(AUTH_TOKEN_KEY, token);
-      } catch (_) {}
-    }
-  }
-  return token;
+  return sessionStorage.getItem(AUTH_TOKEN_KEY) || localStorage.getItem(AUTH_TOKEN_KEY) || '';
 }
 
 export function setAuthToken(token) {
@@ -331,71 +321,30 @@ export async function authenticateUser(usernameOrEmail, password, selectedRole =
     throw new Error('Please enter both username and password.');
   }
 
-  try {
-    const res = await fetch('/api/auth/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        username: trimmedInput,
-        password: trimmedPass,
-        selectedRole
-      })
-    });
+  const res = await fetch('/api/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      username: trimmedInput,
+      password: trimmedPass,
+      selectedRole
+    })
+  });
 
-    if (res.ok) {
-      const data = await res.json();
-      if (data && data.success && data.user) {
-        if (data.token) {
-          setAuthToken(data.token);
-        }
-        return setCurrentUser(data.user);
-      }
+  const data = await res.json().catch(() => ({}));
+
+  if (!res.ok || !data.success) {
+    throw new Error(data.error || 'Invalid username or password.');
+  }
+
+  if (data.user) {
+    if (data.token) {
+      setAuthToken(data.token);
     }
-  } catch (err) {
-    console.warn('Backend login endpoint note:', err.message);
+    return setCurrentUser(data.user);
   }
 
-  // Resilient Client-Side Authentication
-  const users = getUsersList();
-  const matched = users.find(u =>
-    (u.username?.toLowerCase() === trimmedInput.toLowerCase() || u.email?.toLowerCase() === trimmedInput.toLowerCase())
-  );
-
-  if (matched) {
-    return setCurrentUser(matched);
-  }
-
-  // Dynamic Session Fallback
-  if (trimmedInput.toLowerCase().includes('admin')) {
-    const adminUser = DEFAULT_USERS.find(u => u.id === 'admin') || {
-      id: 'admin',
-      username: 'admin',
-      email: 'admin@sennovate.com',
-      name: 'Administrator',
-      role: 'admin'
-    };
-    return setCurrentUser(adminUser);
-  }
-
-  if (trimmedInput.toLowerCase().includes('sales')) {
-    const salesUser = DEFAULT_USERS.find(u => u.id === 'sales123') || {
-      id: 'sales123',
-      username: 'sales123',
-      email: 'sales@sennovate.com',
-      name: 'Sales Team',
-      role: 'sales'
-    };
-    return setCurrentUser(salesUser);
-  }
-
-  const defaultUser = DEFAULT_USERS.find(u => u.id === 'user') || {
-    id: 'user',
-    username: trimmedInput,
-    email: `${trimmedInput}@sennovate.com`,
-    name: trimmedInput,
-    role: 'user'
-  };
-  return setCurrentUser(defaultUser);
+  throw new Error('Authentication failed. Please check your credentials.');
 }
 
 /**

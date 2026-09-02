@@ -27,6 +27,7 @@ data_defaults/**
 # Scans Cache & Temp Folders
 .state/
 downloaded_scans/
+scratch/
 
 # System & OS Files
 .DS_Store

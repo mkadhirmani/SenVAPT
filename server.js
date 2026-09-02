@@ -49,7 +49,7 @@ function loadEnvVariables() {
             if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
               val = val.slice(1, -1);
             }
-            if (val !== undefined && val !== '') {
+            if (process.env[key] === undefined && val !== undefined && val !== '') {
               process.env[key] = val;
             }
           }
@@ -268,14 +268,62 @@ function saveGlobalUsersStore(users) {
 }
 
 // In-Memory Cryptographic Session Registry
-const activeSessions = new Map(); // token -> { user, role, token, expiresAt }
+const activeSessions = new Map(); // token -> { user, role, token, expiresAt, createdAt }
+
+// Login Brute-Force Rate Limiter (Max 5 failed attempts per 15 minutes per IP+username)
+const failedLoginAttempts = new Map(); // key -> { count, lockedUntil }
+
+function getRateLimitKey(req, username) {
+  const forwarded = req.headers['x-forwarded-for'] || '';
+  const ip = forwarded.split(',')[0].trim() || req.socket.remoteAddress || '127.0.0.1';
+  return `${ip}:${(username || '').toLowerCase()}`;
+}
+
+function isLoginRateLimited(key) {
+  const record = failedLoginAttempts.get(key);
+  if (!record) return false;
+  if (record.lockedUntil && Date.now() < record.lockedUntil) {
+    return true;
+  }
+  if (record.lockedUntil && Date.now() >= record.lockedUntil) {
+    failedLoginAttempts.delete(key);
+    return false;
+  }
+  return false;
+}
+
+function recordFailedLogin(key) {
+  const record = failedLoginAttempts.get(key) || { count: 0, lockedUntil: null };
+  record.count += 1;
+  if (record.count >= 5) {
+    record.lockedUntil = Date.now() + 15 * 60 * 1000; // 15 minute lockout
+  }
+  failedLoginAttempts.set(key, record);
+}
+
+function clearFailedLogin(key) {
+  failedLoginAttempts.delete(key);
+}
+
+// Constant-Time String Comparison (Prevents Timing Side-Channel Attacks)
+function constantTimeCompare(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string' || !a || !b) return false;
+  const bufA = Buffer.from(a, 'utf-8');
+  const bufB = Buffer.from(b, 'utf-8');
+  if (bufA.length !== bufB.length) {
+    crypto.timingSafeEqual(bufA, bufA); // Prevent timing disclosure of string length
+    return false;
+  }
+  return crypto.timingSafeEqual(bufA, bufB);
+}
 
 function createSession(user) {
   const token = crypto.randomBytes(32).toString('hex');
   const session = {
     token,
     user,
-    role: user.role,
+    role: user.role || 'user',
+    createdAt: Date.now(),
     expiresAt: Date.now() + 24 * 60 * 60 * 1000 // 24 hours
   };
   activeSessions.set(token, session);
@@ -284,56 +332,125 @@ function createSession(user) {
 
 function getAuthenticatedSession(req) {
   const authHeader = req.headers['authorization'] || req.headers['Authorization'] || '';
-  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : (req.headers['x-auth-token'] || req.headers['X-Auth-Token'] || '');
+  const token = authHeader.startsWith('Bearer ') 
+    ? authHeader.slice(7).trim() 
+    : (req.headers['x-auth-token'] || req.headers['X-Auth-Token'] || '');
   
-  if (token) {
-    const session = activeSessions.get(token);
-    if (session) {
-      if (session.expiresAt && Date.now() > session.expiresAt) {
-        activeSessions.delete(token);
-        return null;
-      }
-      return session;
-    }
-
-    try {
-      const decoded = JSON.parse(Buffer.from(token, 'base64').toString('utf-8'));
-      if (decoded && (decoded.id || decoded.role || decoded.username)) {
-        const restoredSession = {
-          token,
-          user: decoded,
-          role: decoded.role || (decoded.id === 'admin' ? 'admin' : 'user'),
-          expiresAt: Date.now() + 24 * 60 * 60 * 1000
-        };
-        activeSessions.set(token, restoredSession);
-        return restoredSession;
-      }
-    } catch (_) {}
-
-    const genericSession = {
-      token,
-      user: { id: 'admin', username: 'admin', role: 'admin' },
-      role: 'admin',
-      expiresAt: Date.now() + 24 * 60 * 60 * 1000
-    };
-    activeSessions.set(token, genericSession);
-    return genericSession;
+  if (!token) {
+    return null;
   }
 
-  // Automatic safe fallback for authenticated dashboard operations
-  return {
-    token: 'local-session-token',
-    user: { id: 'admin', username: 'admin', role: 'admin' },
-    role: 'admin',
-    expiresAt: Date.now() + 24 * 60 * 60 * 1000
-  };
+  // Validate hex format of cryptographic token
+  if (!/^[a-f0-9]{64}$/i.test(token)) {
+    return null;
+  }
+
+  const session = activeSessions.get(token);
+  if (!session) {
+    return null;
+  }
+
+  if (session.expiresAt && Date.now() > session.expiresAt) {
+    activeSessions.delete(token);
+    return null;
+  }
+
+  return session;
+}
+
+// Global Security Headers Middleware
+function applySecurityHeaders(req, res) {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains; preload');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  res.setHeader('X-XSS-Protection', '1; mode=block');
+  res.setHeader(
+    'Content-Security-Policy',
+    "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: https: blob:; connect-src 'self' https:; frame-ancestors 'none';"
+  );
+  res.setHeader('Server', 'Sennovate-Security-Gateway');
+}
+
+// CORS Validation (Restricted to same origin, senvapt.sennovate.ai, and localhost)
+function applyCorsHeaders(req, res) {
+  const origin = req.headers['origin'];
+  const host = req.headers['host'];
+  
+  if (origin) {
+    try {
+      const parsedOrigin = new URL(origin);
+      const isAllowed = 
+        parsedOrigin.hostname === 'senvapt.sennovate.ai' ||
+        parsedOrigin.hostname.endsWith('.sennovate.ai') ||
+        parsedOrigin.hostname === 'localhost' ||
+        parsedOrigin.hostname === '127.0.0.1' ||
+        (host && parsedOrigin.host === host);
+
+      if (isAllowed) {
+        res.setHeader('Access-Control-Allow-Origin', origin);
+        res.setHeader('Access-Control-Allow-Credentials', 'true');
+      }
+    } catch (_) {}
+  }
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, X-Auth-Token');
+}
+
+// SSRF Target Validator for LLM Proxy
+const ALLOWED_LLM_HOSTS = new Set([
+  'openrouter.ai',
+  'api.openai.com',
+  'api.anthropic.com',
+  'generativelanguage.googleapis.com',
+  'api.groq.com',
+  'api.mistral.ai',
+  'api.cohere.com',
+  'api.deepseek.com'
+]);
+
+function isSafeLlmUrl(urlStr) {
+  if (!urlStr || typeof urlStr !== 'string') return false;
+  try {
+    const u = new URL(urlStr);
+    if (u.protocol !== 'https:' && u.protocol !== 'http:') return false;
+    
+    const hostname = u.hostname.toLowerCase();
+    
+    // Disallow IP literals directly (prevent private subnet SSRF)
+    if (/^(\d{1,3}\.){3}\d{1,3}$/.test(hostname) || hostname === 'localhost' || hostname.includes('::')) {
+      return false;
+    }
+    
+    // Disallow cloud metadata endpoints
+    if (hostname.includes('metadata') || hostname.includes('169.254') || hostname.includes('internal')) {
+      return false;
+    }
+    
+    for (const allowed of ALLOWED_LLM_HOSTS) {
+      if (hostname === allowed || hostname.endsWith(`.${allowed}`)) {
+        return true;
+      }
+    }
+    return false;
+  } catch (_) {
+    return false;
+  }
 }
 
 // Helper to parse JSON body
 function parseJsonBody(req) {
   return new Promise((resolve, reject) => {
     let body = '';
-    req.on('data', chunk => { body += chunk; });
+    req.on('data', chunk => { 
+      body += chunk; 
+      // Prevent denial of service via oversized payloads (limit 10MB)
+      if (body.length > 10 * 1024 * 1024) {
+        req.destroy();
+        reject(new Error('Payload too large'));
+      }
+    });
     req.on('end', () => {
       try {
         resolve(body ? JSON.parse(body) : {});
@@ -347,13 +464,24 @@ function parseJsonBody(req) {
 
 // Create Production HTTP Server
 const server = http.createServer(async (req, res) => {
+  // Block directory traversal or encoded dot segments in raw request URL
+  const rawUrl = req.url || '';
+  if (
+    rawUrl.includes('..') || 
+    rawUrl.toLowerCase().includes('%2e%2e') || 
+    rawUrl.includes('%252e') || 
+    rawUrl.includes('\0')
+  ) {
+    res.statusCode = 403;
+    return res.end('Forbidden');
+  }
+
   const parsedUrl = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   const pathname = parsedUrl.pathname;
 
-  // Set CORS Headers
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+  // Apply Security and CORS Headers to all responses
+  applySecurityHeaders(req, res);
+  applyCorsHeaders(req, res);
 
   if (req.method === 'OPTIONS') {
     res.statusCode = 200;
@@ -364,7 +492,7 @@ const server = http.createServer(async (req, res) => {
   // API ROUTES
   // ==========================================
 
-  // 1. Health Check
+  // 1. Health Check (Public)
   if (pathname === '/health' || pathname === '/api/health' || pathname === '/healthz' || pathname === '/_health') {
     res.setHeader('Content-Type', 'application/json');
     res.statusCode = 200;
@@ -383,6 +511,17 @@ const server = http.createServer(async (req, res) => {
         res.setHeader('Content-Type', 'application/json');
         res.statusCode = 400;
         return res.end(JSON.stringify({ success: false, error: 'Please enter both username and password.' }));
+      }
+
+      // Check Rate Limit (Anti-Brute Force)
+      const rateLimitKey = getRateLimitKey(req, trimmedInput);
+      if (isLoginRateLimited(rateLimitKey)) {
+        res.setHeader('Content-Type', 'application/json');
+        res.statusCode = 429;
+        return res.end(JSON.stringify({ 
+          success: false, 
+          error: 'Too many failed login attempts. Account temporarily locked for 15 minutes for security.' 
+        }));
       }
 
       const rawUsers = getGlobalUsersStoreRaw();
@@ -405,40 +544,26 @@ const server = http.createServer(async (req, res) => {
           ...altEnvPass.split(',').map(s => s.trim()),
           u.password,
           u.altPassword
-        ].filter(Boolean);
+        ].filter(p => typeof p === 'string' && p.trim().length > 0);
 
-        return validList.some(p => p === trimmedPass || p.toLowerCase() === trimmedPass.toLowerCase());
+        return validList.some(p => constantTimeCompare(p, trimmedPass));
       });
 
       if (!matched) {
-        // Resilient fallback by username/email
-        const userByUsername = rawUsers.find(u => {
-          const uName = (u.username || '').toLowerCase();
-          const uEmail = (u.email || '').toLowerCase();
-          return uName === trimmedInput || uEmail === trimmedInput;
-        });
-
-        if (userByUsername) {
-          const sanitizedUser = { ...userByUsername };
-          delete sanitizedUser.password;
-          delete sanitizedUser.altPassword;
-          delete sanitizedUser.passwordHash;
-          const token = Buffer.from(JSON.stringify({ id: sanitizedUser.id, role: sanitizedUser.role, ts: Date.now() })).toString('base64');
-          res.setHeader('Content-Type', 'application/json');
-          res.statusCode = 200;
-          return res.end(JSON.stringify({ success: true, user: sanitizedUser, token }));
-        }
-
+        recordFailedLogin(rateLimitKey);
         res.setHeader('Content-Type', 'application/json');
         res.statusCode = 401;
-        return res.end(JSON.stringify({ success: false, error: 'Invalid credentials. Please enter a valid username and password.' }));
+        return res.end(JSON.stringify({ success: false, error: 'Invalid username or password.' }));
       }
 
       if (selectedRole === 'admin' && matched.role !== 'admin') {
         res.setHeader('Content-Type', 'application/json');
         res.statusCode = 403;
-        return res.end(JSON.stringify({ success: false, error: 'Access Denied: This account does not have administrator privileges. Please switch to User Login.' }));
+        return res.end(JSON.stringify({ success: false, error: 'Access Denied: This account does not have administrator privileges.' }));
       }
+
+      // Clear failed attempts upon successful authentication
+      clearFailedLogin(rateLimitKey);
 
       const sanitizedUser = { ...matched };
       delete sanitizedUser.password;
@@ -453,7 +578,7 @@ const server = http.createServer(async (req, res) => {
     } catch (e) {
       res.setHeader('Content-Type', 'application/json');
       res.statusCode = 400;
-      return res.end(JSON.stringify({ success: false, error: e.message }));
+      return res.end(JSON.stringify({ success: false, error: 'Authentication request failed.' }));
     }
   }
 
@@ -480,7 +605,7 @@ const server = http.createServer(async (req, res) => {
     return res.end(JSON.stringify({ success: true }));
   }
 
-  // 3. Scan History Routes (Protected)
+  // 3. Scan History Routes (Protected with Session Auth)
   if (pathname === '/api/scans/get-history') {
     const session = getAuthenticatedSession(req);
     if (!session) {
@@ -508,7 +633,7 @@ const server = http.createServer(async (req, res) => {
     return res.end(JSON.stringify({ success: ok, count: scansList.length }));
   }
 
-  // 4. LLM Proxy Route (Protected)
+  // 4. LLM Proxy Route (Protected with Session Auth & Strict SSRF Defense)
   if (pathname === '/api/llm-proxy') {
     const session = getAuthenticatedSession(req);
     if (!session) {
@@ -522,6 +647,16 @@ const server = http.createServer(async (req, res) => {
     }
     try {
       const { targetUrl, headers, data } = await parseJsonBody(req);
+      
+      // Strict SSRF Defense
+      if (!isSafeLlmUrl(targetUrl)) {
+        res.setHeader('Content-Type', 'application/json');
+        res.statusCode = 400;
+        return res.end(JSON.stringify({ 
+          error: 'SSRF Protection: The specified LLM endpoint is not permitted. Only authorized external AI providers may be proxied.' 
+        }));
+      }
+
       const fetchRes = await fetch(targetUrl, {
         method: 'POST',
         headers: headers || { 'Content-Type': 'application/json' },
@@ -535,7 +670,7 @@ const server = http.createServer(async (req, res) => {
     } catch (err) {
       res.setHeader('Content-Type', 'application/json');
       res.statusCode = 500;
-      return res.end(JSON.stringify({ error: err.message }));
+      return res.end(JSON.stringify({ error: 'Upstream LLM communication error.' }));
     }
   }
 
@@ -907,7 +1042,21 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'GET' || req.method === 'HEAD') {
     let cleanPath = pathname;
     try { cleanPath = decodeURIComponent(pathname); } catch (_) {}
-    let filePath = path.join(DIST_DIR, cleanPath);
+
+    // Block null byte injection attacks
+    if (cleanPath.includes('\0')) {
+      res.statusCode = 400;
+      return res.end('Bad Request');
+    }
+
+    // Block directory traversal probes immediately
+    if (pathname.includes('..') || cleanPath.includes('..')) {
+      res.statusCode = 403;
+      return res.end('Forbidden');
+    }
+
+    const safePath = path.normalize(cleanPath);
+    const filePath = path.join(DIST_DIR, safePath);
 
     // Prevent directory traversal
     if (!filePath.startsWith(DIST_DIR)) {
@@ -927,7 +1076,13 @@ const server = http.createServer(async (req, res) => {
       }
 
       // Fallback check in public folder
-      const publicPath = path.join(__dirname, 'public', cleanPath);
+      const publicDir = path.join(__dirname, 'public');
+      const publicPath = path.join(publicDir, safePath);
+      if (!publicPath.startsWith(publicDir)) {
+        res.statusCode = 403;
+        return res.end('Forbidden');
+      }
+
       fs.stat(publicPath, (pErr, pStats) => {
         if (!pErr && pStats.isFile()) {
           const ext = path.extname(publicPath).toLowerCase();
@@ -938,7 +1093,13 @@ const server = http.createServer(async (req, res) => {
           return fs.createReadStream(publicPath).pipe(res);
         }
 
-        // If file not found or is directory, fallback to index.html for Single Page App client-side routing
+        // Only fallback to index.html for extensionless Single Page App client-side routes (e.g. /scans, /users)
+        const fileExt = path.extname(safePath);
+        if (fileExt && fileExt !== '.html') {
+          res.statusCode = 404;
+          return res.end('Not Found');
+        }
+
         const indexFile = path.join(DIST_DIR, 'index.html');
         fs.stat(indexFile, (idxErr, idxStats) => {
           if (!idxErr && idxStats.isFile()) {
