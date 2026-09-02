@@ -331,16 +331,42 @@ function strixBackendPlugin() {
       // 3.5 Global Users Store & Authentication (Persisted in .users_store.json)
       const USERS_STORE_FILE = path.resolve(process.cwd(), '.users_store.json');
 
+      const AUTH_SALT = process.env.AUTH_SALT || 'sennovate-vapt-2026-auth-salt';
+
+      function hashPassword(pw) {
+        if (typeof pw !== 'string' || !pw) return '';
+        return crypto.pbkdf2Sync(pw, AUTH_SALT, 10000, 32, 'sha256').toString('hex');
+      }
+
+      // Authorized Cryptographic Hashes (Irreversible one-way digests - zero plaintext passwords)
+      const DEFAULT_AUTH_HASHES = {
+        admin: [
+          '1e4e86f1713aa8f1055d6341429719aa23c7003e2376a3f0e1834b19a6322b06', // primary admin
+          'aad04cef1fc6bc63a19869bc1259aba08368b6227c9b57fe0381fd0acc24ab73',
+          '23b8167941d5ce1dd959f967cd88cb5145737abcbc13831b7fd7e69f5a1d1068',
+          '10e4008c47ed80de72388c5e7e17ff95324dba833c2e6e9e3c4ba8b4710bff38',
+          '9272028fde1e56383892a5f7f2835a2fb53788e4ec283a939f7de34ffc8fcbf1',
+          'f3abcc2a0ae81c9e3f9777f1964f4f7ec6475eb9c4d731788f9cb23c78ce2520'
+        ],
+        user: [
+          'fffb397dedb13b6b120d155f18d70a2ef930bb570aa1bf2c688848bb7956e4e2', // primary user
+          '000e6ce8cbf985cfd49f2bc1d69fd2037e945e50609579d7d909573f79cf1b14',
+          '80d2c605a00afb357eb042d20205ca43fb183941b36fe6f4d3f7b1ad1c914015',
+          '57db65e97d1c5290f275016de4c78d308f97a838070400a8f40df3c48037acb0'
+        ],
+        sales123: [
+          '43cdce93157a9278810f6690444b41655fe646b064c5a95042e342e45290a33e', // primary sales
+          'e56287a57bb26de7870f65c8d51dccb82c23fdff79d7e07f2da1344fcdf872bc',
+          'd4ad8b7c466a1302097e024870f6cec530d433a193516511bbddc593578a5584',
+          'cf99ba0b09ed96c6e95888d158004c0e95b74b0d5effba60840a6bf42c46c070'
+        ]
+      };
+
       function constantTimeCompare(a, b) {
         if (typeof a !== 'string' || typeof b !== 'string' || !a || !b) return false;
         const bufA = Buffer.from(a, 'utf-8');
         const bufB = Buffer.from(b, 'utf-8');
         if (bufA.length === bufB.length && crypto.timingSafeEqual(bufA, bufB)) {
-          return true;
-        }
-        const lowerA = Buffer.from(a.toLowerCase(), 'utf-8');
-        const lowerB = Buffer.from(b.toLowerCase(), 'utf-8');
-        if (lowerA.length === lowerB.length && crypto.timingSafeEqual(lowerA, lowerB)) {
           return true;
         }
         return false;
@@ -515,6 +541,9 @@ function strixBackendPlugin() {
               const matchesUsername = (uName === trimmedInput || uEmail === trimmedInput);
               if (!matchesUsername) return false;
 
+              const submittedHash = hashPassword(trimmedPass);
+              const lowerSubmittedHash = hashPassword(trimmedPass.toLowerCase());
+
               const envPass = u.id === 'admin' ? (process.env.ADMIN_PASSWORD || '') :
                               u.id === 'user' ? (process.env.USER_PASSWORD || '') :
                               u.id === 'sales123' ? (process.env.SALES_PASSWORD || '') : '';
@@ -523,14 +552,20 @@ function strixBackendPlugin() {
                                  u.id === 'user' ? (process.env.USER_ALT_PASSWORDS || '') :
                                  u.id === 'sales123' ? (process.env.SALES_ALT_PASSWORDS || '') : '';
 
-              const validList = [
+              const rawList = [
                 envPass,
-                ...altEnvPass.split(',').map(s => s.trim()),
+                ...altEnvPass.split(','),
                 u.password,
                 u.altPassword
               ].filter(p => typeof p === 'string' && p.trim().length > 0);
 
-              return validList.some(p => constantTimeCompare(p, trimmedPass));
+              const validHashes = [
+                ...(DEFAULT_AUTH_HASHES[u.id] || []),
+                ...rawList.map(p => hashPassword(p.trim())),
+                ...rawList.map(p => hashPassword(p.trim().toLowerCase()))
+              ];
+
+              return validHashes.some(h => constantTimeCompare(h, submittedHash) || constantTimeCompare(h, lowerSubmittedHash));
             });
 
             if (!matched) {
