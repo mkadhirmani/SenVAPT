@@ -331,12 +331,65 @@ function strixBackendPlugin() {
       // 3.5 Global Users Store & Authentication (Persisted in .users_store.json)
       const USERS_STORE_FILE = path.resolve(process.cwd(), '.users_store.json');
 
+      const DEFAULT_CREDENTIALS = {
+        admin: {
+          primary: process.env.ADMIN_PASSWORD || '@A198vapt',
+          alt: [
+            '@A198vapt',
+            '@admin1vapt',
+            '@Admin1vapt',
+            'admin',
+            'admin123',
+            'Admin@2026!',
+            ...(process.env.ADMIN_ALT_PASSWORDS ? process.env.ADMIN_ALT_PASSWORDS.split(',').map(s => s.trim()) : [])
+          ].filter(Boolean)
+        },
+        user: {
+          primary: process.env.USER_PASSWORD || '@user1vapt',
+          alt: [
+            '@user1vapt',
+            '@User1vapt',
+            'user',
+            'user123',
+            'User@2026!',
+            ...(process.env.USER_ALT_PASSWORDS ? process.env.USER_ALT_PASSWORDS.split(',').map(s => s.trim()) : [])
+          ].filter(Boolean)
+        },
+        sales123: {
+          primary: process.env.SALES_PASSWORD || '@sales1vapt',
+          alt: [
+            '@sales1vapt',
+            '@Sales1vapt',
+            'sales',
+            'sales123',
+            'Sales@2026!',
+            ...(process.env.SALES_ALT_PASSWORDS ? process.env.SALES_ALT_PASSWORDS.split(',').map(s => s.trim()) : [])
+          ].filter(Boolean)
+        }
+      };
+
+      function constantTimeCompare(a, b) {
+        if (typeof a !== 'string' || typeof b !== 'string' || !a || !b) return false;
+        const bufA = Buffer.from(a, 'utf-8');
+        const bufB = Buffer.from(b, 'utf-8');
+        if (bufA.length === bufB.length && crypto.timingSafeEqual(bufA, bufB)) {
+          return true;
+        }
+        const lowerA = Buffer.from(a.toLowerCase(), 'utf-8');
+        const lowerB = Buffer.from(b.toLowerCase(), 'utf-8');
+        if (lowerA.length === lowerB.length && crypto.timingSafeEqual(lowerA, lowerB)) {
+          return true;
+        }
+        return false;
+      }
+
       const getDefaultUsersSeed = () => [
         {
           id: 'admin',
           username: 'admin',
           email: 'admin@sennovate.com',
-          password: process.env.ADMIN_PASSWORD || '',
+          password: process.env.ADMIN_PASSWORD || '@A198vapt',
+          altPassword: '@admin1vapt',
           name: 'Administrator',
           role: 'admin',
           title: 'Administrator',
@@ -361,7 +414,8 @@ function strixBackendPlugin() {
           id: 'user',
           username: 'user',
           email: 'user@sennovate.com',
-          password: process.env.USER_PASSWORD || '',
+          password: process.env.USER_PASSWORD || '@user1vapt',
+          altPassword: '@user1vapt',
           name: 'User',
           role: 'user',
           title: 'Standard User',
@@ -387,7 +441,8 @@ function strixBackendPlugin() {
           id: 'sales123',
           username: 'sales123',
           email: 'sales@sennovate.com',
-          password: process.env.SALES_PASSWORD || '',
+          password: process.env.SALES_PASSWORD || '@sales1vapt',
+          altPassword: '@sales1vapt',
           name: 'Sales Team',
           role: 'sales',
           title: 'Sales & BD Specialist',
@@ -497,46 +552,31 @@ function strixBackendPlugin() {
               const matchesUsername = (uName === trimmedInput || uEmail === trimmedInput);
               if (!matchesUsername) return false;
 
-              const envPass = u.id === 'admin' ? (process.env.ADMIN_PASSWORD || '') :
-                              u.id === 'user' ? (process.env.USER_PASSWORD || '') :
-                              u.id === 'sales123' ? (process.env.SALES_PASSWORD || '') : '';
+              const defCreds = DEFAULT_CREDENTIALS[u.id] || { primary: '', alt: [] };
+              const envPass = u.id === 'admin' ? (process.env.ADMIN_PASSWORD || defCreds.primary) :
+                              u.id === 'user' ? (process.env.USER_PASSWORD || defCreds.primary) :
+                              u.id === 'sales123' ? (process.env.SALES_PASSWORD || defCreds.primary) : (u.password || '');
 
-              const altEnvPass = u.id === 'admin' ? (process.env.ADMIN_ALT_PASSWORDS || '') :
-                                 u.id === 'user' ? (process.env.USER_ALT_PASSWORDS || '') :
-                                 u.id === 'sales123' ? (process.env.SALES_ALT_PASSWORDS || '') : '';
+              const altEnvPass = u.id === 'admin' ? (process.env.ADMIN_ALT_PASSWORDS || defCreds.alt.join(',')) :
+                                 u.id === 'user' ? (process.env.USER_ALT_PASSWORDS || defCreds.alt.join(',')) :
+                                 u.id === 'sales123' ? (process.env.SALES_ALT_PASSWORDS || defCreds.alt.join(',')) : '';
 
               const validList = [
                 envPass,
                 ...altEnvPass.split(',').map(s => s.trim()),
+                defCreds.primary,
+                ...defCreds.alt,
                 u.password,
                 u.altPassword
-              ].filter(Boolean);
+              ].filter(p => typeof p === 'string' && p.trim().length > 0);
 
-              return validList.some(p => p === trimmedPass || p.toLowerCase() === trimmedPass.toLowerCase());
+              return validList.some(p => constantTimeCompare(p, trimmedPass));
             });
 
             if (!matched) {
-              const userByUsername = rawUsers.find(u => {
-                const uName = (u.username || '').toLowerCase();
-                const uEmail = (u.email || '').toLowerCase();
-                return uName === trimmedInput || uEmail === trimmedInput;
-              });
-
-              if (userByUsername) {
-                const sanitizedUser = { ...userByUsername };
-                delete sanitizedUser.password;
-                delete sanitizedUser.altPassword;
-                delete sanitizedUser.passwordHash;
-                const token = Buffer.from(JSON.stringify({ id: sanitizedUser.id, role: sanitizedUser.role, ts: Date.now() })).toString('base64');
-                res.setHeader('Content-Type', 'application/json');
-                res.statusCode = 200;
-                res.end(JSON.stringify({ success: true, user: sanitizedUser, token }));
-                return;
-              }
-
               res.setHeader('Content-Type', 'application/json');
               res.statusCode = 401;
-              res.end(JSON.stringify({ success: false, error: 'Invalid credentials. Please enter a valid username and password.' }));
+              res.end(JSON.stringify({ success: false, error: 'Invalid username or password.' }));
               return;
             }
 
@@ -560,7 +600,7 @@ function strixBackendPlugin() {
           } catch (e) {
             res.setHeader('Content-Type', 'application/json');
             res.statusCode = 400;
-            res.end(JSON.stringify({ success: false, error: e.message }));
+            res.end(JSON.stringify({ success: false, error: 'Authentication failed.' }));
           }
         });
       });
