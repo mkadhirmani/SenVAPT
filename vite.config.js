@@ -46,7 +46,7 @@ function loadEnvVariables() {
             if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
               val = val.slice(1, -1);
             }
-            if (val !== undefined && val !== '') {
+            if ((process.env[key] === undefined || process.env[key] === '') && val !== undefined && val !== '') {
               process.env[key] = val;
             }
           }
@@ -331,43 +331,6 @@ function strixBackendPlugin() {
       // 3.5 Global Users Store & Authentication (Persisted in .users_store.json)
       const USERS_STORE_FILE = path.resolve(process.cwd(), '.users_store.json');
 
-      const DEFAULT_CREDENTIALS = {
-        admin: {
-          primary: process.env.ADMIN_PASSWORD || '@A198vapt',
-          alt: [
-            '@A198vapt',
-            '@admin1vapt',
-            '@Admin1vapt',
-            'admin',
-            'admin123',
-            'Admin@2026!',
-            ...(process.env.ADMIN_ALT_PASSWORDS ? process.env.ADMIN_ALT_PASSWORDS.split(',').map(s => s.trim()) : [])
-          ].filter(Boolean)
-        },
-        user: {
-          primary: process.env.USER_PASSWORD || '@user1vapt',
-          alt: [
-            '@user1vapt',
-            '@User1vapt',
-            'user',
-            'user123',
-            'User@2026!',
-            ...(process.env.USER_ALT_PASSWORDS ? process.env.USER_ALT_PASSWORDS.split(',').map(s => s.trim()) : [])
-          ].filter(Boolean)
-        },
-        sales123: {
-          primary: process.env.SALES_PASSWORD || '@sales1vapt',
-          alt: [
-            '@sales1vapt',
-            '@Sales1vapt',
-            'sales',
-            'sales123',
-            'Sales@2026!',
-            ...(process.env.SALES_ALT_PASSWORDS ? process.env.SALES_ALT_PASSWORDS.split(',').map(s => s.trim()) : [])
-          ].filter(Boolean)
-        }
-      };
-
       function constantTimeCompare(a, b) {
         if (typeof a !== 'string' || typeof b !== 'string' || !a || !b) return false;
         const bufA = Buffer.from(a, 'utf-8');
@@ -388,8 +351,8 @@ function strixBackendPlugin() {
           id: 'admin',
           username: 'admin',
           email: 'admin@sennovate.com',
-          password: process.env.ADMIN_PASSWORD || '@A198vapt',
-          altPassword: '@admin1vapt',
+          password: process.env.ADMIN_PASSWORD || '',
+          altPassword: '',
           name: 'Administrator',
           role: 'admin',
           title: 'Administrator',
@@ -414,8 +377,8 @@ function strixBackendPlugin() {
           id: 'user',
           username: 'user',
           email: 'user@sennovate.com',
-          password: process.env.USER_PASSWORD || '@user1vapt',
-          altPassword: '@user1vapt',
+          password: process.env.USER_PASSWORD || '',
+          altPassword: '',
           name: 'User',
           role: 'user',
           title: 'Standard User',
@@ -441,8 +404,8 @@ function strixBackendPlugin() {
           id: 'sales123',
           username: 'sales123',
           email: 'sales@sennovate.com',
-          password: process.env.SALES_PASSWORD || '@sales1vapt',
-          altPassword: '@sales1vapt',
+          password: process.env.SALES_PASSWORD || '',
+          altPassword: '',
           name: 'Sales Team',
           role: 'sales',
           title: 'Sales & BD Specialist',
@@ -552,20 +515,17 @@ function strixBackendPlugin() {
               const matchesUsername = (uName === trimmedInput || uEmail === trimmedInput);
               if (!matchesUsername) return false;
 
-              const defCreds = DEFAULT_CREDENTIALS[u.id] || { primary: '', alt: [] };
-              const envPass = u.id === 'admin' ? (process.env.ADMIN_PASSWORD || defCreds.primary) :
-                              u.id === 'user' ? (process.env.USER_PASSWORD || defCreds.primary) :
-                              u.id === 'sales123' ? (process.env.SALES_PASSWORD || defCreds.primary) : (u.password || '');
+              const envPass = u.id === 'admin' ? (process.env.ADMIN_PASSWORD || '') :
+                              u.id === 'user' ? (process.env.USER_PASSWORD || '') :
+                              u.id === 'sales123' ? (process.env.SALES_PASSWORD || '') : '';
 
-              const altEnvPass = u.id === 'admin' ? (process.env.ADMIN_ALT_PASSWORDS || defCreds.alt.join(',')) :
-                                 u.id === 'user' ? (process.env.USER_ALT_PASSWORDS || defCreds.alt.join(',')) :
-                                 u.id === 'sales123' ? (process.env.SALES_ALT_PASSWORDS || defCreds.alt.join(',')) : '';
+              const altEnvPass = u.id === 'admin' ? (process.env.ADMIN_ALT_PASSWORDS || '') :
+                                 u.id === 'user' ? (process.env.USER_ALT_PASSWORDS || '') :
+                                 u.id === 'sales123' ? (process.env.SALES_ALT_PASSWORDS || '') : '';
 
               const validList = [
                 envPass,
                 ...altEnvPass.split(',').map(s => s.trim()),
-                defCreds.primary,
-                ...defCreds.alt,
                 u.password,
                 u.altPassword
               ].filter(p => typeof p === 'string' && p.trim().length > 0);
