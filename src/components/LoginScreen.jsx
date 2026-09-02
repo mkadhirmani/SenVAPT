@@ -194,40 +194,8 @@ export default function LoginScreen({ onLoginSuccess, theme = 'dark' }) {
             </div>
           </div>
 
-          {/* Quick Demo Credentials Assistant */}
-          <div className={`p-3 rounded-2xl border text-xs font-mono transition-colors ${
-            theme === 'dark' ? 'bg-[#060B16]/80 border-slate-800 text-slate-400' : 'bg-slate-50 border-slate-200 text-slate-600'
-          }`}>
-            <div className="flex items-center justify-between mb-1.5">
-              <span className="font-bold text-[11px] uppercase tracking-wider text-cyan-400 flex items-center gap-1.5">
-                <Key className="w-3 h-3" />
-                <span>{selectedRole === 'admin' ? 'Administrator Account' : 'Standard User Account'}</span>
-              </span>
-              <button
-                type="button"
-                onClick={() => {
-                  if (selectedRole === 'admin') {
-                    setUsername('admin');
-                    setPassword('@A198vapt');
-                  } else {
-                    setUsername('user');
-                    setPassword('@user1vapt');
-                  }
-                  setError('');
-                }}
-                className="text-[10px] text-cyan-400 hover:text-cyan-300 underline cursor-pointer"
-              >
-                Auto-fill
-              </button>
-            </div>
-            <div className="flex items-center justify-between text-[11px]">
-              <span>User: <strong className={theme === 'dark' ? 'text-slate-200' : 'text-slate-800'}>{selectedRole === 'admin' ? 'admin' : 'user'}</strong></span>
-              <span>Pass: <strong className={theme === 'dark' ? 'text-slate-200' : 'text-slate-800'}>{selectedRole === 'admin' ? '@A198vapt' : '@user1vapt'}</strong></span>
-            </div>
-          </div>
-
           {/* Submit Button */}
-          <div className="pt-1">
+          <div className="pt-3">
             <button
               type="submit"
               disabled={isLoading}
