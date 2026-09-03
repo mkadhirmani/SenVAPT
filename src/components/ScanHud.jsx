@@ -1148,7 +1148,7 @@ export default function ScanHud({
         companyName: companyName,
         logs: [
           `[INIT] Triggering Autonomous Penetration Testing Scan via n8n Gateway...`,
-          `[TARGET DOMAIN] ${cleanDomain} (Full URL: ${targetUrl})`,
+          `[TARGET DOMAIN] ${cleanDomain}`,
           `[GATEWAY ENDPOINT] ${serverConfig.n8nWebhookUrl}`,
           `[AUTH] ${effCred ? `Basic Auth (-u '${effCred.slice(0, 4)}••••')` : 'No credentials specified'}`,
           `[STATUS] Sending HTTPS POST payload: {"domain": "${cleanDomain}"}...`

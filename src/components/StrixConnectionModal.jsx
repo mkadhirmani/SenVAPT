@@ -60,7 +60,9 @@ export default function StrixConnectionModal({ isOpen, onClose, onConnected, the
 
     if (activeTab === 'n8n') {
       try {
-        const testDom = fetchTestDomain.trim() || config.domain || 'test-target.com';
+        let testDom = (fetchTestDomain.trim() || config.domain || 'sennovate.com').trim();
+        testDom = testDom.replace(/^https?:\/\//i, '').split('/')[0].split('?')[0].split(':')[0];
+        if (testDom.startsWith('www.')) testDom = testDom.slice(4);
         const effCred = config.n8nCredential || (config.n8nUsername && config.n8nPassword ? `${config.n8nUsername}:${config.n8nPassword}` : (config.n8nUsername || config.n8nPassword || ''));
         const result = await triggerN8nScan({
           webhookUrl: config.n8nWebhookUrl,

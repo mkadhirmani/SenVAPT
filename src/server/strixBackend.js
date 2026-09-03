@@ -907,12 +907,12 @@ export async function triggerN8nScanProxy(payload) {
     throw new Error('No n8n Webhook URL configured. Please enter the Webhook URL in Settings.');
   }
 
-  let cleanDomain = (domain || '').trim();
+  let cleanDomain = (domain || payload.domainName || payload.target || payload.targetUrl || payload.url || '').trim();
   cleanDomain = cleanDomain.replace(/^https?:\/\//i, '').split('/')[0].split('?')[0].split(':')[0];
   if (cleanDomain.startsWith('www.')) cleanDomain = cleanDomain.slice(4);
 
   if (!cleanDomain) {
-    throw new Error('Target domain is required to trigger scan. Please enter a valid target URL or domain.');
+    throw new Error('Target domain is required to trigger scan. Please enter a valid target domain (e.g. sennovate.com).');
   }
 
   const headers = {
@@ -945,12 +945,11 @@ export async function triggerN8nScanProxy(payload) {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 20000);
   try {
+    // Send strictly the pure domain name as input (never URLs, protocols, or paths)
     const triggerBody = {
       domain: cleanDomain,
-      target: cleanDomain,
-      targetUrl: payload.targetUrl || `https://${cleanDomain}`,
       domainName: cleanDomain,
-      url: payload.targetUrl || `https://${cleanDomain}`
+      target: cleanDomain
     };
 
     const res = await fetch(effectiveUrl, {
