@@ -741,7 +741,82 @@ export function parseLocalStrixFolder(folderPath) {
   }
 
   const runData = raw.run_json || {};
-  const actualTargetUrl = runData.targets_info?.[0]?.details?.target_url || runData.targets_info?.[0]?.original || 'https://target.com';
+
+  // Comprehensive Target URL & Domain Resolver from all available Strix artifacts
+  let actualTargetUrl = runData.targets_info?.[0]?.details?.target_url ||
+                        runData.targets_info?.[0]?.original ||
+                        (typeof runData.targets?.[0] === 'string' ? runData.targets[0] : (runData.targets?.[0]?.url || runData.targets?.[0]?.target)) ||
+                        runData.target_url ||
+                        runData.targetUrl ||
+                        runData.target;
+
+  // Check report markdown
+  if (!actualTargetUrl && raw.report_md) {
+    const rptM = raw.report_md.match(/\*\*Target:\*\*\s*`?([^\n\r`]+)`?/i) ||
+                 raw.report_md.match(/\*\*Target Domain:\*\*\s*`?([^\n\r`]+)`?/i) ||
+                 raw.report_md.match(/Target:\s*`?([^\n\r`]+)`?/i) ||
+                 raw.report_md.match(/Target Domain:\s*`?([^\n\r`]+)`?/i) ||
+                 raw.report_md.match(/https?:\/\/([a-zA-Z0-9\.\-]+)/i);
+    if (rptM && rptM[1]) actualTargetUrl = rptM[1].trim();
+  }
+
+  // Check vulnerability markdown files
+  if (!actualTargetUrl && raw.vulnerabilities) {
+    for (const content of Object.values(raw.vulnerabilities)) {
+      if (typeof content === 'string') {
+        const m = content.match(/\*\*Target:\*\*\s*(https?:\/\/[^\s\)\`]+)/i) ||
+                  content.match(/\*\*URL:\*\*\s*(https?:\/\/[^\s\)\`]+)/i) ||
+                  content.match(/Target:?\s*(https?:\/\/[^\s\)\`]+)/i);
+        if (m && m[1] && !m[1].includes('target.com')) {
+          actualTargetUrl = m[1].trim();
+          break;
+        }
+      }
+    }
+  }
+
+  // Check vulnerabilities JSON
+  if (!actualTargetUrl && Array.isArray(raw.vulnerabilities_json)) {
+    const vj = raw.vulnerabilities_json.find(v => (v.target || v.url) && !((v.target || v.url).includes('target.com')));
+    if (vj) actualTargetUrl = vj.target || vj.url;
+  }
+
+  // Check SARIF runs
+  if (!actualTargetUrl && raw.sarif?.runs?.[0]?.results) {
+    for (const res of raw.sarif.runs[0].results) {
+      const locUri = res.locations?.[0]?.physicalLocation?.artifactLocation?.uri;
+      if (locUri && /^https?:\/\//i.test(locUri) && !locUri.includes('target.com')) {
+        actualTargetUrl = locUri;
+        break;
+      }
+    }
+  }
+
+  // Check strix log
+  if (!actualTargetUrl && (raw.strix_log || raw.log_tail)) {
+    const logStr = raw.strix_log || raw.log_tail;
+    const logM = logStr.match(/strix\s+-t\s+["']?([^"'\s]+)["']?/i) ||
+                 logStr.match(/target:\s*["']?([^"'\s\n]+)["']?/i);
+    if (logM && logM[1] && !logM[1].includes('target.com')) actualTargetUrl = logM[1].trim();
+  }
+
+  // Check directory name
+  if (!actualTargetUrl || actualTargetUrl === 'https://target.com') {
+    const baseDir = path.basename(resolvedPath).replace(/^www-/, '').replace(/[-_](scan|runs?|[0-9a-f]{4,})$/i, '').replace(/-/g, '.');
+    if (baseDir.includes('.')) actualTargetUrl = `https://${baseDir}`;
+    else if (!actualTargetUrl) actualTargetUrl = 'https://target.com';
+  }
+
+  // Derive corporate name from target URL
+  let detectedCompanyName = 'Target Organization';
+  try {
+    const host = actualTargetUrl.replace(/^https?:\/\//i, '').replace(/^www\./i, '').split('/')[0].split(':')[0].trim();
+    const brand = host.split('.')[0];
+    if (brand && brand.toLowerCase() !== 'target') {
+      detectedCompanyName = brand.charAt(0).toUpperCase() + brand.slice(1) + ' Inc';
+    }
+  } catch (_) {}
+
   const parsedVulns = extractFindingsFromAllSources(raw, actualTargetUrl);
 
   // Extract tested domains and subdomains from targets.txt, SARIF, targets_info, and markdown
@@ -850,6 +925,7 @@ export function parseLocalStrixFolder(folderPath) {
     outputFolderPath: resolvedPath,
     folderName: path.basename(resolvedPath),
     targetUrl: actualTargetUrl,
+    companyName: detectedCompanyName,
     timestamp: runData.start_time ? new Date(runData.start_time).toISOString().replace('T', ' ').slice(0, 16) : new Date().toISOString().replace('T', ' ').slice(0, 16),
     tokens: totalTokens,
     requests: requests,
@@ -874,6 +950,7 @@ export function parseLocalStrixFolder(folderPath) {
     metadata: {
       runId: runData.run_id || path.basename(resolvedPath),
       targetUrl: actualTargetUrl,
+      companyName: detectedCompanyName,
       subdomains: Array.from(subdomainsSet),
       testedSubdomains: Array.from(subdomainsSet),
       targets: Array.from(subdomainsSet),

@@ -54,6 +54,13 @@ export default function DashboardOverview({
   const lowVulns = vulnerabilities.filter(v => v.severity === 'LOW');
   const topVuln = vulnerabilities[0] || null;
 
+  const severityBreakdown = [
+    critVulns.length > 0 ? `${critVulns.length} Critical` : null,
+    highVulns.length > 0 ? `${highVulns.length} High` : null,
+    medVulns.length > 0 ? `${medVulns.length} Medium` : null,
+    lowVulns.length > 0 ? `${lowVulns.length} Low` : null
+  ].filter(Boolean).join(', ') || `${vulnerabilities.length} Findings`;
+
   const targetUrl = currentTarget.targetUrl || metadata.targetUrl || "";
   const riskScore = currentTarget.riskScore || metadata.overallRiskScore || topVuln?.cvss || (critVulns.length > 0 ? 9.2 : highVulns.length > 0 ? 8.2 : (medVulns.length > 0 ? 6.5 : 0));
   const riskLevel = currentTarget.riskLevel || metadata.overallRiskLevel || (riskScore >= 7.0 ? 'HIGH' : (riskScore >= 4.0 ? 'ELEVATED' : 'LOW'));
@@ -297,7 +304,7 @@ export default function DashboardOverview({
             {companyName}: <span className="text-rose-600 dark:text-rose-400">{riskLevel} RISK</span>
           </h1>
           <p className={`text-xs sm:text-sm leading-relaxed max-w-2xl ${theme === 'dark' ? 'text-slate-400' : 'text-slate-700 font-medium'}`}>
-            Automated testing of <strong className={theme === 'dark' ? 'text-slate-200' : 'text-slate-950'}>{targetUrl}</strong> confirmed <strong>{vulnerabilities.length} security findings</strong> ({highVulns.length} High, {medVulns.length} Medium). Most platforms are protected, but urgent remediation is recommended.
+            Automated testing of <strong className={theme === 'dark' ? 'text-slate-200' : 'text-slate-950'}>{targetUrl}</strong> confirmed <strong>{vulnerabilities.length} security findings</strong> ({severityBreakdown}). Most platforms are protected, but urgent remediation is recommended.
           </p>
         </div>
 
