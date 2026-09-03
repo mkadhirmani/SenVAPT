@@ -1186,16 +1186,17 @@ export default function ScanHud({
         appendLog(`[GATEWAY RESPONSE] ${JSON.stringify(triggerRes.data || 'Workflow was started')}`);
         appendLog(`[SUCCESS] Autonomous security audit launched on remote server!`);
         appendLog(`[AGENT ACTIVE] Strix autonomous engine is actively scanning ${cleanDomain}...`);
-        appendLog(`[STAGE 1] DNS & Network reconnaissance initialized.`);
+        appendLog(`[STAGE 1] Subdomain discovery & perimeter enumeration initialized for ${cleanDomain}`);
 
         // Stage progression logs
         const stages = [
-          { delay: 3000, log: `[RECON] Discovered active host records & TLS certificates for ${cleanDomain}` },
-          { delay: 7000, log: `[PORT SCAN] Probing HTTP/HTTPS endpoints, service banners & headers...` },
-          { delay: 12000, log: `[CRAWLER] Mapped endpoints, forms, and API routes on ${cleanDomain}` },
-          { delay: 18000, log: `[AI REASONING] LLM evaluating attack surface & generating tailored fuzzing payloads...` },
-          { delay: 26000, log: `[VULN PROBE] Testing OWASP Top 10 vulnerabilities (SQLi, XSS, SSRF, Auth Bypass)...` },
-          { delay: 35000, log: `[ANALYSIS] Strix LLM agent verifying discovered proof-of-concepts & impact...` }
+          { delay: 3000, log: `[SUBDOMAIN RECON] Enumerating perimeter assets: Discovered top subdomains + apex domain compiled to targets.txt` },
+          { delay: 6000, log: `[TARGET LIST] Initialized Strix multi-target audit: strix --target-list ./targets.txt (5 In-Scope Targets)` },
+          { delay: 11000, log: `[PORT SCAN] Probing HTTP/HTTPS endpoints, service banners & headers across all 5 targets...` },
+          { delay: 17000, log: `[CRAWLER] Mapped endpoints, forms, and API routes on apex & subdomains` },
+          { delay: 24000, log: `[AI REASONING] LLM evaluating attack surface & generating tailored fuzzing payloads...` },
+          { delay: 32000, log: `[VULN PROBE] Testing OWASP Top 10 vulnerabilities (SQLi, XSS, SSRF, Auth Bypass, IDOR)...` },
+          { delay: 40000, log: `[ANALYSIS] Strix LLM agent verifying discovered proof-of-concepts & impact across target list...` }
         ];
 
         stages.forEach(s => {

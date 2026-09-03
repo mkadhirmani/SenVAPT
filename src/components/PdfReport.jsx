@@ -185,6 +185,18 @@ export default function PdfReport({
   const overallRiskScore = metadata.overallRiskScore || topVuln?.cvss || 6.8;
   const overallRiskLevel = metadata.overallRiskLevel || (overallRiskScore >= 8.5 ? 'CRITICAL' : (overallRiskScore >= 7.0 ? 'HIGH' : 'ELEVATED'));
 
+  // Multi-Target / Subdomains Perimeter List from strix --target-list
+  const evaluatedTargets = Array.from(new Set([
+    ...(metadata.testedSubdomains || metadata.subdomains || []).map(s => typeof s === 'string' ? s : (s?.name || '')),
+    ...sortedVulns.map(v => {
+      try {
+        const u = v.target ? (v.target.startsWith('http') ? v.target : `https://${v.target}`) : '';
+        return u ? new URL(u).hostname : null;
+      } catch (_) { return null; }
+    }).filter(Boolean),
+    targetUrl ? (targetUrl.startsWith('http') ? new URL(targetUrl).hostname : targetUrl) : null
+  ].filter(Boolean)));
+
   // Detailed Report: Dynamic 2-Page / 1-Page Advisory Page Distribution:
   // Spans 2 unhurried A4 pages when finding has evidence or poc scripts
   const findingPages = [];
@@ -463,14 +475,26 @@ Format with clean markdown bullet points and bold headers. Keep the text punchy,
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-[12px]">
                     <div className="space-y-1 text-slate-700 leading-relaxed">
-                      <div><strong>Evaluated Target:</strong> <code className="break-all text-cyan-800">{targetUrl}</code></div>
-                      <div><strong>Perimeter Coverage:</strong> External Web Perimeter, APIs, Form Endpoints</div>
+                      <div><strong>Primary Target:</strong> <code className="break-all text-cyan-800">{targetUrl}</code></div>
+                      <div><strong>Perimeter Coverage:</strong> Multi-Target Scope (Apex + Top Subdomains)</div>
                     </div>
                     <div className="space-y-1 text-slate-700 leading-relaxed">
                       <div><strong>Testing Platform:</strong> Sennovate Autonomous VAPT Platform</div>
                       <div><strong>Testing Safety:</strong> Non-Destructive Ingestion (Zero Downtime)</div>
                     </div>
                   </div>
+                  {evaluatedTargets.length > 1 && (
+                    <div className="pt-2 border-t border-slate-100 text-[11px] text-slate-700">
+                      <strong>Evaluated Scope List ({evaluatedTargets.length} In-Scope Targets):</strong>
+                      <div className="flex flex-wrap gap-1.5 mt-1">
+                        {evaluatedTargets.map((t, idx) => (
+                          <span key={idx} className="bg-cyan-50 border border-cyan-200 text-cyan-900 px-2 py-0.5 rounded font-mono text-[10.5px]">
+                            {t}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Executive Findings & Risk Synopsis */}
@@ -798,15 +822,27 @@ Format with clean markdown bullet points and bold headers. Keep the text punchy,
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-[12px]">
                 <div className="space-y-1 text-slate-700 leading-relaxed">
                   <div><strong>In-Scope Target:</strong> <code className="break-all">{targetUrl}</code></div>
-                  <div><strong>Protocol Coverage:</strong> HTTPS/TLS, REST Endpoints, Form Handlers</div>
+                  <div><strong>Scope Surface:</strong> Apex Domain + Subdomain Target List</div>
                   <div><strong>Testing Methodology:</strong> Non-Destructive Live Exploit Ingestion</div>
                 </div>
                 <div className="space-y-1 text-slate-700 leading-relaxed">
                   <div><strong>Assessment Engine:</strong> Sennovate Autonomous VAPT Platform</div>
-                  <div><strong>Execution Mode:</strong> Dynamic Web Surface &amp; API Assessment</div>
+                  <div><strong>Execution Mode:</strong> Multi-Target Web &amp; API Assessment</div>
                   <div><strong>Safety Constraints:</strong> Zero Denial-of-Service / Zero Data Tampering</div>
                 </div>
               </div>
+              {evaluatedTargets.length > 1 && (
+                <div className="pt-2 border-t border-slate-100 text-[11px] text-slate-700">
+                  <strong>Evaluated Target Perimeter ({evaluatedTargets.length} In-Scope Targets):</strong>
+                  <div className="flex flex-wrap gap-1.5 mt-1">
+                    {evaluatedTargets.map((t, idx) => (
+                      <span key={idx} className="bg-cyan-50 border border-cyan-200 text-cyan-900 px-2 py-0.5 rounded font-mono text-[10.5px]">
+                        {t}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Assessment Lifecycle Execution Phases */}

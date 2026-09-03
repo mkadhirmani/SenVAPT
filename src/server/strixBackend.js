@@ -744,8 +744,50 @@ export function parseLocalStrixFolder(folderPath) {
   const actualTargetUrl = runData.targets_info?.[0]?.details?.target_url || runData.targets_info?.[0]?.original || 'https://target.com';
   const parsedVulns = extractFindingsFromAllSources(raw, actualTargetUrl);
 
-  // Extract tested domains and subdomains from SARIF & targets_info
+  // Extract tested domains and subdomains from targets.txt, SARIF, targets_info, and markdown
   const subdomainsSet = new Set();
+
+  // 0. targets.txt - if multi-target scan was executed via strix --target-list ./targets.txt
+  const targetsTxtCandidates = [
+    path.join(resolvedPath, 'targets.txt'),
+    path.join(resolvedPath, '..', 'targets.txt'),
+    path.join(resolvedPath, '..', '..', 'targets.txt')
+  ];
+  for (const tPath of targetsTxtCandidates) {
+    if (fs.existsSync(tPath)) {
+      try {
+        const tLines = fs.readFileSync(tPath, 'utf8').split(/\r?\n/);
+        for (const line of tLines) {
+          const cleanT = line.trim().replace(/^https?:\/\//i, '').split('/')[0].split(':')[0];
+          if (cleanT && !cleanT.startsWith('#')) subdomainsSet.add(cleanT);
+        }
+      } catch (e) {}
+    }
+  }
+
+  // Check runData.targets array
+  if (Array.isArray(runData.targets)) {
+    for (const t of runData.targets) {
+      const str = typeof t === 'string' ? t : (t.url || t.target || t.original || t.hostname || '');
+      const host = str.replace(/^https?:\/\//i, '').split('/')[0].split(':')[0];
+      if (host) subdomainsSet.add(host);
+    }
+  }
+
+  // Check runData.targets_info array
+  if (Array.isArray(runData.targets_info)) {
+    for (const t of runData.targets_info) {
+      const orig = t.original || t.details?.target_url || t.target || t.url || t.hostname || '';
+      if (orig) {
+        try {
+          const host = orig.replace(/^https?:\/\//i, '').split('/')[0].split(':')[0];
+          if (host) subdomainsSet.add(host);
+        } catch (e) {}
+      }
+    }
+  }
+
+  // Check SARIF runs for tested URLs/URIs
   if (raw.sarif?.runs?.[0]?.results) {
     for (const res of raw.sarif.runs[0].results) {
       if (res.locations) {
@@ -753,7 +795,7 @@ export function parseLocalStrixFolder(folderPath) {
           const uri = loc.physicalLocation?.artifactLocation?.uri;
           if (uri) {
             try {
-              const host = uri.replace(/^https?:\/\//, '').split('/')[0].split(':')[0];
+              const host = uri.replace(/^https?:\/\//i, '').split('/')[0].split(':')[0];
               if (host) subdomainsSet.add(host);
             } catch (e) {}
           }
@@ -761,14 +803,14 @@ export function parseLocalStrixFolder(folderPath) {
       }
     }
   }
-  if (Array.isArray(runData.targets_info)) {
-    for (const t of runData.targets_info) {
-      const orig = t.original || t.details?.target_url || '';
-      if (orig) {
-        try {
-          const host = orig.replace(/^https?:\/\//, '').split('/')[0].split(':')[0];
-          if (host) subdomainsSet.add(host);
-        } catch (e) {}
+
+  // Check individual vulnerability markdown files for target domains
+  for (const [filename, content] of Object.entries(raw.vulnerabilities || {})) {
+    if (content && typeof content === 'string') {
+      const targetMatch = content.match(/\*\*Target:\*\*\s*(.+)/i) || content.match(/\*\*URL:\*\*\s*(.+)/i) || content.match(/Target:?\s*(https?:\/\/[^\s]+)/i);
+      if (targetMatch) {
+        const host = targetMatch[1].replace(/^https?:\/\//i, '').split('/')[0].split(':')[0].replace(/[*]/g, '').trim();
+        if (host) subdomainsSet.add(host);
       }
     }
   }
@@ -822,6 +864,7 @@ export function parseLocalStrixFolder(folderPath) {
     lowCount: lowCount,
     vulnerabilities: parsedVulns,
     subdomains: Array.from(subdomainsSet),
+    testedSubdomains: Array.from(subdomainsSet),
     reportMarkdown: raw.report_md || '',
     sarifData: raw.sarif || null,
     csvData: raw.csv || '',
@@ -831,6 +874,9 @@ export function parseLocalStrixFolder(folderPath) {
     metadata: {
       runId: runData.run_id || path.basename(resolvedPath),
       targetUrl: actualTargetUrl,
+      subdomains: Array.from(subdomainsSet),
+      testedSubdomains: Array.from(subdomainsSet),
+      targets: Array.from(subdomainsSet),
       startTime: runData.start_time,
       endTime: runData.end_time,
       status: runData.status || 'completed',
@@ -1421,6 +1467,7 @@ export async function fetchN8nScanResultsProxy(payload) {
         writeScanFile('strix.log', raw.strix_log || raw['strix.log'] || parsedJson.strixLog);
         writeScanFile('vulnerabilities.csv', raw.csv || raw['vulnerabilities.csv'] || parsedJson.csv);
         writeScanFile('vulnerabilities.json', raw.vulnerabilities_json || raw['vulnerabilities.json'] || parsedJson.vulnerabilitiesJson);
+        writeScanFile('targets.txt', raw.targets_txt || raw['targets.txt'] || parsedJson.targetsTxt || (Array.isArray(raw.targets) ? raw.targets.join('\n') : null));
 
         // Write vulnerabilities/*.md directory
         const vulnsObj = raw.vulnerabilities || parsedJson.vulnerabilities;
