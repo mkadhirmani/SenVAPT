@@ -248,7 +248,7 @@ export default function StrixConnectionModal({ isOpen, onClose, onConnected, the
                   <span>Remote Demo Trigger (Works from Any Network / Wi-Fi):</span>
                 </div>
                 <p className="text-[11px] text-slate-300 leading-relaxed font-sans">
-                  The dashboard extracts the <strong>Target Domain</strong> from your HUD input (e.g. <code className="text-cyan-400">https://example.com/</code> &rarr; <code className="text-cyan-400">example.com</code>) and sends an HTTPS POST request to your corporate n8n webhook with the configured credentials.
+                  The dashboard takes the <strong>Target Domain</strong> directly from your AI Target Scanner input (e.g. <code className="text-cyan-400">example.com</code>) and transmits it to your corporate n8n trigger webhook with the configured credentials.
                 </p>
                 <div className="p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-300 text-[11px] font-sans">
                   <strong>Important:</strong> The <code>"domain"</code> in the webhook payload is the <strong>target website being audited/scanned</strong>, <em>not</em> your localhost URL. Running the dashboard on localhost works seamlessly because the HTTPS webhook is public.

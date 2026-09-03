@@ -396,13 +396,19 @@ export default function ScanHud({
     return { outputTokens: latestOutputTokens, totalTokens: latestTotalTokens, requests: latestRequests, cost: latestCost, outputFolder: latestOutputFolder };
   };
 
-  // Derive company name and domain automatically when user types/edits target URL
+  // Derive company name and domain automatically when user types/edits target domain
   const handleTargetUrlChange = (e) => {
-    const url = e.target.value;
+    let input = e.target.value;
+
+    // If user pasted a full URL with https:// or http://, automatically clean it to pure domain
+    if (/^https?:\/\//i.test(input.trim())) {
+      input = input.trim().replace(/^https?:\/\//i, '').split('/')[0].split('?')[0].split(':')[0];
+      if (input.startsWith('www.')) input = input.slice(4);
+    }
 
     let derivedCompany = '';
     try {
-      let hostname = url.replace(/^https?:\/\//i, '').split('/')[0].split('?')[0].split(':')[0].trim();
+      let hostname = input.replace(/^https?:\/\//i, '').split('/')[0].split('?')[0].split(':')[0].trim();
       if (hostname.startsWith('www.')) hostname = hostname.slice(4);
       if (hostname) {
         const parts = hostname.split('.');
@@ -414,9 +420,18 @@ export default function ScanHud({
     } catch (err) {}
 
     updateScannerState(prev => ({
-      targetUrl: url,
+      targetUrl: input,
       companyName: derivedCompany || prev?.companyName || 'Target Organization'
     }));
+  };
+
+  const handleDomainBlur = (e) => {
+    let clean = (e.target.value || '').trim();
+    clean = clean.replace(/^https?:\/\//i, '').split('/')[0].split('?')[0].split(':')[0];
+    if (clean.startsWith('www.')) clean = clean.slice(4);
+    if (clean && clean !== e.target.value) {
+      updateScannerState({ targetUrl: clean });
+    }
   };
 
   const handleSendTerminalInput = async (e) => {
@@ -1880,26 +1895,30 @@ export default function ScanHud({
 
         {/* Inputs */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* Target URL */}
+          {/* Target Domain Input */}
           <div className="space-y-1.5">
             <label className={`text-xs font-mono font-bold flex items-center gap-1.5 ${
               theme === 'dark' ? 'text-slate-300' : 'text-slate-800'
             }`}>
               <Globe className="w-3.5 h-3.5 text-cyan-500" />
-              <span>Target Web Application URL:</span>
+              <span>Target Domain:</span>
             </label>
             <input
               type="text"
               value={targetUrl}
               onChange={handleTargetUrlChange}
+              onBlur={handleDomainBlur}
               disabled={isScanning}
-              placeholder="Enter target URL (e.g. https://your-domain.com)"
+              placeholder="Enter target domain (e.g. example.com)"
               className={`w-full px-4 py-2.5 rounded-xl font-mono text-xs focus:outline-none transition-all ${
                 theme === 'dark'
                   ? 'bg-[#080E1C] border border-slate-700 text-white placeholder-slate-500 focus:border-cyan-400'
                   : 'bg-slate-50 border border-slate-300 text-slate-900 placeholder-slate-400 focus:border-cyan-500 font-medium'
               }`}
             />
+            <p className={`text-[10.5px] font-mono ${theme === 'dark' ? 'text-slate-400' : 'text-slate-500'}`}>
+              Enter domain name only (e.g. <span className="text-cyan-400 font-semibold">example.com</span>). Top subdomains will be automatically discovered.
+            </p>
           </div>
 
           {/* Company Name */}
@@ -2084,7 +2103,7 @@ export default function ScanHud({
                   {logs.length === 0 ? (
                     <div className="h-full flex flex-col items-center justify-center text-slate-400 space-y-2">
                       <Radar className="w-8 h-8 opacity-50 animate-spin text-cyan-400" />
-                      <span className="font-sans">Ready to scan. Enter target URL above and click Launch Autonomous Security Scan.</span>
+                      <span className="font-sans">Ready to scan. Enter target domain (e.g. example.com) above and click Launch Autonomous Security Scan.</span>
                     </div>
                   ) : (
                     logs.map((line, idx) => (
