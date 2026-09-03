@@ -260,14 +260,15 @@ export async function fetchStrixScanResults(targetUrl, runDir) {
  */
 export async function triggerN8nScan(params) {
   const config = getStrixServerConfig();
-  let rawDomain = (params?.domain || params?.domainName || params?.target || params?.targetUrl || 'sennovate.com').trim();
-  rawDomain = rawDomain.replace(/^https?:\/\//i, '').split('/')[0].split('?')[0].split(':')[0];
+  let rawDomain = (params?.domain || params?.domainName || params?.target || params?.targetUrl || 'example.com').trim();
+  rawDomain = rawDomain.replace(/^https?:\/\//i, '').split('/')[0].split('?')[0].split('#')[0].split(':')[0];
   if (rawDomain.startsWith('www.')) rawDomain = rawDomain.slice(4);
 
   const payload = {
     webhookUrl: params?.webhookUrl || config.n8nWebhookUrl,
     domain: rawDomain,
     domainName: rawDomain,
+    targetDomain: rawDomain,
     target: rawDomain,
     authType: params?.authType || config.n8nAuthType || 'basic',
     credential: params?.credential !== undefined ? params.credential : (config.n8nCredential || ''),

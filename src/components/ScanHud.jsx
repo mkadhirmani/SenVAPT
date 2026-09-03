@@ -396,19 +396,13 @@ export default function ScanHud({
     return { outputTokens: latestOutputTokens, totalTokens: latestTotalTokens, requests: latestRequests, cost: latestCost, outputFolder: latestOutputFolder };
   };
 
-  // Derive company name and domain automatically when user types/edits target domain
+  // Derive company name and domain automatically when user types/edits target URL
   const handleTargetUrlChange = (e) => {
-    let input = e.target.value;
-
-    // If user pasted a full URL with https:// or http://, automatically clean it to pure domain
-    if (/^https?:\/\//i.test(input.trim())) {
-      input = input.trim().replace(/^https?:\/\//i, '').split('/')[0].split('?')[0].split(':')[0];
-      if (input.startsWith('www.')) input = input.slice(4);
-    }
+    const url = e.target.value;
 
     let derivedCompany = '';
     try {
-      let hostname = input.replace(/^https?:\/\//i, '').split('/')[0].split('?')[0].split(':')[0].trim();
+      let hostname = url.replace(/^https?:\/\//i, '').split('/')[0].split('?')[0].split(':')[0].trim();
       if (hostname.startsWith('www.')) hostname = hostname.slice(4);
       if (hostname) {
         const parts = hostname.split('.');
@@ -420,18 +414,9 @@ export default function ScanHud({
     } catch (err) {}
 
     updateScannerState(prev => ({
-      targetUrl: input,
+      targetUrl: url,
       companyName: derivedCompany || prev?.companyName || 'Target Organization'
     }));
-  };
-
-  const handleDomainBlur = (e) => {
-    let clean = (e.target.value || '').trim();
-    clean = clean.replace(/^https?:\/\//i, '').split('/')[0].split('?')[0].split(':')[0];
-    if (clean.startsWith('www.')) clean = clean.slice(4);
-    if (clean && clean !== e.target.value) {
-      updateScannerState({ targetUrl: clean });
-    }
   };
 
   const handleSendTerminalInput = async (e) => {
@@ -1145,9 +1130,8 @@ export default function ScanHud({
       setScanError(null);
       userScrolledUpRef.current = false;
 
-      let cleanDomain = targetUrl.trim().replace(/^https?:\/\//, '').split('/')[0].split('?')[0].split(':')[0];
-      if (cleanDomain.startsWith('www.')) cleanDomain = cleanDomain.slice(4);
-      if (!cleanDomain) cleanDomain = 'sennovate.com';
+      let cleanDomain = targetUrl.trim().replace(/^https?:\/\//i, '').replace(/^www\./i, '').split('/')[0].split('?')[0].split('#')[0].split(':')[0].trim().toLowerCase();
+      if (!cleanDomain) cleanDomain = 'example.com';
 
       const effCred = serverConfig.n8nCredential || (serverConfig.n8nUsername && serverConfig.n8nPassword ? `${serverConfig.n8nUsername}:${serverConfig.n8nPassword}` : (serverConfig.n8nUsername || serverConfig.n8nPassword || ''));
       const startTime = Date.now();
@@ -1201,17 +1185,16 @@ export default function ScanHud({
         appendLog(`[GATEWAY RESPONSE] ${JSON.stringify(triggerRes.data || 'Workflow was started')}`);
         appendLog(`[SUCCESS] Autonomous security audit launched on remote server!`);
         appendLog(`[AGENT ACTIVE] Strix autonomous engine is actively scanning ${cleanDomain}...`);
-        appendLog(`[STAGE 1] Subdomain discovery & perimeter enumeration initialized for ${cleanDomain}`);
+        appendLog(`[STAGE 1] DNS & Network reconnaissance initialized.`);
 
         // Stage progression logs
         const stages = [
-          { delay: 3000, log: `[SUBDOMAIN RECON] Enumerating perimeter assets: Discovered top subdomains + apex domain compiled to targets.txt` },
-          { delay: 6000, log: `[TARGET LIST] Initialized Strix multi-target audit: strix --target-list ./targets.txt (5 In-Scope Targets)` },
-          { delay: 11000, log: `[PORT SCAN] Probing HTTP/HTTPS endpoints, service banners & headers across all 5 targets...` },
-          { delay: 17000, log: `[CRAWLER] Mapped endpoints, forms, and API routes on apex & subdomains` },
-          { delay: 24000, log: `[AI REASONING] LLM evaluating attack surface & generating tailored fuzzing payloads...` },
-          { delay: 32000, log: `[VULN PROBE] Testing OWASP Top 10 vulnerabilities (SQLi, XSS, SSRF, Auth Bypass, IDOR)...` },
-          { delay: 40000, log: `[ANALYSIS] Strix LLM agent verifying discovered proof-of-concepts & impact across target list...` }
+          { delay: 3000, log: `[RECON] Discovered active host records & TLS certificates for ${cleanDomain}` },
+          { delay: 7000, log: `[PORT SCAN] Probing HTTP/HTTPS endpoints, service banners & headers...` },
+          { delay: 12000, log: `[CRAWLER] Mapped endpoints, forms, and API routes on ${cleanDomain}` },
+          { delay: 18000, log: `[AI REASONING] LLM evaluating attack surface & generating tailored fuzzing payloads...` },
+          { delay: 26000, log: `[VULN PROBE] Testing OWASP Top 10 vulnerabilities (SQLi, XSS, SSRF, Auth Bypass)...` },
+          { delay: 35000, log: `[ANALYSIS] Strix LLM agent verifying discovered proof-of-concepts & impact...` }
         ];
 
         stages.forEach(s => {
@@ -1568,11 +1551,12 @@ export default function ScanHud({
             // 1. If in n8n mode or fetch URL present: Fetch and download zip archive
             if (serverConfig.triggerMode === 'n8n' || serverConfig.n8nFetchWebhookUrl) {
               try {
-                appendLog(`[N8N FETCH] Requesting scan results ZIP archive from Enterprise Webhook for ${targetUrl}...`);
+                const targetDomain = (targetUrl || '').trim().replace(/^https?:\/\//i, '').replace(/^www\./i, '').split('/')[0].split('?')[0].split('#')[0].split(':')[0].trim().toLowerCase();
+                appendLog(`[N8N FETCH] Requesting scan results ZIP archive from Enterprise Webhook for ${targetDomain || targetUrl}...`);
                 const n8nRes = await fetchN8nScanResults({
                   webhookUrl: serverConfig.n8nFetchWebhookUrl,
-                  domain: targetUrl,
-                  targetUrl: targetUrl
+                  domain: targetDomain || targetUrl,
+                  targetUrl: targetDomain || targetUrl
                 });
 
                 if (n8nRes && n8nRes.success) {
@@ -1895,30 +1879,26 @@ export default function ScanHud({
 
         {/* Inputs */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* Target Domain Input */}
+          {/* Target Domain */}
           <div className="space-y-1.5">
             <label className={`text-xs font-mono font-bold flex items-center gap-1.5 ${
               theme === 'dark' ? 'text-slate-300' : 'text-slate-800'
             }`}>
               <Globe className="w-3.5 h-3.5 text-cyan-500" />
-              <span>Target Domain:</span>
+              <span>Target Domain Name:</span>
             </label>
             <input
               type="text"
               value={targetUrl}
               onChange={handleTargetUrlChange}
-              onBlur={handleDomainBlur}
               disabled={isScanning}
-              placeholder="Enter target domain (e.g. example.com)"
+              placeholder="Enter domain name (e.g. example.com)"
               className={`w-full px-4 py-2.5 rounded-xl font-mono text-xs focus:outline-none transition-all ${
                 theme === 'dark'
                   ? 'bg-[#080E1C] border border-slate-700 text-white placeholder-slate-500 focus:border-cyan-400'
                   : 'bg-slate-50 border border-slate-300 text-slate-900 placeholder-slate-400 focus:border-cyan-500 font-medium'
               }`}
             />
-            <p className={`text-[10.5px] font-mono ${theme === 'dark' ? 'text-slate-400' : 'text-slate-500'}`}>
-              Enter domain name only (e.g. <span className="text-cyan-400 font-semibold">example.com</span>). Top subdomains will be automatically discovered.
-            </p>
           </div>
 
           {/* Company Name */}

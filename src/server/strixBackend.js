@@ -908,11 +908,10 @@ export async function triggerN8nScanProxy(payload) {
   }
 
   let cleanDomain = (domain || payload.domainName || payload.target || payload.targetUrl || payload.url || '').trim();
-  cleanDomain = cleanDomain.replace(/^https?:\/\//i, '').split('/')[0].split('?')[0].split(':')[0];
-  if (cleanDomain.startsWith('www.')) cleanDomain = cleanDomain.slice(4);
+  cleanDomain = cleanDomain.replace(/^https?:\/\//i, '').replace(/^www\./i, '').split('/')[0].split('?')[0].split('#')[0].split(':')[0].trim().toLowerCase();
 
   if (!cleanDomain) {
-    throw new Error('Target domain is required to trigger scan. Please enter a valid target domain (e.g. sennovate.com).');
+    throw new Error('Target domain is required to trigger scan. Please enter a valid target domain (e.g. example.com).');
   }
 
   const headers = {
@@ -949,7 +948,10 @@ export async function triggerN8nScanProxy(payload) {
     const triggerBody = {
       domain: cleanDomain,
       domainName: cleanDomain,
-      target: cleanDomain
+      targetDomain: cleanDomain,
+      target: cleanDomain,
+      targetUrl: `https://${cleanDomain}`,
+      url: `https://${cleanDomain}`
     };
 
     const res = await fetch(effectiveUrl, {
