@@ -606,6 +606,17 @@ export function listLocalScanFolders() {
 }
 
 /**
+ * Strip all ANSI terminal color and escape sequences from logs
+ */
+export function stripAnsi(str) {
+  if (!str) return '';
+  return str
+    .replace(/\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])/g, '')
+    .replace(/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, '')
+    .replace(/\r/g, '');
+}
+
+/**
  * Ingest and parse a local scan output folder (All 7 Files Engine)
  */
 export function parseLocalStrixFolder(folderPath) {
@@ -792,12 +803,16 @@ export function parseLocalStrixFolder(folderPath) {
     }
   }
 
-  // Check strix log
+  // Check strix log / scan.log
   if (!actualTargetUrl && (raw.strix_log || raw.log_tail)) {
-    const logStr = raw.strix_log || raw.log_tail;
-    const logM = logStr.match(/strix\s+-t\s+["']?([^"'\s]+)["']?/i) ||
+    const logStr = stripAnsi(raw.strix_log || raw.log_tail);
+    const logM = logStr.match(/(?:Target|Target\s+Domain)\s+([a-zA-Z0-9\.\-]+)/i) ||
+                 logStr.match(/strix\s+-t\s+["']?([^"'\s]+)["']?/i) ||
                  logStr.match(/target:\s*["']?([^"'\s\n]+)["']?/i);
-    if (logM && logM[1] && !logM[1].includes('target.com')) actualTargetUrl = logM[1].trim();
+    if (logM && logM[1] && !logM[1].includes('target.com')) {
+      const cleanTarget = logM[1].trim();
+      actualTargetUrl = cleanTarget.startsWith('http') ? cleanTarget : `https://${cleanTarget}`;
+    }
   }
 
   // Check directory name
@@ -1093,10 +1108,10 @@ function normalizeQueryAndDomain(input) {
 
 /**
  * Smart output folder resolver that dynamically parses candidate scan directories,
- * filters by target domain, reads scan.log for completed Strix output paths, and navigates
+ * reads scan.log for completed Strix output paths, and navigates
  * to the exact 7-file folder once the audit completes.
  */
-function resolveStrixOutputFolderFromExtract(extractDir, minStartTimeMs = 0, targetDomain = '', previousRunId = null) {
+export function resolveStrixOutputFolderFromExtract(extractDir, minStartTimeMs = 0, targetDomain = '', previousRunId = null) {
   // 1. Search for all log files, strictly prioritizing root/target scan.log over nested strix.log
   const mainScanLogs = [];
   const otherLogs = [];
@@ -1112,9 +1127,9 @@ function resolveStrixOutputFolderFromExtract(extractDir, minStartTimeMs = 0, tar
           if (st.isDirectory()) {
             findLogs(full, depth + 1);
           } else if (item === 'scan.log') {
-            mainScanLogs.push(full);
+            mainScanLogs.push({ path: full, mtime: st.mtimeMs || 0 });
           } else if (item === 'strix.log' || item.endsWith('.log')) {
-            otherLogs.push(full);
+            otherLogs.push({ path: full, mtime: st.mtimeMs || 0 });
           }
         } catch (_) {}
       }
@@ -1122,8 +1137,11 @@ function resolveStrixOutputFolderFromExtract(extractDir, minStartTimeMs = 0, tar
   };
   findLogs(extractDir);
 
-  // Strictly use main scan.log if available
-  const logFiles = mainScanLogs.length > 0 ? mainScanLogs : otherLogs;
+  // Sort logs by newest mtime first
+  mainScanLogs.sort((a, b) => b.mtime - a.mtime);
+  otherLogs.sort((a, b) => b.mtime - a.mtime);
+
+  const logFiles = mainScanLogs.length > 0 ? mainScanLogs.map(l => l.path) : otherLogs.map(l => l.path);
 
   // 2. Find all candidate directories in extractDir that contain Strix files
   const candidateDirs = [];
@@ -1200,87 +1218,120 @@ function resolveStrixOutputFolderFromExtract(extractDir, minStartTimeMs = 0, tar
   };
   findScanFolders(extractDir);
 
-  // 3. Analyze log files to check whether the latest run is completed and locate its output folder
+  // 3. Analyze log files to check whether the scan is completed and locate its output folder & telemetry
   let latestRunOutputFolder = null;
   let latestRunFullPath = null;
   let initiatedRunOutputFolder = null;
+  let detectedTargetDomain = null;
   let isLogCompleted = false;
   let isLogActive = false;
   let liveLogTail = '';
   let liveLogLines = [];
+  let parsedTokens = 0;
+  let parsedCost = 0;
 
-  const compPatterns = [
-    'Penetration test completed',
-    'Scan completed',
-    'Saved final penetration test report to',
-    'Essential scan data saved to'
-  ];
-  const initPatterns = [
-    'Penetration test initiated',
-    'Starting penetration test',
-    'Launching autonomous scan'
-  ];
+  const compRegex = /(?:Penetration\s+test\s+completed|Scan\s+completed|Scan\s+finished|All\s+tasks\s+completed|VAPT\s+assessment\s+completed|Saved\s+final\s+penetration\s+test\s+report\s+to|Essential\s+scan\s+data\s+saved\s+to|Strix\s+process\s+completed|Execution\s+finished)/i;
+  const initRegex = /(?:Penetration\s+test\s+initiated|Starting\s+penetration\s+test|Launching\s+autonomous\s+scan|Autonomous\s+penetration\s+test\s+started)/i;
+
+  const parseMultiplier = (str) => {
+    if (!str) return 0;
+    const num = parseFloat(str);
+    if (str.toUpperCase().includes('M')) return Math.round(num * 1000000);
+    if (str.toUpperCase().includes('K')) return Math.round(num * 1000);
+    if (str.toUpperCase().includes('G')) return Math.round(num * 1000000000);
+    return Math.round(num) || 0;
+  };
 
   for (const logPath of logFiles) {
     try {
-      const content = fs.readFileSync(logPath, 'utf8');
-      if (!content || content.trim().length === 0) continue;
+      const rawContent = fs.readFileSync(logPath, 'utf8');
+      if (!rawContent || rawContent.trim().length === 0) continue;
 
+      const content = stripAnsi(rawContent);
       const rawLines = content.split('\n');
-      liveLogLines = rawLines.slice(-40).map(l => l.trimEnd()).filter(l => l.length > 0);
+      const filteredLines = rawLines.map(l => l.trimEnd()).filter(l => l.length > 0);
+      liveLogLines = filteredLines.slice(-60);
       liveLogTail = liveLogLines.join('\n');
 
-      let lastCompIdx = -1;
-      for (const p of compPatterns) {
-        const idx = content.lastIndexOf(p);
-        if (idx > lastCompIdx) lastCompIdx = idx;
+      let lastCompLineIdx = -1;
+      let lastInitLineIdx = -1;
+
+      for (let i = 0; i < filteredLines.length; i++) {
+        const line = filteredLines[i];
+        if (compRegex.test(line)) lastCompLineIdx = i;
+        if (initRegex.test(line)) lastInitLineIdx = i;
       }
 
-      let lastInitIdx = -1;
-      for (const p of initPatterns) {
-        const idx = content.lastIndexOf(p);
-        if (idx > lastInitIdx) lastInitIdx = idx;
-      }
-
-      if (lastCompIdx !== -1 && (lastInitIdx === -1 || lastCompIdx > lastInitIdx)) {
+      if (lastCompLineIdx !== -1 && (lastInitLineIdx === -1 || lastCompLineIdx >= lastInitLineIdx)) {
         isLogCompleted = true;
         isLogActive = false;
-      } else if (lastInitIdx !== -1 && lastInitIdx > lastCompIdx) {
+      } else if (lastInitLineIdx !== -1 && lastInitLineIdx > lastCompLineIdx) {
         isLogActive = true;
       }
 
-      if (lastCompIdx !== -1) {
-        const compSlice = content.slice(lastCompIdx);
-        const outMatch = compSlice.match(/Output\s+(?:(?:\/[^\s\r\n│]+\/strix_runs\/)|strix_runs\/|(?:\/[^\s\r\n│]+))?([a-zA-Z0-9_\-]+_[a-zA-Z0-9]+)/i) ||
-                          compSlice.match(/Output\s+(\/[^\s\r\n│]+)/i) ||
-                          compSlice.match(/Output\s+([a-zA-Z0-9_\.\-\/]+\/strix_runs\/[^\s\r\n│]+)/i) ||
-                          compSlice.match(/run_dir=['"]?([^\s\r\n'"]+)['"]?/i) ||
-                          compSlice.match(/\[OUTPUT FOLDER PATH\]\s*([^\s\r\n]+)/i) ||
-                          compSlice.match(/(?:Essential scan data saved to|Saved final penetration test report to):\s*([^\s\r\n]+)/i) ||
-                          compSlice.match(/strix view\s+([a-zA-Z0-9_\-]+)/i) ||
-                          compSlice.match(/strix_runs\/([a-zA-Z0-9_\-]+)/i);
-        
-        if (outMatch && outMatch[1]) {
-          const raw = outMatch[1].trim().replace(/[│'"\(\)]/g, '');
-          if (raw.toLowerCase() !== 'tokens') {
-            latestRunFullPath = raw;
-            latestRunOutputFolder = raw.split('/').filter(Boolean).pop();
+      // Parse tokens and cost from log
+      const inTokenMatch = content.match(/Input Tokens\s*([\d\.]+\s*[kKMGT]?)/i);
+      const cachedTokenMatch = content.match(/Cached Tokens\s*([\d\.]+\s*[kKMGT]?)/i);
+      const outTokenMatch = content.match(/Output Tokens\s*([\d\.]+\s*[kKMGT]?)/i);
+      const costMatch = content.match(/Cost\s*\$?([\d\.]+)/i);
+
+      if (inTokenMatch) parsedTokens += parseMultiplier(inTokenMatch[1]);
+      if (cachedTokenMatch) parsedTokens += parseMultiplier(cachedTokenMatch[1]);
+      if (outTokenMatch) parsedTokens += parseMultiplier(outTokenMatch[1]);
+      if (costMatch && !parsedCost) parsedCost = parseFloat(costMatch[1]) || 0;
+
+      // Parse Target domain from Strix header/summary box
+      const targetMatch = content.match(/(?:Target|Target\s+Domain)\s+([a-zA-Z0-9\.\-]+)/i);
+      if (targetMatch && targetMatch[1] && targetMatch[1].includes('.') && !targetMatch[1].startsWith('.')) {
+        detectedTargetDomain = targetMatch[1].trim();
+      }
+
+      // Parse Output path from completed section or anywhere in log
+      const compText = lastCompLineIdx !== -1 ? filteredLines.slice(lastCompLineIdx).join('\n') : content;
+
+      // Extract full output path (e.g. /root/emcochem.com-scan/strix_runs/emcochem-com_2c93 or strix_runs/...)
+      const outFullMatch = compText.match(/Output\s+([^\r\n│]+)/i) ||
+                           content.match(/Output\s+([^\r\n│]+)/i);
+      if (outFullMatch && outFullMatch[1]) {
+        const cleanOut = outFullMatch[1].trim().replace(/[│'"\(\)]/g, '').trim();
+        if (cleanOut.toLowerCase() !== 'tokens' && !cleanOut.toLowerCase().startsWith('tokens')) {
+          latestRunFullPath = cleanOut;
+          const segments = cleanOut.split('/').filter(Boolean);
+          latestRunOutputFolder = segments[segments.length - 1] || null;
+        }
+      }
+
+      // Also check "View strix view <run_id>" or "strix view <run_id>"
+      const viewMatch = compText.match(/(?:View\s+)?strix\s+view\s+([a-zA-Z0-9_\-]+)/i) ||
+                        content.match(/(?:View\s+)?strix\s+view\s+([a-zA-Z0-9_\-]+)/i);
+      if (viewMatch && viewMatch[1]) {
+        const runId = viewMatch[1].trim();
+        if (!latestRunOutputFolder) {
+          latestRunOutputFolder = runId;
+        }
+      }
+
+      // Also check explicit strix_runs/<run_id> pattern
+      const strixRunsMatch = compText.match(/strix_runs\/([a-zA-Z0-9_\-]+)/i) ||
+                             content.match(/strix_runs\/([a-zA-Z0-9_\-]+)/i);
+      if (strixRunsMatch && strixRunsMatch[1] && !latestRunOutputFolder) {
+        latestRunOutputFolder = strixRunsMatch[1].trim();
+      }
+
+      // Check initiated block for Output path as well (for live tracking while running)
+      if (lastInitLineIdx !== -1) {
+        const initText = filteredLines.slice(lastInitLineIdx, lastInitLineIdx + 15).join('\n');
+        const initOutMatch = initText.match(/Output\s+([^\r\n│]+)/i);
+        if (initOutMatch && initOutMatch[1]) {
+          const cleanInit = initOutMatch[1].trim().replace(/[│'"\(\)]/g, '').trim();
+          if (cleanInit.toLowerCase() !== 'tokens') {
+            const initSegs = cleanInit.split('/').filter(Boolean);
+            initiatedRunOutputFolder = initSegs[initSegs.length - 1] || null;
           }
         }
       }
 
-      if (lastInitIdx !== -1) {
-        const initSlice = content.slice(lastInitIdx);
-        const initOutMatch = initSlice.match(/Output\s+(?:(?:\/[^\s\r\n│]+\/strix_runs\/)|strix_runs\/|(?:\/[^\s\r\n│]+))?([a-zA-Z0-9_\-]+_[a-zA-Z0-9]+)/i) ||
-                             initSlice.match(/Output\s+([^\s\r\n│]+)/i) ||
-                             initSlice.match(/strix_runs\/([a-zA-Z0-9_\-]+)/i);
-        if (initOutMatch && initOutMatch[1]) {
-          const raw = initOutMatch[1].trim().replace(/[│'"\(\)]/g, '');
-          if (raw.toLowerCase() !== 'tokens') {
-            initiatedRunOutputFolder = raw.split('/').filter(Boolean).pop();
-          }
-        }
-      }
+      if (isLogCompleted) break; // Found completed log, no need to inspect older logs
     } catch (_) {}
   }
 
@@ -1288,90 +1339,105 @@ function resolveStrixOutputFolderFromExtract(extractDir, minStartTimeMs = 0, tar
     latestRunOutputFolder = initiatedRunOutputFolder;
   }
 
-  // Helper to verify if a candidate run folder is FRESH (created for the current scan)
-  const isCandidateFresh = (cand) => {
-    if (!cand) return false;
-    if (previousRunId && cand.name.toLowerCase() === previousRunId.toLowerCase()) {
-      return false; // Matched old baseline run from previous scan
-    }
-    if (minStartTimeMs > 0) {
-      const threshold = minStartTimeMs - 30000;
-      const isNew = (cand.startTimeMs && cand.startTimeMs >= threshold) || (cand.mtime && cand.mtime >= threshold);
-      if (!isNew) {
-        return false;
+  // Recursive search helper to find directory matching folderName inside extractDir
+  const findDirectoryByName = (dir, targetName, depth = 0) => {
+    if (depth > 8 || !targetName) return null;
+    try {
+      const items = fs.readdirSync(dir);
+      for (const item of items) {
+        const sub = path.join(dir, item);
+        try {
+          const st = fs.statSync(sub);
+          if (st.isDirectory()) {
+            if (item.toLowerCase() === targetName.toLowerCase()) return sub;
+            const res = findDirectoryByName(sub, targetName, depth + 1);
+            if (res) return res;
+          }
+        } catch (_) {}
       }
-    }
-    return true;
+    } catch (_) {}
+    return null;
   };
 
-  // 4. ACTIVE SCAN MODE (when minStartTimeMs > 0, i.e. user launched a fresh scan)
-  if (minStartTimeMs > 0) {
-    if (isLogCompleted && latestRunOutputFolder) {
-      const isOldBaseline = previousRunId && latestRunOutputFolder.toLowerCase() === previousRunId.toLowerCase();
+  // 4. SCAN COMPLETED RESOLUTION
+  // If isLogCompleted is true, the scan on the remote server is 100% finished!
+  // Ingest the completed folder and do NOT reject due to clock skew or baseline comparison.
+  if (isLogCompleted) {
+    let resolvedDir = null;
 
-      if (!isOldBaseline) {
-        const matched = candidateDirs.find(c =>
-          c.name.toLowerCase() === latestRunOutputFolder.toLowerCase() ||
-          c.dir.toLowerCase().includes(latestRunOutputFolder.toLowerCase())
-        );
-
-        if (matched && isCandidateFresh(matched)) {
-          return {
-            bestDir: matched.dir,
-            folderName: matched.name,
-            outputFullPath: latestRunFullPath,
-            isScanning: false,
-            inProgress: false,
-            scanFinished: true,
-            freshFound: true,
-            liveLogLines,
-            strixLog: liveLogTail
-          };
-        }
-
-        const directSearch = (dir, depth = 0) => {
-          if (depth > 8) return null;
-          try {
-            const items = fs.readdirSync(dir);
-            for (const item of items) {
-              const sub = path.join(dir, item);
-              if (item.toLowerCase() === latestRunOutputFolder.toLowerCase()) return sub;
-              if (fs.statSync(sub).isDirectory()) {
-                const res = directSearch(sub, depth + 1);
-                if (res) return res;
-              }
-            }
-          } catch (_) {}
-          return null;
-        };
-        const foundSub = directSearch(extractDir);
-        if (foundSub) {
-          let foundSubFresh = true;
-          try {
-            const subStat = fs.statSync(foundSub);
-            if (!isCandidateFresh({ name: latestRunOutputFolder, mtime: subStat.mtimeMs, startTimeMs: subStat.mtimeMs })) {
-              foundSubFresh = false;
-            }
-          } catch (_) {}
-
-          if (foundSubFresh) {
-            return {
-              bestDir: foundSub,
-              folderName: latestRunOutputFolder,
-              outputFullPath: latestRunFullPath,
-              isScanning: false,
-              inProgress: false,
-              scanFinished: true,
-              freshFound: true,
-              liveLogLines,
-              strixLog: liveLogTail
-            };
+    // A. Try direct path based on latestRunFullPath inside extractDir
+    if (latestRunFullPath) {
+      const cleanRelative = latestRunFullPath.replace(/^\/+/, '');
+      const cleanWithoutRoot = cleanRelative.replace(/^root\//, '');
+      const possiblePaths = [
+        path.join(extractDir, cleanRelative),
+        path.join(extractDir, cleanWithoutRoot),
+        path.join(extractDir, 'root', cleanWithoutRoot),
+        path.join(extractDir, latestRunFullPath)
+      ];
+      for (const p of possiblePaths) {
+        try {
+          if (fs.existsSync(p) && fs.statSync(p).isDirectory()) {
+            resolvedDir = p;
+            break;
           }
-        }
+        } catch (_) {}
       }
     }
 
-    // Still actively testing on remote server
+    // B. Search candidateDirs matching latestRunOutputFolder
+    if (!resolvedDir && latestRunOutputFolder) {
+      const matchedCand = candidateDirs.find(c =>
+        c.name.toLowerCase() === latestRunOutputFolder.toLowerCase() ||
+        c.dir.toLowerCase().endsWith(path.sep + latestRunOutputFolder.toLowerCase()) ||
+        c.dir.toLowerCase().includes(path.sep + latestRunOutputFolder.toLowerCase())
+      );
+      if (matchedCand) {
+        resolvedDir = matchedCand.dir;
+      }
+    }
+
+    // C. Search extractDir recursively for directory named latestRunOutputFolder
+    if (!resolvedDir && latestRunOutputFolder) {
+      resolvedDir = findDirectoryByName(extractDir, latestRunOutputFolder);
+    }
+
+    // D. If not found by exact folder name, pick newest candidateDir
+    if (!resolvedDir && candidateDirs.length > 0) {
+      const matchedDomain = candidateDirs.filter(c => c.targetMatch);
+      const listToPick = matchedDomain.length > 0 ? matchedDomain : candidateDirs;
+      listToPick.sort((a, b) => Math.max(b.startTimeMs, b.mtime) - Math.max(a.startTimeMs, a.mtime));
+      resolvedDir = listToPick[0].dir;
+      if (!latestRunOutputFolder) {
+        latestRunOutputFolder = listToPick[0].name;
+      }
+    }
+
+    // E. Fallback to extractDir if Strix files exist directly in extractDir or immediate child
+    if (!resolvedDir) {
+      resolvedDir = extractDir;
+    }
+
+    const finalName = latestRunOutputFolder || path.basename(resolvedDir);
+
+    return {
+      bestDir: resolvedDir,
+      folderName: finalName,
+      outputFullPath: latestRunFullPath || resolvedDir,
+      isScanning: false,
+      inProgress: false,
+      scanFinished: true,
+      freshFound: true,
+      targetDomain: detectedTargetDomain || targetDomain,
+      tokens: parsedTokens,
+      cost: parsedCost,
+      liveLogLines,
+      strixLog: liveLogTail
+    };
+  }
+
+  // 5. ACTIVE SCAN MODE (when minStartTimeMs > 0 and scan has not completed yet)
+  if (minStartTimeMs > 0) {
     return {
       bestDir: null,
       folderName: null,
@@ -1380,28 +1446,49 @@ function resolveStrixOutputFolderFromExtract(extractDir, minStartTimeMs = 0, tar
       inProgress: true,
       scanFinished: false,
       freshFound: false,
-      baselineRunId: latestRunOutputFolder || previousRunId,
+      baselineRunId: null, // Critical: do NOT report the active run as baselineRunId
       liveLogLines,
       strixLog: liveLogTail,
       message: 'Active penetration test is in progress on remote server. Waiting for completion...'
     };
   }
 
-  // 5. STATIC / MANUAL FETCH MODE (when minStartTimeMs === 0, e.g. User manually loaded path or uploaded)
+  // 6. STATIC / MANUAL FETCH MODE (minStartTimeMs === 0, e.g. User manually loaded path or uploaded ZIP)
   if (latestRunOutputFolder) {
-    const matched = candidateDirs.find(c =>
+    const matchedCand = candidateDirs.find(c =>
       c.name.toLowerCase() === latestRunOutputFolder.toLowerCase() ||
       c.dir.toLowerCase().includes(latestRunOutputFolder.toLowerCase())
     );
-    if (matched) {
+    if (matchedCand) {
       return {
-        bestDir: matched.dir,
-        folderName: matched.name,
-        outputFullPath: latestRunFullPath,
+        bestDir: matchedCand.dir,
+        folderName: matchedCand.name,
+        outputFullPath: latestRunFullPath || matchedCand.dir,
         isScanning: false,
         inProgress: false,
         scanFinished: true,
         freshFound: true,
+        targetDomain: detectedTargetDomain || targetDomain,
+        tokens: parsedTokens,
+        cost: parsedCost,
+        liveLogLines,
+        strixLog: liveLogTail
+      };
+    }
+
+    const foundDirect = findDirectoryByName(extractDir, latestRunOutputFolder);
+    if (foundDirect) {
+      return {
+        bestDir: foundDirect,
+        folderName: latestRunOutputFolder,
+        outputFullPath: latestRunFullPath || foundDirect,
+        isScanning: false,
+        inProgress: false,
+        scanFinished: true,
+        freshFound: true,
+        targetDomain: detectedTargetDomain || targetDomain,
+        tokens: parsedTokens,
+        cost: parsedCost,
         liveLogLines,
         strixLog: liveLogTail
       };
@@ -1416,11 +1503,14 @@ function resolveStrixOutputFolderFromExtract(extractDir, minStartTimeMs = 0, tar
     return {
       bestDir: best.dir,
       folderName: best.name,
-      outputFullPath: latestRunFullPath,
+      outputFullPath: latestRunFullPath || best.dir,
       isScanning: false,
       inProgress: false,
       scanFinished: true,
       freshFound: true,
+      targetDomain: detectedTargetDomain || targetDomain,
+      tokens: parsedTokens,
+      cost: parsedCost,
       liveLogLines,
       strixLog: liveLogTail
     };
@@ -1429,10 +1519,14 @@ function resolveStrixOutputFolderFromExtract(extractDir, minStartTimeMs = 0, tar
   return {
     bestDir: extractDir,
     folderName: path.basename(extractDir),
+    outputFullPath: latestRunFullPath || extractDir,
     isScanning: false,
     inProgress: false,
     scanFinished: true,
     freshFound: true,
+    targetDomain: detectedTargetDomain || targetDomain,
+    tokens: parsedTokens,
+    cost: parsedCost,
     liveLogLines,
     strixLog: liveLogTail
   };
@@ -1627,7 +1721,7 @@ export async function fetchN8nScanResultsProxy(payload) {
         inProgress: true,
         isScanning: true,
         scanFinished: false,
-        baselineRunId: resolvedResult.baselineRunId || previousRunId,
+        baselineRunId: resolvedResult.baselineRunId || null,
         liveLogLines: resolvedResult.liveLogLines || [],
         strixLog: resolvedResult.strixLog || '',
         message: resolvedResult.message || 'Scan is actively executing on remote server. Waiting for fresh results...',
@@ -1642,6 +1736,25 @@ export async function fetchN8nScanResultsProxy(payload) {
 
     // Parse the extracted 7 files from the active fresh scan
     const parsed = parseLocalStrixFolder(bestExtractDir);
+
+    // If targetUrl in parsed is default, override with detected target domain from Strix log
+    if (resolvedResult.targetDomain && (!parsed.targetUrl || parsed.targetUrl === 'https://target.com')) {
+      parsed.targetUrl = resolvedResult.targetDomain.startsWith('http') ? resolvedResult.targetDomain : `https://${resolvedResult.targetDomain}`;
+      try {
+        const host = parsed.targetUrl.replace(/^https?:\/\//i, '').replace(/^www\./i, '').split('/')[0].split(':')[0].trim();
+        const brand = host.split('.')[0];
+        if (brand && brand.toLowerCase() !== 'target') {
+          parsed.companyName = brand.charAt(0).toUpperCase() + brand.slice(1) + ' Inc';
+        }
+      } catch (_) {}
+    }
+
+    if (resolvedResult.tokens > 0 && (!parsed.tokens || parsed.tokens === 0)) {
+      parsed.tokens = resolvedResult.tokens;
+    }
+    if (resolvedResult.cost > 0 && (!parsed.cost || parsed.cost === 0)) {
+      parsed.cost = resolvedResult.cost;
+    }
     
     // Auto-persist to .scans_cache.json
     try {
@@ -3417,7 +3530,7 @@ export function getScanSession(scanId) {
     const completionRegex = /(penetration test completed|scan completed|scan finished|all tasks completed|vapt assessment completed|strix process session closed|strix process completed|execution finished|summary written to|findings exported to|vapt completed|\[complete\]|output folder path|report generated successfully|final summary|strix view)/i;
     const recentLogs = session.logs.slice(-60);
     for (const line of recentLogs) {
-      if (completionRegex.test(line)) {
+      if (completionRegex.test(stripAnsi(line))) {
         session.status = 'completed';
         session.stage = 'Completed';
         break;

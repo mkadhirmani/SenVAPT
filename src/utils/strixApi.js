@@ -308,7 +308,8 @@ export async function fetchN8nScanResults(params) {
     password: params?.password !== undefined ? params.password : (config.n8nPassword || ''),
     token: params?.token !== undefined ? params.token : (config.n8nToken || ''),
     scanStartTime: params?.scanStartTime || null,
-    requireFresh: params?.requireFresh !== undefined ? params.requireFresh : false
+    requireFresh: params?.requireFresh !== undefined ? params.requireFresh : false,
+    previousRunId: params?.previousRunId || null
   };
 
   const res = await fetch('/api/strix/fetch-n8n-results', {

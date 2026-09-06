@@ -1378,8 +1378,19 @@ export default function ScanHud({
               });
             }
 
-            // If the server scan is still running or results are not finalized yet, continue polling
-            if (results && (results.inProgress === true || results.isScanning === true || !results.folderName)) {
+            // Check if scan log explicitly reached completion
+            const checkLogCompletion = (logList) => {
+              if (!logList || !logList.length) return false;
+              const completionRegex = /(penetration test completed|scan completed|scan finished|all tasks completed|vapt assessment completed|strix process session closed|strix process completed|execution finished|summary written to|findings exported to|vapt completed|\[complete\]|output folder path|report generated successfully|final summary|strix view)/i;
+              const recentLogs = logList.slice(-60);
+              return recentLogs.some(l => completionRegex.test(l));
+            };
+
+            const logIndicatesCompletion = checkLogCompletion(results?.liveLogLines) || (results?.strixLog && /(penetration test completed|scan completed|strix view)/i.test(results.strixLog));
+
+            // If the server scan is still running and log has NOT indicated completion, continue polling
+            const isStillRunning = results && (results.inProgress === true || results.isScanning === true) && !results.scanFinished && !logIndicatesCompletion;
+            if (isStillRunning) {
               if (pollAttempts % 3 === 0) {
                 const elapsedMin = Math.floor(pollAttempts * 7 / 60);
                 const elapsedSec = (pollAttempts * 7) % 60;
@@ -1428,9 +1439,11 @@ export default function ScanHud({
             const riskLevel = results.riskLevel || (critCount > 0 ? 'CRITICAL' : highCount > 0 ? 'HIGH' : medCount > 0 ? 'ELEVATED' : 'LOW');
             const riskScore = results.riskScore || (critCount > 0 ? 9.2 : highCount > 0 ? 8.2 : medCount > 0 ? 6.5 : 4.0);
 
+            const effectiveFolderName = results.folderName || (results.outputFolderPath ? results.outputFolderPath.split('/').filter(Boolean).pop() : `scan-${Date.now()}`);
+
             const newScan = {
-              id: results.folderName || `scan-${Date.now()}`,
-              folderName: results.folderName,
+              id: effectiveFolderName,
+              folderName: effectiveFolderName,
               outputFolderPath: results.outputFolderPath || results.extractedPath,
               companyName: results.companyName || companyName,
               targetUrl: results.targetUrl || targetUrl,
@@ -1460,7 +1473,7 @@ export default function ScanHud({
               metadata: {
                 ...SCAN_METADATA,
                 ...results.metadata,
-                runId: results.folderName,
+                runId: effectiveFolderName,
                 targetUrl: results.targetUrl || targetUrl,
                 companyName: results.companyName || companyName,
                 remoteRunDir: results.outputFolderPath,
@@ -1475,7 +1488,7 @@ export default function ScanHud({
             };
 
             updateScannerState({
-              activeScanId: results.folderName,
+              activeScanId: effectiveFolderName,
               discoveredFindings: vulns,
               scanFinished: true,
               outputFolderPath: results.outputFolderPath,
