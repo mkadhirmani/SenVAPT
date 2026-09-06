@@ -36,6 +36,7 @@ import {
 import { initializeKnowledgeBase } from './utils/ragEngine';
 import { fetchAllRemoteScans, fetchStrixServerConfig } from './utils/strixApi';
 import { fetchGlobalLlmConfig } from './utils/llmEngine';
+import { supabase, formatScanFromSupabase, formatUserFromSupabase } from './utils/supabaseClient';
 import { Bot, MessageSquare, X, Sparkles, CheckCircle2, ShieldAlert, Bell } from 'lucide-react';
 
 function playNotificationChime() {
@@ -259,6 +260,90 @@ export default function App() {
       }
     }
     syncOnMount();
+  }, []);
+
+  // Supabase Real-Time multi-user synchronization for scans and users
+  useEffect(() => {
+    if (!supabase) return;
+
+    // 1. Listen for changes on vapt_scans
+    const scansChannel = supabase
+      .channel('realtime_vapt_scans')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'vapt_scans' },
+        (payload) => {
+          try {
+            if (payload.eventType === 'INSERT') {
+              const incoming = formatScanFromSupabase(payload.new);
+              setScanHistory(prev => {
+                if (prev.some(s => s.id === incoming.id)) {
+                  return prev.map(s => s.id === incoming.id ? { ...s, ...incoming } : s);
+                }
+                const updated = [incoming, ...prev];
+                try { localStorage.setItem('sennovate_scan_history', JSON.stringify(updated)); } catch (_) {}
+                return updated;
+              });
+              playNotificationChime();
+              sendDesktopNotification('VAPT Cloud Sync', `New scan record received: ${incoming.companyName || incoming.targetUrl}`);
+            } else if (payload.eventType === 'UPDATE') {
+              const updated = formatScanFromSupabase(payload.new);
+              setScanHistory(prev => {
+                const next = prev.map(s => s.id === updated.id ? { ...s, ...updated } : s);
+                try { localStorage.setItem('sennovate_scan_history', JSON.stringify(next)); } catch (_) {}
+                return next;
+              });
+            } else if (payload.eventType === 'DELETE') {
+              const deletedId = payload.old?.id;
+              if (deletedId) {
+                setScanHistory(prev => {
+                  const next = prev.filter(s => s.id !== deletedId);
+                  try { localStorage.setItem('sennovate_scan_history', JSON.stringify(next)); } catch (_) {}
+                  return next;
+                });
+              }
+            }
+          } catch (e) {
+            console.warn('[Supabase Realtime Scans Notice]', e.message);
+          }
+        }
+      )
+      .subscribe();
+
+    // 2. Listen for changes on vapt_users
+    const usersChannel = supabase
+      .channel('realtime_vapt_users')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'vapt_users' },
+        async (payload) => {
+          try {
+            await fetchGlobalUsersList();
+            const active = getCurrentUser();
+            if (active) {
+              if (payload.eventType === 'DELETE' && payload.old?.id === active.id) {
+                logoutUser();
+                setAuthUser(null);
+              } else if (payload.eventType === 'UPDATE' && payload.new?.id === active.id) {
+                const formatted = formatUserFromSupabase(payload.new);
+                const merged = { ...active, ...formatted };
+                setCurrentUser(merged);
+                setAuthUser(merged);
+              }
+            }
+          } catch (e) {
+            console.warn('[Supabase Realtime Users Notice]', e.message);
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      try {
+        supabase.removeChannel(scansChannel);
+        supabase.removeChannel(usersChannel);
+      } catch (_) {}
+    };
   }, []);
 
   // Initialize RAG knowledge base on active scan load

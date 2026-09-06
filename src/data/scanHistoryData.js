@@ -1,5 +1,6 @@
 import { SCAN_METADATA, VULNERABILITIES } from './scanData';
 import { getAuthHeaders } from '../utils/auth';
+import { supabase, formatScanForSupabase, formatScanFromSupabase, isSupabaseConfigured } from '../utils/supabaseClient';
 
 export const SAMPLE_BETA_VULNERABILITIES = [
   {
@@ -375,6 +376,53 @@ export function getStoredScanHistory() {
   return [];
 }
 
+/**
+ * Save a single structured scan record to Supabase vapt_scans table
+ * Structured scan storage: extracts findings, metrics, and output folder path.
+ * Explicitly DOES NOT store raw binary ZIPs.
+ */
+export async function saveScanToSupabase(scan) {
+  if (!scan) return null;
+  try {
+    const formatted = formatScanForSupabase(scan);
+    if (!formatted) return null;
+
+    const { data, error } = await supabase
+      .from('vapt_scans')
+      .upsert([formatted], { onConflict: 'id' });
+
+    if (error) {
+      console.warn('[Supabase Scan Save Error]', error.message);
+    }
+    return data;
+  } catch (err) {
+    console.warn('[Supabase Scan Save Note]', err.message);
+    return null;
+  }
+}
+
+/**
+ * Fetch all structured scans directly from Supabase vapt_scans table
+ */
+export async function fetchScansFromSupabase() {
+  try {
+    const { data, error } = await supabase
+      .from('vapt_scans')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (!error && Array.isArray(data)) {
+      return data.map(formatScanFromSupabase).filter(Boolean);
+    }
+  } catch (err) {
+    console.warn('[Supabase Fetch Scans Note]', err.message);
+  }
+  return [];
+}
+
+/**
+ * Save scan history list to local storage, sync to Supabase vapt_scans, and backend server
+ */
 export function saveScanHistory(historyList) {
   try {
     localStorage.setItem('sennovate_scan_history', JSON.stringify(historyList));
@@ -382,7 +430,16 @@ export function saveScanHistory(historyList) {
     console.error('Error saving scan history to localStorage:', e);
   }
 
-  // Persist to backend server so all sessions see the latest scans
+  // 1. Persist to Supabase cloud database (vapt_scans table)
+  if (Array.isArray(historyList) && historyList.length > 0) {
+    // Upsert the most recent scans
+    const toSync = historyList.slice(0, 15);
+    toSync.forEach(scan => {
+      saveScanToSupabase(scan).catch(() => {});
+    });
+  }
+
+  // 2. Persist to backend server (.scans_cache.json) as backup
   try {
     fetch('/api/scans/save-history', {
       method: 'POST',
@@ -396,41 +453,57 @@ export function saveScanHistory(historyList) {
 }
 
 /**
- * Fetch and merge scan history from the backend server
+ * Fetch and merge scan history:
+ * 1. Queries Supabase vapt_scans cloud table for dynamic cross-device sync
+ * 2. Merges with local storage and backend server store
  */
 export async function syncScanHistoryWithServer() {
+  const local = getStoredScanHistory();
+  const scanMap = new Map();
+
+  // Seed with local scans
+  for (const s of local) {
+    if (s && s.id) scanMap.set(s.id, s);
+  }
+
+  // 1. Query Supabase cloud database
+  try {
+    const cloudScans = await fetchScansFromSupabase();
+    if (cloudScans && cloudScans.length > 0) {
+      for (const cs of cloudScans) {
+        if (cs && cs.id) {
+          // Cloud records take precedence for cross-device synchronization
+          scanMap.set(cs.id, cs);
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('[Supabase Scan Sync Note]', err.message);
+  }
+
+  // 2. Query backend server (.scans_cache.json)
   try {
     const res = await fetch('/api/scans/get-history', {
       headers: { ...getAuthHeaders() }
     });
     if (res.ok) {
       const data = await res.json();
-      const local = getStoredScanHistory();
       const serverScans = (data && data.success && Array.isArray(data.scans)) ? data.scans : [];
-
-      const scanMap = new Map();
-      for (const s of serverScans) {
-        if (s && s.id) scanMap.set(s.id, s);
-      }
-      for (const s of local) {
-        if (s && s.id && !scanMap.has(s.id)) {
-          scanMap.set(s.id, s);
+      for (const ss of serverScans) {
+        if (ss && ss.id && !scanMap.has(ss.id)) {
+          scanMap.set(ss.id, ss);
         }
-      }
-
-      const merged = Array.from(scanMap.values());
-      if (merged.length > 0) {
-        localStorage.setItem('sennovate_scan_history', JSON.stringify(merged));
-        
-        // If local had scans that the server was missing, upload back to server
-        if (merged.length > serverScans.length) {
-          saveScanHistory(merged);
-        }
-        return merged;
       }
     }
   } catch (e) {
     console.warn('Note syncing scan history from backend server:', e);
   }
+
+  const merged = Array.from(scanMap.values());
+  if (merged.length > 0) {
+    localStorage.setItem('sennovate_scan_history', JSON.stringify(merged));
+    return merged;
+  }
+
   return getStoredScanHistory();
 }

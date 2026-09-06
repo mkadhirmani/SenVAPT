@@ -36,6 +36,7 @@ import {
 } from 'lucide-react';
 import { 
   getUsersList, 
+  fetchGlobalUsersList,
   updateUserPermissions, 
   createNewUser, 
   deleteUser,
@@ -56,6 +57,35 @@ export default function AdminUserManagement({
   const [isAddUserOpen, setIsAddUserOpen] = useState(false);
   const [showNewUserPassword, setShowNewUserPassword] = useState(true);
   const [statusMessage, setStatusMessage] = useState(null);
+
+  React.useEffect(() => {
+    fetchGlobalUsersList().then(res => {
+      if (Array.isArray(res) && res.length > 0) {
+        setUsers(res);
+      }
+    }).catch(() => {});
+
+    const handleUpdate = (e) => {
+      if (e?.detail && Array.isArray(e.detail)) {
+        setUsers(e.detail);
+      } else {
+        setUsers(getUsersList());
+      }
+    };
+    const handleStorage = (e) => {
+      if (e.key === 'sennovate_users_list') {
+        setUsers(getUsersList());
+      }
+    };
+
+    window.addEventListener('sennovate_users_updated', handleUpdate);
+    window.addEventListener('storage', handleStorage);
+
+    return () => {
+      window.removeEventListener('sennovate_users_updated', handleUpdate);
+      window.removeEventListener('storage', handleStorage);
+    };
+  }, []);
 
   // New user form state
   const [newUserData, setNewUserData] = useState({
