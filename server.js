@@ -643,16 +643,13 @@ const server = http.createServer(async (req, res) => {
         recordFailedLogin(rateLimitKey);
         res.setHeader('Content-Type', 'application/json');
         res.statusCode = 401;
-        const msg = supabaseMismatch
-          ? `Invalid password for "${trimmedInput}". Please check the password stored in Supabase vapt_users table.`
-          : `User "${trimmedInput}" not found in Supabase vapt_users table.`;
-        return res.end(JSON.stringify({ success: false, error: msg }));
+        return res.end(JSON.stringify({ success: false, error: 'Invalid username or password.' }));
       }
 
       if (selectedRole === 'admin' && matched.role !== 'admin') {
         res.setHeader('Content-Type', 'application/json');
         res.statusCode = 403;
-        return res.end(JSON.stringify({ success: false, error: 'Access Denied: This account does not have administrator privileges.' }));
+        return res.end(JSON.stringify({ success: false, error: 'Access Denied: This account does not have administrator privileges. Please switch to User Login.' }));
       }
 
       // Clear failed attempts upon successful authentication

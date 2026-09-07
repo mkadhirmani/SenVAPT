@@ -4,21 +4,14 @@ import {
   ShieldCheck, 
   Lock, 
   User, 
-  Key, 
   ArrowRight, 
-  CheckCircle2, 
   AlertCircle, 
   Eye, 
   EyeOff, 
-  Radar,
-  Shield,
-  Sparkles,
-  Database,
-  Settings,
-  X
+  Shield 
 } from 'lucide-react';
 import { authenticateUser, fetchGlobalUsersList } from '../utils/auth';
-import { supabase, getActiveSupabaseConfig, initSupabaseBrowserConfig } from '../utils/supabaseClient';
+import { initSupabaseBrowserConfig } from '../utils/supabaseClient';
 
 export default function LoginScreen({ onLoginSuccess, theme = 'dark' }) {
   const [selectedRole, setSelectedRole] = useState('user');
@@ -27,95 +20,12 @@ export default function LoginScreen({ onLoginSuccess, theme = 'dark' }) {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [dbStatus, setDbStatus] = useState({
-    checked: false,
-    connected: false,
-    usersLoaded: 0,
-    projectId: '',
-    error: null
-  });
-  const [showConfigModal, setShowConfigModal] = useState(false);
-  const [configUrl, setConfigUrl] = useState('');
-  const [configKey, setConfigKey] = useState('');
-  const [configLoading, setConfigLoading] = useState(false);
-  const [configError, setConfigError] = useState('');
 
-  const checkSupabase = React.useCallback(async () => {
-    await initSupabaseBrowserConfig().catch(() => {});
-    const { url } = getActiveSupabaseConfig();
-    let projectId = '';
-    try {
-      if (url) {
-        const u = new URL(url);
-        projectId = u.hostname.split('.')[0];
-      }
-    } catch (_) {}
-
-    try {
-      const { data, error: qErr } = await supabase.from('vapt_users').select('id, username, role');
-      if (!qErr && Array.isArray(data)) {
-        setDbStatus({
-          checked: true,
-          connected: true,
-          usersLoaded: data.length,
-          projectId: projectId || 'supabase',
-          error: null
-        });
-      } else {
-        setDbStatus({
-          checked: true,
-          connected: false,
-          usersLoaded: 0,
-          projectId: projectId || '',
-          error: qErr?.message || 'Unable to query vapt_users'
-        });
-      }
-    } catch (err) {
-      setDbStatus({
-        checked: true,
-        connected: false,
-        usersLoaded: 0,
-        projectId: projectId || '',
-        error: err.message
-      });
-    }
+  // Sync Supabase config and users on login screen mount
+  React.useEffect(() => {
+    initSupabaseBrowserConfig().catch(() => {});
     fetchGlobalUsersList().catch(() => {});
   }, []);
-
-  // Sync users and verify live Supabase connection on mount
-  React.useEffect(() => {
-    checkSupabase();
-  }, [checkSupabase]);
-
-  const handleSaveConfig = async (e) => {
-    e?.preventDefault();
-    if (!configUrl.trim() || !configKey.trim()) {
-      setConfigError('Please enter both Supabase Project URL and Anon/Publishable Key.');
-      return;
-    }
-    setConfigError('');
-    setConfigLoading(true);
-    try {
-      const res = await fetch('/api/supabase/init-config', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: configUrl.trim(), key: configKey.trim() })
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data.success) {
-        throw new Error(data.error || 'Failed to save configuration');
-      }
-      if (typeof window !== 'undefined') {
-        window.__SUPABASE_CONFIG__ = { url: configUrl.trim(), key: configKey.trim() };
-      }
-      await checkSupabase();
-      setConfigLoading(false);
-      setShowConfigModal(false);
-    } catch (err) {
-      setConfigLoading(false);
-      setConfigError(err.message || 'Failed to connect to Supabase');
-    }
-  };
 
   const handleRoleSelect = (role) => {
     setSelectedRole(role);
@@ -134,7 +44,6 @@ export default function LoginScreen({ onLoginSuccess, theme = 'dark' }) {
     setIsLoading(true);
 
     try {
-      // Sync fresh users from backend file store
       await fetchGlobalUsersList().catch(() => {});
       const user = await authenticateUser(username, password, selectedRole);
       setIsLoading(false);
@@ -214,56 +123,11 @@ export default function LoginScreen({ onLoginSuccess, theme = 'dark' }) {
           </button>
         </div>
 
-        {/* Supabase Live Cloud Status Badge */}
-        <div className={`p-2.5 px-3 rounded-xl border text-[11px] font-mono flex items-center justify-between transition-all ${
-          dbStatus.connected 
-            ? 'bg-emerald-950/30 border-emerald-500/30 text-emerald-400 shadow-sm'
-            : dbStatus.checked && (!dbStatus.projectId || dbStatus.error)
-            ? 'bg-amber-950/30 border-amber-500/30 text-amber-400'
-            : 'bg-slate-900/40 border-slate-800 text-slate-400'
-        }`}>
-          <div className="flex items-center gap-2 overflow-hidden">
-            <span className={`w-2 h-2 rounded-full flex-shrink-0 ${
-              dbStatus.connected ? 'bg-emerald-400 animate-pulse' : dbStatus.checked ? 'bg-amber-400' : 'bg-cyan-400'
-            }`}></span>
-            <span className="truncate">
-              {dbStatus.connected 
-                ? `Supabase: Connected (${dbStatus.projectId})` 
-                : dbStatus.checked && !dbStatus.projectId
-                ? 'Supabase: Not Configured on Server'
-                : dbStatus.checked && dbStatus.error
-                ? 'Supabase: Connecting...'
-                : 'Connecting to Supabase...'}
-            </span>
-          </div>
-          {dbStatus.connected ? (
-            <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-bold whitespace-nowrap">
-              {dbStatus.usersLoaded} users in vapt_users
-            </span>
-          ) : (
-            <button
-              type="button"
-              onClick={() => { setShowConfigModal(true); setConfigError(''); }}
-              className="text-[10px] px-2.5 py-1 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold transition-all cursor-pointer flex items-center gap-1 shadow-sm"
-            >
-              <Settings className="w-3 h-3" />
-              <span>Connect Cloud</span>
-            </button>
-          )}
-        </div>
-
         {/* Error Alert */}
         {error && (
           <div className="p-3.5 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-600 dark:text-rose-400 text-xs flex items-start gap-2.5">
             <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5 text-rose-400" />
-            <div className="space-y-1">
-              <span className="font-bold block">{error}</span>
-              {error.toLowerCase().includes('password') && (
-                <span className="text-[11px] text-rose-300/90 block leading-tight">
-                  Hint: Passwords must match the record in your Supabase table (<code className="bg-rose-950/50 px-1 py-0.5 rounded text-rose-200">vapt_users</code>). You can verify or edit passwords anytime in your Supabase Table Editor.
-                </span>
-              )}
-            </div>
+            <span className="font-semibold">{error}</span>
           </div>
         )}
 
@@ -327,22 +191,6 @@ export default function LoginScreen({ onLoginSuccess, theme = 'dark' }) {
             </div>
           </div>
 
-          {/* Supabase Dynamic Cloud Authentication Info */}
-          <div className={`p-3 rounded-xl border text-[11px] font-mono space-y-1.5 transition-colors ${
-            theme === 'dark' ? 'bg-[#060B16] border-slate-800 text-slate-400' : 'bg-slate-50 border-slate-200 text-slate-600'
-          }`}>
-            <div className="flex items-center justify-between text-xs font-semibold">
-              <span className="flex items-center gap-1.5 text-cyan-400">
-                <Database className="w-3.5 h-3.5" />
-                <span>Supabase Live Auth</span>
-              </span>
-              <span className="text-[10px] text-slate-500 font-normal">Table: vapt_users</span>
-            </div>
-            <div className="text-[10.5px] leading-relaxed text-slate-400">
-              Users & roles are fetched live from your Supabase cloud table. Passwords can be viewed or changed directly in your Supabase Table Editor.
-            </div>
-          </div>
-
           {/* Submit Button */}
           <div className="pt-2">
             <button
@@ -372,87 +220,6 @@ export default function LoginScreen({ onLoginSuccess, theme = 'dark' }) {
         </div>
 
       </div>
-
-      {/* Supabase Cloud Connection Modal (for Cloud Deployment Setup) */}
-      {showConfigModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
-          <div className={`w-full max-w-lg rounded-2xl border p-6 space-y-5 shadow-2xl relative ${
-            theme === 'dark' ? 'bg-[#090F1E] border-slate-700 text-white' : 'bg-white border-slate-200 text-slate-900'
-          }`}>
-            <div className="flex items-center justify-between border-b pb-3 border-slate-800">
-              <div className="flex items-center gap-2">
-                <Database className="w-5 h-5 text-cyan-400" />
-                <h3 className="font-bold text-sm">Connect Supabase Cloud Database</h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowConfigModal(false)}
-                className="p-1 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition-colors cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <p className="text-xs text-slate-400 leading-relaxed font-mono">
-              Provide your Supabase Project URL and Anon/Publishable Key. This configures the server (<code className="text-cyan-400">senvapt.sennovate.ai</code>) to connect directly to your <code className="text-cyan-400">vapt_users</code> and <code className="text-cyan-400">vapt_scans</code> tables.
-            </p>
-
-            {configError && (
-              <div className="p-3 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-400 text-xs flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                <span>{configError}</span>
-              </div>
-            )}
-
-            <form onSubmit={handleSaveConfig} className="space-y-4">
-              <div className="space-y-1.5 font-mono text-xs">
-                <label className="block text-slate-300 font-bold uppercase tracking-wider">
-                  Supabase Project URL
-                </label>
-                <input
-                  type="text"
-                  value={configUrl}
-                  onChange={(e) => setConfigUrl(e.target.value)}
-                  placeholder="https://xgbpnwetwawnihfmngmq.supabase.co"
-                  className="w-full px-3.5 py-2.5 rounded-xl border bg-[#060B16] border-slate-700 text-white focus:border-cyan-400 focus:outline-none"
-                  required
-                />
-              </div>
-
-              <div className="space-y-1.5 font-mono text-xs">
-                <label className="block text-slate-300 font-bold uppercase tracking-wider">
-                  Supabase Anon / Publishable Key
-                </label>
-                <input
-                  type="password"
-                  value={configKey}
-                  onChange={(e) => setConfigKey(e.target.value)}
-                  placeholder="sb_publishable_... or eyJhbGciOi..."
-                  className="w-full px-3.5 py-2.5 rounded-xl border bg-[#060B16] border-slate-700 text-white focus:border-cyan-400 focus:outline-none"
-                  required
-                />
-              </div>
-
-              <div className="pt-2 flex items-center justify-end gap-2.5">
-                <button
-                  type="button"
-                  onClick={() => setShowConfigModal(false)}
-                  className="px-4 py-2 rounded-xl text-xs font-mono text-slate-400 hover:text-white border border-slate-800 hover:border-slate-700 cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={configLoading}
-                  className="px-5 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs font-mono flex items-center gap-2 shadow-md cursor-pointer disabled:opacity-50"
-                >
-                  {configLoading ? 'Connecting...' : 'Connect to Supabase'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

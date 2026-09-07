@@ -402,15 +402,15 @@ export async function authenticateUser(usernameOrEmail, password, selectedRole =
         const formatted = formatUserFromSupabase({ ...userRow, is_online: true, last_login: nowStr });
         return setCurrentUser(formatted);
       } else {
-        console.warn(`[Supabase Auth FAILED] Password mismatch for "${trimmedInput}" against Supabase vapt_users table.`);
-        throw new Error(`Invalid password for "${userRow.username}". Please check the password stored in Supabase vapt_users table.`);
+        console.warn(`[Supabase Auth FAILED] Password mismatch for "${trimmedInput}" against Supabase.`);
+        throw new Error('Invalid username or password.');
       }
     } else if (Array.isArray(data) && data.length === 0) {
-      console.warn(`[Supabase Auth] No account found in Supabase vapt_users for "${trimmedInput}".`);
-      throw new Error(`User "${trimmedInput}" not found in Supabase vapt_users table.`);
+      console.warn(`[Supabase Auth] No account found in Supabase for "${trimmedInput}".`);
+      throw new Error('Invalid username or password.');
     }
   } catch (err) {
-    if (err.message?.includes('Supabase vapt_users') || err.message?.startsWith('Access Denied:')) throw err;
+    if (err.message === 'Invalid username or password.' || err.message?.startsWith('Access Denied:')) throw err;
     console.warn('[Supabase Auth Note] Cloud query failed, trying local fallback:', err.message);
   }
 
@@ -428,7 +428,7 @@ export async function authenticateUser(usernameOrEmail, password, selectedRole =
   const data = await res.json().catch(() => ({}));
 
   if (!res.ok || !data.success) {
-    throw new Error(data.error || 'Authentication failed. Please verify credentials against Supabase vapt_users table.');
+    throw new Error(data.error || 'Invalid username or password.');
   }
 
   if (data.user) {
@@ -438,7 +438,7 @@ export async function authenticateUser(usernameOrEmail, password, selectedRole =
     return setCurrentUser(data.user);
   }
 
-  throw new Error('Authentication failed. Please check your credentials.');
+  throw new Error('Invalid username or password.');
 }
 
 /**

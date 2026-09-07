@@ -9,17 +9,28 @@ if (typeof process !== 'undefined' && typeof window === 'undefined') {
 
 // Function to resolve current active Supabase URL and Anon Key dynamically
 export function getActiveSupabaseConfig() {
-  const winUrl = (typeof window !== 'undefined' && window.__SUPABASE_CONFIG__) ? window.__SUPABASE_CONFIG__.url : '';
-  const winKey = (typeof window !== 'undefined' && window.__SUPABASE_CONFIG__) ? window.__SUPABASE_CONFIG__.key : '';
+  let winUrl = (typeof window !== 'undefined' && window.__SUPABASE_CONFIG__) ? window.__SUPABASE_CONFIG__.url : '';
+  let winKey = (typeof window !== 'undefined' && window.__SUPABASE_CONFIG__) ? window.__SUPABASE_CONFIG__.key : '';
 
-  const viteUrl = (typeof import.meta !== 'undefined' && import.meta.env) ? import.meta.env.VITE_SUPABASE_URL : '';
-  const viteKey = (typeof import.meta !== 'undefined' && import.meta.env) ? import.meta.env.VITE_SUPABASE_ANON_KEY : '';
+  if (!winUrl && typeof window !== 'undefined') {
+    try {
+      const cached = JSON.parse(sessionStorage.getItem('__senvapt_supabase_cfg') || '{}');
+      if (cached.url && cached.key) {
+        winUrl = cached.url;
+        winKey = cached.key;
+        window.__SUPABASE_CONFIG__ = cached;
+      }
+    } catch (_) {}
+  }
+
+  const viteUrl = (typeof import.meta !== 'undefined' && import.meta.env) ? (import.meta.env.VITE_SUPABASE_URL || import.meta.env.SUPABASE_URL) : '';
+  const viteKey = (typeof import.meta !== 'undefined' && import.meta.env) ? (import.meta.env.VITE_SUPABASE_ANON_KEY || import.meta.env.SUPABASE_ANON_KEY) : '';
 
   const nodeUrl = (typeof process !== 'undefined' && process.env) ? (process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL) : '';
   const nodeKey = (typeof process !== 'undefined' && process.env) ? (process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_KEY) : '';
 
-  const url = viteUrl || winUrl || nodeUrl || '';
-  const key = viteKey || winKey || nodeKey || '';
+  const url = winUrl || viteUrl || nodeUrl || '';
+  const key = winKey || viteKey || nodeKey || '';
 
   return { url, key };
 }
@@ -34,6 +45,9 @@ export async function initSupabaseBrowserConfig() {
         const data = await res.json();
         if (data && data.url && data.key) {
           window.__SUPABASE_CONFIG__ = { url: data.url, key: data.key };
+          try {
+            sessionStorage.setItem('__senvapt_supabase_cfg', JSON.stringify({ url: data.url, key: data.key }));
+          } catch (_) {}
           _activeClient = null;
           _cachedUrl = '';
           _cachedKey = '';
