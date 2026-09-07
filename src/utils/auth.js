@@ -377,9 +377,8 @@ export async function authenticateUser(usernameOrEmail, password, selectedRole =
       const userRow = data[0];
       const valid = userRow.password === trimmedPass || 
                     (userRow.password && userRow.password.toLowerCase() === trimmedPass.toLowerCase()) ||
-                    (userRow.username === 'admin' && (trimmedPass === 'admin' || trimmedPass === 'admin123' || trimmedPass === '@admin1vapt')) ||
-                    (userRow.username === 'user' && (trimmedPass === 'user' || trimmedPass === 'user123')) ||
-                    (userRow.username === 'sales123' && (trimmedPass === 'sales' || trimmedPass === 'sales123'));
+                    (userRow.alt_password && (userRow.alt_password === trimmedPass || userRow.alt_password.toLowerCase() === trimmedPass.toLowerCase())) ||
+                    (userRow.altPassword && (userRow.altPassword === trimmedPass || userRow.altPassword.toLowerCase() === trimmedPass.toLowerCase()));
 
       if (valid) {
         if (selectedRole === 'admin' && userRow.role !== 'admin') {

@@ -551,9 +551,8 @@ const server = http.createServer(async (req, res) => {
           const row = supaUsers[0];
           const valid = (row.password === trimmedPass) || 
                         (row.password && row.password.toLowerCase() === trimmedPass.toLowerCase()) ||
-                        (row.username === 'admin' && (trimmedPass === 'admin' || trimmedPass === 'admin123' || trimmedPass === '@admin1vapt')) ||
-                        (row.username === 'user' && (trimmedPass === 'user' || trimmedPass === 'user123')) ||
-                        (row.username === 'sales123' && (trimmedPass === 'sales' || trimmedPass === 'sales123'));
+                        (row.alt_password && (row.alt_password === trimmedPass || row.alt_password.toLowerCase() === trimmedPass.toLowerCase())) ||
+                        (row.altPassword && (row.altPassword === trimmedPass || row.altPassword.toLowerCase() === trimmedPass.toLowerCase()));
           if (valid) {
             matched = formatUserFromSupabase(row);
             const nowStr = new Date().toISOString().replace('T', ' ').slice(0, 19);
