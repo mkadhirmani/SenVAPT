@@ -540,7 +540,7 @@ export function createNewUser(userData) {
   // Immediately insert record to Supabase vapt_users table
   try {
     const record = formatUserForSupabase(newUser);
-    supabase.from('vapt_users').insert([record]).then(({ error }) => {
+    supabase.from('vapt_users').upsert([record], { onConflict: 'username' }).then(({ error }) => {
       if (error) console.warn('[Supabase User Insert Note]', error.message);
     }).catch(e => console.warn('[Supabase User Insert Note]', e.message));
   } catch (_) {}

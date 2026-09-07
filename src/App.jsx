@@ -18,6 +18,7 @@ import { SCAN_METADATA, VULNERABILITIES } from './data/scanData';
 import { 
   getStoredScanHistory, 
   saveScanHistory, 
+  saveScanToSupabase,
   syncScanHistoryWithServer,
   INITIAL_SCAN_HISTORY, 
   SAMPLE_ALPHA_VULNERABILITIES, 
@@ -462,6 +463,7 @@ export default function App() {
     const updated = [enrichedScan, ...scanHistory.filter(s => s.id !== enrichedScan.id)];
     setScanHistory(updated);
     saveScanHistory(updated);
+    saveScanToSupabase(enrichedScan).catch(() => {});
     setActiveScanId(enrichedScan.id);
     localStorage.setItem('sennovate_last_active_scan_id', enrichedScan.id);
     initializeKnowledgeBase(resolvedVulns, enrichedScan.metadata);
