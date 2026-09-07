@@ -37,7 +37,7 @@ import {
 import { initializeKnowledgeBase } from './utils/ragEngine';
 import { fetchAllRemoteScans, fetchStrixServerConfig } from './utils/strixApi';
 import { fetchGlobalLlmConfig } from './utils/llmEngine';
-import { supabase, formatScanFromSupabase, formatUserFromSupabase } from './utils/supabaseClient';
+import { supabase, formatScanFromSupabase, formatUserFromSupabase } from './utils/supabaseClient.js';
 import { Bot, MessageSquare, X, Sparkles, CheckCircle2, ShieldAlert, Bell } from 'lucide-react';
 
 function playNotificationChime() {

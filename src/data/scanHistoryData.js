@@ -1,5 +1,5 @@
-import { SCAN_METADATA, VULNERABILITIES } from './scanData';
-import { getAuthHeaders } from '../utils/auth';
+import { SCAN_METADATA, VULNERABILITIES } from './scanData.js';
+import { getAuthHeaders } from '../utils/auth.js';
 import { supabase, formatScanForSupabase, formatScanFromSupabase, isSupabaseConfigured } from '../utils/supabaseClient.js';
 
 export const SAMPLE_BETA_VULNERABILITIES = [

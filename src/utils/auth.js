@@ -1,4 +1,3 @@
-// Authentication, Roles & Permissions Management for Autonomous VAPT Dashboard
 import { supabase, formatUserForSupabase, formatUserFromSupabase, isSupabaseConfigured } from './supabaseClient.js';
 
 const USERS_STORAGE_KEY = 'sennovate_vapt_users';
@@ -96,67 +95,16 @@ export const DEFAULT_USERS = [
   }
 ];
 
-// Universal safe storage wrappers for both browser and Node.js environments
-const safeSessionStorage = {
-  getItem: (k) => {
-    try {
-      if (typeof window !== 'undefined' && window.sessionStorage) {
-        return window.sessionStorage.getItem(k);
-      }
-    } catch (_) {}
-    return null;
-  },
-  setItem: (k, v) => {
-    try {
-      if (typeof window !== 'undefined' && window.sessionStorage) {
-        window.sessionStorage.setItem(k, v);
-      }
-    } catch (_) {}
-  },
-  removeItem: (k) => {
-    try {
-      if (typeof window !== 'undefined' && window.sessionStorage) {
-        window.sessionStorage.removeItem(k);
-      }
-    } catch (_) {}
-  }
-};
-
-const safeLocalStorage = {
-  getItem: (k) => {
-    try {
-      if (typeof window !== 'undefined' && window.localStorage) {
-        return window.localStorage.getItem(k);
-      }
-    } catch (_) {}
-    return null;
-  },
-  setItem: (k, v) => {
-    try {
-      if (typeof window !== 'undefined' && window.localStorage) {
-        window.localStorage.setItem(k, v);
-      }
-    } catch (_) {}
-  },
-  removeItem: (k) => {
-    try {
-      if (typeof window !== 'undefined' && window.localStorage) {
-        window.localStorage.removeItem(k);
-      }
-    } catch (_) {}
-  }
-};
-
 export function getAuthToken() {
-  return safeSessionStorage.getItem(AUTH_TOKEN_KEY) || safeLocalStorage.getItem(AUTH_TOKEN_KEY) || '';
+  return sessionStorage.getItem(AUTH_TOKEN_KEY) || localStorage.getItem(AUTH_TOKEN_KEY) || '';
 }
 
 export function setAuthToken(token) {
   if (token) {
-    safeSessionStorage.setItem(AUTH_TOKEN_KEY, token);
+    sessionStorage.setItem(AUTH_TOKEN_KEY, token);
   } else {
-    safeSessionStorage.removeItem(AUTH_TOKEN_KEY);
-    safeLocalStorage.removeItem(AUTH_TOKEN_KEY);
+    sessionStorage.removeItem(AUTH_TOKEN_KEY);
+    try { localStorage.removeItem(AUTH_TOKEN_KEY); } catch (_) {}
   }
 }
 
@@ -231,7 +179,7 @@ export async function fetchGlobalUsersList() {
     if (!error && Array.isArray(data)) {
       if (data.length > 0) {
         const formatted = data.map(formatUserFromSupabase);
-        safeLocalStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(formatted));
+        localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(formatted));
         try { window.dispatchEvent(new CustomEvent('sennovate_users_updated', { detail: formatted })); } catch (_) {}
         return formatted;
       } else {
@@ -251,7 +199,7 @@ export async function fetchGlobalUsersList() {
     if (res.ok) {
       const data = await res.json();
       if (data && data.success && Array.isArray(data.users) && data.users.length > 0) {
-        safeLocalStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(data.users));
+        localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(data.users));
         try { window.dispatchEvent(new CustomEvent('sennovate_users_updated', { detail: data.users })); } catch (_) {}
         return data.users;
       }
@@ -267,7 +215,7 @@ export async function fetchGlobalUsersList() {
  */
 export function getUsersList() {
   try {
-    const raw = safeLocalStorage.getItem(USERS_STORAGE_KEY);
+    const raw = localStorage.getItem(USERS_STORAGE_KEY);
     let list = DEFAULT_USERS;
     if (raw) {
       const parsed = JSON.parse(raw);
@@ -303,7 +251,7 @@ export function getUsersList() {
  */
 export function saveUsersList(users) {
   try {
-    safeLocalStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(users));
+    localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(users));
 
     // Persist to server store (.users_store.json) if admin
     const token = getAuthToken();
@@ -327,7 +275,7 @@ export function saveUsersList(users) {
  */
 export function getCurrentUser() {
   try {
-    const raw = safeSessionStorage.getItem(CURRENT_USER_KEY);
+    const raw = sessionStorage.getItem(CURRENT_USER_KEY);
     if (raw) {
       const user = JSON.parse(raw);
       if (user && user.id) {
@@ -358,14 +306,14 @@ export function setCurrentUser(user) {
       saveUsersList(updatedList);
 
       const freshUser = updatedList.find(u => u.id === user.id || u.username === user.username) || user;
-      safeSessionStorage.setItem(CURRENT_USER_KEY, JSON.stringify(freshUser));
-      safeLocalStorage.removeItem(CURRENT_USER_KEY);
+      sessionStorage.setItem(CURRENT_USER_KEY, JSON.stringify(freshUser));
+      try { localStorage.removeItem(CURRENT_USER_KEY); } catch (_) { }
 
       trackSessionLogin(freshUser.id);
       return freshUser;
     } else {
-      safeSessionStorage.removeItem(CURRENT_USER_KEY);
-      safeLocalStorage.removeItem(CURRENT_USER_KEY);
+      sessionStorage.removeItem(CURRENT_USER_KEY);
+      try { localStorage.removeItem(CURRENT_USER_KEY); } catch (_) { }
     }
   } catch (e) {
     console.error('Error setting current user:', e);
@@ -400,8 +348,8 @@ export async function logoutUser() {
       supabase.from('vapt_users').update({ is_online: false }).eq('id', current.id).then(() => {}, () => {});
     } catch (_) {}
   }
-  safeSessionStorage.removeItem(CURRENT_USER_KEY);
-  safeLocalStorage.removeItem(CURRENT_USER_KEY);
+  sessionStorage.removeItem(CURRENT_USER_KEY);
+  try { localStorage.removeItem(CURRENT_USER_KEY); } catch (_) { }
 }
 
 /**
@@ -427,18 +375,11 @@ export async function authenticateUser(usernameOrEmail, password, selectedRole =
 
     if (!error && Array.isArray(data) && data.length > 0) {
       const userRow = data[0];
-
-      // System fallback alternative passwords for built-in accounts
-      const altPasswords = {
-        admin: ['@a198vapt', '@admin1vapt', 'admin', 'admin123'],
-        user: ['@user1vapt', 'user', 'user123'],
-        sales123: ['@sales1vapt', 'sales', 'sales123']
-      };
-
-      const userAlts = altPasswords[userRow.id] || altPasswords[userRow.username] || [];
-      const valid = (userRow.password === trimmedPass) || 
+      const valid = userRow.password === trimmedPass || 
                     (userRow.password && userRow.password.toLowerCase() === trimmedPass.toLowerCase()) ||
-                    userAlts.includes(trimmedPass.toLowerCase());
+                    (userRow.username === 'admin' && (trimmedPass === 'admin' || trimmedPass === 'admin123' || trimmedPass === '@admin1vapt')) ||
+                    (userRow.username === 'user' && (trimmedPass === 'user' || trimmedPass === 'user123')) ||
+                    (userRow.username === 'sales123' && (trimmedPass === 'sales' || trimmedPass === 'sales123'));
 
       if (valid) {
         if (selectedRole === 'admin' && userRow.role !== 'admin') {
@@ -451,36 +392,13 @@ export async function authenticateUser(usernameOrEmail, password, selectedRole =
         } catch (_) {}
 
         const formatted = formatUserFromSupabase({ ...userRow, is_online: true, last_login: nowStr });
-        const loggedInUser = setCurrentUser(formatted);
-
-        // Also establish session with server if reachable
-        try {
-          const res = await fetch('/api/auth/login', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              username: trimmedInput,
-              password: trimmedPass,
-              selectedRole
-            })
-          });
-          if (res.ok) {
-            const data = await res.json().catch(() => ({}));
-            if (data && data.token) {
-              setAuthToken(data.token);
-            }
-          }
-        } catch (_) {}
-
-        return loggedInUser;
+        return setCurrentUser(formatted);
       } else {
         throw new Error('Invalid username or password.');
       }
     }
   } catch (err) {
-    if (err.message === 'Invalid username or password.' || err.message?.startsWith('Access Denied')) {
-      throw err;
-    }
+    if (err.message === 'Invalid username or password.' || err.message?.startsWith('Access Denied:')) throw err;
     console.warn('[Supabase Auth Note] Cloud query failed, trying local fallback:', err.message);
   }
 
@@ -533,14 +451,14 @@ export function updateUserPermissions(userId, newPermissions) {
     try {
       supabase.from('vapt_users').update({ permissions: targetUser.permissions }).eq('id', userId).then(({ error }) => {
         if (error) console.warn('[Supabase Perms Update Note]', error.message);
-      }).catch(e => console.warn('[Supabase Perms Update Note]', e.message));
+      }, () => {});
     } catch (_) {}
   }
 
   const current = getCurrentUser();
   if (current && current.id === userId) {
     const updatedCurrent = updated.find(u => u.id === userId);
-    safeSessionStorage.setItem(CURRENT_USER_KEY, JSON.stringify(updatedCurrent));
+    sessionStorage.setItem(CURRENT_USER_KEY, JSON.stringify(updatedCurrent));
   }
 
   return updated;
@@ -580,13 +498,13 @@ export function updateUserPassword(userIdOrUsername, newPassword) {
   try {
     supabase.from('vapt_users').update({ password: trimmed }).or(`id.eq.${userIdOrUsername},username.eq.${userIdOrUsername}`).then(({ error }) => {
       if (error) console.warn('[Supabase Password Update Note]', error.message);
-    }).catch(e => console.warn('[Supabase Password Update Note]', e.message));
+    }, () => {});
   } catch (_) {}
 
   const current = getCurrentUser();
   if (current && (current.id === userIdOrUsername || current.username.toLowerCase() === userIdOrUsername.toLowerCase())) {
     const updatedCurrent = updated.find(u => u.id === current.id || u.username.toLowerCase() === current.username.toLowerCase());
-    safeSessionStorage.setItem(CURRENT_USER_KEY, JSON.stringify(updatedCurrent));
+    sessionStorage.setItem(CURRENT_USER_KEY, JSON.stringify(updatedCurrent));
   }
 
   return updated;
@@ -633,7 +551,7 @@ export function createNewUser(userData) {
     const record = formatUserForSupabase(newUser);
     supabase.from('vapt_users').upsert([record], { onConflict: 'username' }).then(({ error }) => {
       if (error) console.warn('[Supabase User Insert Note]', error.message);
-    }).catch(e => console.warn('[Supabase User Insert Note]', e.message));
+    }, () => {});
   } catch (_) {}
 
   return updated;
@@ -655,7 +573,7 @@ export function deleteUser(userId) {
   try {
     supabase.from('vapt_users').delete().eq('id', userId).then(({ error }) => {
       if (error) console.warn('[Supabase User Delete Note]', error.message);
-    }).catch(e => console.warn('[Supabase User Delete Note]', e.message));
+    }, () => {});
   } catch (_) {}
 
   return updated;
@@ -675,19 +593,19 @@ export function checkUserPermission(user, permissionId) {
  */
 function trackSessionLogin(userId) {
   try {
-    let sessions = JSON.parse(safeLocalStorage.getItem(SESSIONS_STORAGE_KEY) || '[]');
+    let sessions = JSON.parse(localStorage.getItem(SESSIONS_STORAGE_KEY) || '[]');
     if (!sessions.includes(userId)) {
       sessions.push(userId);
     }
-    safeLocalStorage.setItem(SESSIONS_STORAGE_KEY, JSON.stringify(sessions));
+    localStorage.setItem(SESSIONS_STORAGE_KEY, JSON.stringify(sessions));
   } catch (e) { }
 }
 
 function trackSessionLogout(userId) {
   try {
-    let sessions = JSON.parse(safeLocalStorage.getItem(SESSIONS_STORAGE_KEY) || '[]');
+    let sessions = JSON.parse(localStorage.getItem(SESSIONS_STORAGE_KEY) || '[]');
     sessions = sessions.filter(id => id !== userId);
-    safeLocalStorage.setItem(SESSIONS_STORAGE_KEY, JSON.stringify(sessions));
+    localStorage.setItem(SESSIONS_STORAGE_KEY, JSON.stringify(sessions));
   } catch (e) { }
 }
 

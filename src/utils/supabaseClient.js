@@ -1,35 +1,26 @@
 import { createClient } from '@supabase/supabase-js';
 
-// Environment variable resolution supporting both Vite frontend and Node.js environments
-const getEnvVar = (key, fallback = '') => {
-  try {
-    if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env[key]) {
-      return import.meta.env[key];
-    }
-  } catch (_) {}
-  try {
-    if (typeof process !== 'undefined' && process.env && process.env[key]) {
-      return process.env[key];
-    }
-  } catch (_) {}
-  return fallback;
-};
+// Automatically load .env in Node.js execution environments
+if (typeof process !== 'undefined' && typeof window === 'undefined') {
+  if (typeof process.loadEnvFile === 'function') {
+    try { process.loadEnvFile(); } catch (_) {}
+  }
+}
 
-export const SUPABASE_URL = 
-  (typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_URL) ||
-  (typeof process !== 'undefined' && (process.env?.VITE_SUPABASE_URL || process.env?.SUPABASE_URL)) ||
-  'https://xgbpnwetwawnihfmngmq.supabase.co';
+// Statically accessible environment variables (Required for Vite compile-time replacement)
+const viteUrl = (typeof import.meta !== 'undefined' && import.meta.env) ? import.meta.env.VITE_SUPABASE_URL : '';
+const viteKey = (typeof import.meta !== 'undefined' && import.meta.env) ? import.meta.env.VITE_SUPABASE_ANON_KEY : '';
 
-export const SUPABASE_ANON_KEY = 
-  (typeof import.meta !== 'undefined' && (import.meta.env?.VITE_SUPABASE_ANON_KEY || import.meta.env?.VITE_SUPABASE_PUBLISHABLE_KEY)) ||
-  (typeof process !== 'undefined' && (process.env?.VITE_SUPABASE_ANON_KEY || process.env?.SUPABASE_ANON_KEY || process.env?.SUPABASE_PUBLISHABLE_KEY)) ||
-  'sb_publishable_o5ldfHD5y_hoFyp_gSas4Q_BcHPliFI';
+// Node.js runtime environment access
+const nodeUrl = (typeof process !== 'undefined' && process.env) ? (process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL) : '';
+const nodeKey = (typeof process !== 'undefined' && process.env) ? (process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_KEY) : '';
+
+export const SUPABASE_URL = viteUrl || nodeUrl || '';
+export const SUPABASE_ANON_KEY = viteKey || nodeKey || '';
 
 export const isSupabaseConfigured = Boolean(
   SUPABASE_URL && 
   SUPABASE_ANON_KEY && 
-  SUPABASE_URL !== 'https://your-project-ref.supabase.co' &&
-  SUPABASE_URL !== 'https://abcdefghijklm.supabase.co' &&
   SUPABASE_URL.startsWith('http')
 );
 
@@ -45,8 +36,11 @@ if (typeof globalThis.WebSocket === 'undefined' && typeof window === 'undefined'
   globalThis.WebSocket = UniversalWebSocketFallback;
 }
 
-// Central Supabase Client
-export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+// Central Supabase Client (Dynamically resolved from environment - zero hardcoded credentials)
+const clientUrl = SUPABASE_URL || 'https://placeholder-vapt.supabase.co';
+const clientKey = SUPABASE_ANON_KEY || 'placeholder-anon-key';
+
+export const supabase = createClient(clientUrl, clientKey, {
   auth: {
     persistSession: true,
     autoRefreshToken: true,
