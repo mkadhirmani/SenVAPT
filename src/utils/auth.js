@@ -373,95 +373,72 @@ export async function authenticateUser(usernameOrEmail, password, selectedRole =
   try {
     const { data, error } = await supabase
       .from('vapt_users')
-      .select('*');
+      .select('*')
+      .or(`username.ilike.${trimmedInput},email.ilike.${trimmedInput}`)
+      .limit(1);
 
-    if (!error && Array.isArray(data) && data.length > 0) {
-      const userRow = data.find(u => 
-        (u.username && u.username.trim().toLowerCase() === trimmedInput) ||
-        (u.email && u.email.trim().toLowerCase() === trimmedInput) ||
-        (u.id && u.id.trim().toLowerCase() === trimmedInput)
-      );
+    if (error) {
+      console.error('[Supabase Auth Error] Failed to query vapt_users table:', error.message);
+    } else if (Array.isArray(data) && data.length > 0) {
+      const userRow = data[0];
+      console.log(`[Supabase Auth] Record retrieved for "${userRow.username}" from Supabase vapt_users table. Checking password...`);
+      const valid = userRow.password === trimmedPass || 
+                    (userRow.password && userRow.password.toLowerCase() === trimmedPass.toLowerCase()) ||
+                    (userRow.alt_password && (userRow.alt_password === trimmedPass || userRow.alt_password.toLowerCase() === trimmedPass.toLowerCase())) ||
+                    (userRow.altPassword && (userRow.altPassword === trimmedPass || userRow.altPassword.toLowerCase() === trimmedPass.toLowerCase()));
 
-      if (userRow) {
-        console.log(`[Supabase Auth] Record retrieved for "${userRow.username}" from Supabase vapt_users table. Checking password...`);
-        const valid = userRow.password === trimmedPass || 
-                      (userRow.password && userRow.password.toLowerCase() === trimmedPass.toLowerCase()) ||
-                      (userRow.alt_password && (userRow.alt_password === trimmedPass || userRow.alt_password.toLowerCase() === trimmedPass.toLowerCase())) ||
-                      (userRow.altPassword && (userRow.altPassword === trimmedPass || userRow.altPassword.toLowerCase() === trimmedPass.toLowerCase()));
-
-        if (valid) {
-          if (selectedRole === 'admin' && userRow.role !== 'admin') {
-            console.warn(`[Supabase Auth] Account "${userRow.username}" does not have admin privileges.`);
-            throw new Error('Access Denied: This account does not have administrator privileges. Please switch to User Login.');
-          }
-
-          console.log(`[Supabase Auth SUCCESS] Password verified for "${userRow.username}" against Supabase!`);
-          const nowStr = new Date().toISOString().replace('T', ' ').slice(0, 19);
-          try {
-            await supabase.from('vapt_users').update({ is_online: true, last_login: nowStr }).eq('id', userRow.id);
-          } catch (_) {}
-
-          const formatted = formatUserFromSupabase({ ...userRow, is_online: true, last_login: nowStr });
-          return setCurrentUser(formatted);
+      if (valid) {
+        if (selectedRole === 'admin' && userRow.role !== 'admin') {
+          console.warn(`[Supabase Auth] Account "${userRow.username}" does not have admin privileges.`);
+          throw new Error('Access Denied: This account does not have administrator privileges. Please switch to User Login.');
         }
+
+        console.log(`[Supabase Auth SUCCESS] Password verified for "${userRow.username}" against Supabase!`);
+        const nowStr = new Date().toISOString().replace('T', ' ').slice(0, 19);
+        try {
+          await supabase.from('vapt_users').update({ is_online: true, last_login: nowStr }).eq('id', userRow.id);
+        } catch (_) {}
+
+        const formatted = formatUserFromSupabase({ ...userRow, is_online: true, last_login: nowStr });
+        return setCurrentUser(formatted);
+      } else {
+        console.warn(`[Supabase Auth FAILED] Password mismatch for "${trimmedInput}" against Supabase vapt_users table.`);
+        throw new Error(`Invalid password for "${userRow.username}". Please check the password stored in Supabase vapt_users table.`);
       }
+    } else if (Array.isArray(data) && data.length === 0) {
+      console.warn(`[Supabase Auth] No account found in Supabase vapt_users for "${trimmedInput}".`);
+      throw new Error(`User "${trimmedInput}" not found in Supabase vapt_users table.`);
     }
   } catch (err) {
-    if (err.message?.startsWith('Access Denied:')) throw err;
-    console.warn('[Auth Note] Direct cloud match check passed to backend:', err.message);
+    if (err.message?.includes('Supabase vapt_users') || err.message?.startsWith('Access Denied:')) throw err;
+    console.warn('[Supabase Auth Note] Cloud query failed, trying local fallback:', err.message);
   }
 
-  // 2. Fallback to secure backend endpoint (/api/auth/login)
-  try {
-    const res = await fetch('/api/auth/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        username: trimmedInput,
-        password: trimmedPass,
-        selectedRole
-      })
-    });
+  // 2. Fallback to server endpoint
+  const res = await fetch('/api/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      username: trimmedInput,
+      password: trimmedPass,
+      selectedRole
+    })
+  });
 
-    const data = await res.json().catch(() => ({}));
+  const data = await res.json().catch(() => ({}));
 
-    if (res.ok && data.success && data.user) {
-      if (data.token) {
-        setAuthToken(data.token);
-      }
-      return setCurrentUser(data.user);
-    }
-
-    if (data.error) {
-      throw new Error(data.error);
-    }
-  } catch (err) {
-    if (err.message && !err.message.includes('Failed to fetch')) {
-      throw err;
-    }
+  if (!res.ok || !data.success) {
+    throw new Error(data.error || 'Authentication failed. Please verify credentials against Supabase vapt_users table.');
   }
 
-  // 3. Graceful offline fallback to local users list
-  const localList = getUsersList();
-  const localUser = localList.find(u => 
-    (u.username && u.username.trim().toLowerCase() === trimmedInput) ||
-    (u.email && u.email.trim().toLowerCase() === trimmedInput) ||
-    (u.id && u.id.trim().toLowerCase() === trimmedInput)
-  );
-
-  if (localUser) {
-    const valid = (localUser.password === trimmedPass) || 
-                  (localUser.password && localUser.password.toLowerCase() === trimmedPass.toLowerCase());
-    if (valid) {
-      if (selectedRole === 'admin' && localUser.role !== 'admin') {
-        throw new Error('Access Denied: This account does not have administrator privileges. Please switch to User Login.');
-      }
-      return setCurrentUser(localUser);
+  if (data.user) {
+    if (data.token) {
+      setAuthToken(data.token);
     }
-    throw new Error(`Invalid password for "${localUser.username}".`);
+    return setCurrentUser(data.user);
   }
 
-  throw new Error(`Account "${trimmedInput}" not found.`);
+  throw new Error('Authentication failed. Please check your credentials.');
 }
 
 /**

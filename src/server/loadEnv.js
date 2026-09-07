@@ -44,6 +44,25 @@ export function loadEnvFiles() {
       }
     } catch (_) {}
   }
+
+  // Load persisted Supabase credentials if environment variables not set
+  const confFiles = [
+    path.join(process.cwd(), '.supabase_config.json'),
+    path.resolve('.supabase_config.json')
+  ];
+  for (const confFile of confFiles) {
+    try {
+      if (fs.existsSync(confFile)) {
+        const conf = JSON.parse(fs.readFileSync(confFile, 'utf-8'));
+        if (conf && conf.url && conf.key) {
+          if (!process.env.SUPABASE_URL) process.env.SUPABASE_URL = conf.url;
+          if (!process.env.VITE_SUPABASE_URL) process.env.VITE_SUPABASE_URL = conf.url;
+          if (!process.env.SUPABASE_ANON_KEY) process.env.SUPABASE_ANON_KEY = conf.key;
+          if (!process.env.VITE_SUPABASE_ANON_KEY) process.env.VITE_SUPABASE_ANON_KEY = conf.key;
+        }
+      }
+    } catch (_) {}
+  }
 }
 
 loadEnvFiles();
