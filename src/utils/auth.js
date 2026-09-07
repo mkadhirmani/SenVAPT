@@ -428,7 +428,7 @@ export async function authenticateUser(usernameOrEmail, password, selectedRole =
   const data = await res.json().catch(() => ({}));
 
   if (!res.ok || !data.success) {
-    throw new Error(data.error || 'Invalid username or password.');
+    throw new Error(data.error || 'Authentication failed. Please verify credentials against Supabase vapt_users table.');
   }
 
   if (data.user) {
