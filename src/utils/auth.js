@@ -402,16 +402,16 @@ export async function authenticateUser(usernameOrEmail, password, selectedRole =
         const formatted = formatUserFromSupabase({ ...userRow, is_online: true, last_login: nowStr });
         return setCurrentUser(formatted);
       } else {
-        console.warn(`[Supabase Auth FAILED] Password mismatch for "${trimmedInput}" against Supabase vapt_users table.`);
-        throw new Error(`Invalid password for "${userRow.username}". Please check the password stored in Supabase vapt_users table.`);
+        console.warn(`[Auth] Password mismatch for "${trimmedInput}".`);
+        throw new Error(`Invalid password for "${userRow.username}".`);
       }
     } else if (Array.isArray(data) && data.length === 0) {
-      console.warn(`[Supabase Auth] No account found in Supabase vapt_users for "${trimmedInput}".`);
-      throw new Error(`User "${trimmedInput}" not found in Supabase vapt_users table.`);
+      console.warn(`[Auth] No account found for "${trimmedInput}".`);
+      throw new Error(`Account "${trimmedInput}" not found.`);
     }
   } catch (err) {
-    if (err.message?.includes('Supabase vapt_users') || err.message?.startsWith('Access Denied:')) throw err;
-    console.warn('[Supabase Auth Note] Cloud query failed, trying local fallback:', err.message);
+    if (err.message?.includes('not found') || err.message?.includes('Invalid password') || err.message?.startsWith('Access Denied:')) throw err;
+    console.warn('[Auth Note] Cloud query failed, trying local fallback:', err.message);
   }
 
   // 2. Fallback to server endpoint
@@ -428,7 +428,7 @@ export async function authenticateUser(usernameOrEmail, password, selectedRole =
   const data = await res.json().catch(() => ({}));
 
   if (!res.ok || !data.success) {
-    throw new Error(data.error || 'Authentication failed. Please verify credentials against Supabase vapt_users table.');
+    throw new Error(data.error || 'Authentication failed. Please check your credentials.');
   }
 
   if (data.user) {

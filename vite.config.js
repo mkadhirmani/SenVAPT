@@ -582,8 +582,8 @@ function strixBackendPlugin() {
               res.setHeader('Content-Type', 'application/json');
               res.statusCode = 401;
               const msg = supabaseMismatch
-                ? `Invalid password for "${trimmedInput}". Please check the password stored in Supabase vapt_users table.`
-                : `User "${trimmedInput}" not found in Supabase vapt_users table.`;
+                ? `Invalid password for "${trimmedInput}".`
+                : `Account "${trimmedInput}" not found.`;
               res.end(JSON.stringify({ success: false, error: msg }));
               return;
             }
