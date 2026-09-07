@@ -15,13 +15,21 @@ const getEnvVar = (key, fallback = '') => {
   return fallback;
 };
 
-export const SUPABASE_URL = getEnvVar('VITE_SUPABASE_URL', 'https://abcdefghijklm.supabase.co');
-export const SUPABASE_ANON_KEY = getEnvVar('VITE_SUPABASE_ANON_KEY', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9');
+export const SUPABASE_URL = 
+  (typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_URL) ||
+  (typeof process !== 'undefined' && (process.env?.VITE_SUPABASE_URL || process.env?.SUPABASE_URL)) ||
+  'https://xgbpnwetwawnihfmngmq.supabase.co';
+
+export const SUPABASE_ANON_KEY = 
+  (typeof import.meta !== 'undefined' && (import.meta.env?.VITE_SUPABASE_ANON_KEY || import.meta.env?.VITE_SUPABASE_PUBLISHABLE_KEY)) ||
+  (typeof process !== 'undefined' && (process.env?.VITE_SUPABASE_ANON_KEY || process.env?.SUPABASE_ANON_KEY || process.env?.SUPABASE_PUBLISHABLE_KEY)) ||
+  'sb_publishable_o5ldfHD5y_hoFyp_gSas4Q_BcHPliFI';
 
 export const isSupabaseConfigured = Boolean(
   SUPABASE_URL && 
   SUPABASE_ANON_KEY && 
   SUPABASE_URL !== 'https://your-project-ref.supabase.co' &&
+  SUPABASE_URL !== 'https://abcdefghijklm.supabase.co' &&
   SUPABASE_URL.startsWith('http')
 );
 
