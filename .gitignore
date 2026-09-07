@@ -14,6 +14,8 @@ dist-ssr/
 .scans_cache.json
 .users_store.json
 .users.json
+.supabase_schema.sql
+supabase_schema.sql
 data_defaults/
 data_defaults/**
 .env

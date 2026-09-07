@@ -806,10 +806,11 @@ export default function ScanHud({
         }
         if (!inferredCompany) inferredCompany = 'Security Audit Target';
 
+        const runFolderName = (results.folderName && !results.folderName.endsWith('.zip')) ? results.folderName : `scan-${Date.now()}`;
         const newScan = {
-          id: results.folderName || `scan-${Date.now()}`,
-          folderName: results.folderName,
-          outputFolderPath: results.outputFolderPath || results.extractedPath || file.name,
+          id: runFolderName,
+          folderName: runFolderName,
+          outputFolderPath: results.outputFolderPath || results.extractedPath || `/root/strix_runs/${runFolderName}`,
           companyName: inferredCompany,
           targetUrl: detectedTarget,
           timestamp: results.timestamp || new Date().toISOString().replace('T', ' ').slice(0, 16),

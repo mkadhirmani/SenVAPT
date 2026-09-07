@@ -490,8 +490,12 @@ export async function syncScanHistoryWithServer() {
       const data = await res.json();
       const serverScans = (data && data.success && Array.isArray(data.scans)) ? data.scans : [];
       for (const ss of serverScans) {
-        if (ss && ss.id && !scanMap.has(ss.id)) {
-          scanMap.set(ss.id, ss);
+        if (ss && ss.id) {
+          if (!scanMap.has(ss.id)) {
+            scanMap.set(ss.id, ss);
+          }
+          // Push existing server scan to Supabase cloud table
+          saveScanToSupabase(ss).catch(() => {});
         }
       }
     }
@@ -502,8 +506,30 @@ export async function syncScanHistoryWithServer() {
   const merged = Array.from(scanMap.values());
   if (merged.length > 0) {
     localStorage.setItem('sennovate_scan_history', JSON.stringify(merged));
+    // Ensure all existing scans are stored in Supabase
+    merged.forEach(s => saveScanToSupabase(s).catch(() => {}));
     return merged;
   }
 
   return getStoredScanHistory();
+}
+
+/**
+ * Seed all existing scans from local or server store into Supabase vapt_scans table
+ */
+export async function seedAllScansToSupabase(scansList = null) {
+  try {
+    const list = scansList || getStoredScanHistory();
+    if (!Array.isArray(list) || list.length === 0) return;
+    const payloads = list.map(formatScanForSupabase).filter(Boolean);
+    if (payloads.length > 0) {
+      const { data, error } = await supabase
+        .from('vapt_scans')
+        .upsert(payloads, { onConflict: 'id' });
+      if (error) console.warn('[Supabase Scan Seed Note]', error.message);
+      return data;
+    }
+  } catch (err) {
+    console.warn('[Supabase Scan Seed Note]', err.message);
+  }
 }

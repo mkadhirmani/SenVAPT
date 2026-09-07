@@ -66,9 +66,28 @@ export function formatScanForSupabase(scan) {
   const riskScore = scan.riskScore !== undefined ? scan.riskScore : (vulns.length > 0 ? (vulns[0]?.cvss || 5.5) : 4.0);
   const riskLevel = scan.riskLevel || (critCount > 0 ? 'CRITICAL' : (highCount > 0 ? 'HIGH' : (vulns.length > 0 ? 'ELEVATED' : 'LOW')));
 
-  const id = scan.id || scan.folderName || `scan-${Date.now()}`;
-  const folderName = scan.folderName || scan.id || id;
-  const outputFolderPath = scan.outputFolderPath || scan.metadata?.remoteRunDir || scan.extractedPath || '';
+  // Extract pure resultant folder name (never a .zip filename)
+  let rawFolder = scan.folderName || scan.metadata?.runId || scan.id || '';
+  if (rawFolder.endsWith('.zip')) {
+    rawFolder = rawFolder.replace(/\.zip$/i, '');
+  }
+
+  // Determine server resultant folder path (never a .zip file)
+  let outputFolderPath = scan.outputFolderPath || scan.metadata?.remoteRunDir || scan.extractedPath || '';
+  if (outputFolderPath.includes('/root/')) {
+    outputFolderPath = '/' + outputFolderPath.slice(outputFolderPath.indexOf('root/'));
+  }
+  if (outputFolderPath.endsWith('.zip') || !outputFolderPath) {
+    outputFolderPath = `/root/strix_runs/${rawFolder}`;
+  }
+
+  // If rawFolder has a path, take the basename
+  const segments = rawFolder.split(/[\\\/]/).filter(Boolean);
+  const folderName = segments.length > 0 ? segments[segments.length - 1] : `scan-${Date.now()}`;
+
+  // ID should match the resultant folder run ID
+  const id = scan.id && !scan.id.endsWith('.zip') ? scan.id : folderName;
+
   const targetUrl = scan.targetUrl || scan.metadata?.targetUrl || 'https://target.com';
   const companyName = scan.companyName || scan.metadata?.companyName || 'Target Organization';
   const durationSec = scan.durationSec || scan.metadata?.durationSec || 240;

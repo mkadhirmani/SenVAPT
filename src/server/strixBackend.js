@@ -1817,10 +1817,24 @@ export async function uploadScanZipProxy(payload) {
   const bestDir = resolved.bestDir || extractDir;
   const parsed = parseLocalStrixFolder(bestDir);
 
+  let resultantFolderPath = resolved.outputFullPath || '';
+  if (!resultantFolderPath || resultantFolderPath.endsWith('.zip')) {
+    if (bestDir.includes('/root/')) {
+      resultantFolderPath = '/' + bestDir.slice(bestDir.indexOf('root/'));
+    } else {
+      resultantFolderPath = `/root/strix_runs/${resolved.folderName || path.basename(bestDir)}`;
+    }
+  }
+
+  const finalFolderName = (resolved.folderName && !resolved.folderName.endsWith('.zip'))
+    ? resolved.folderName
+    : path.basename(bestDir);
+
   return {
     success: true,
     extractedPath: bestDir,
-    folderName: resolved.folderName || safeName,
+    folderName: finalFolderName,
+    outputFolderPath: resultantFolderPath,
     zipSize: buffer.length,
     zipSizeFormatted: `${(buffer.length / 1024).toFixed(1)} KB`,
     ...parsed

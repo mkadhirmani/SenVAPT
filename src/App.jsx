@@ -106,41 +106,20 @@ export default function App() {
   // Scan History state
   const [scanHistory, setScanHistory] = useState(() => getStoredScanHistory());
 
-  // Scoped Scan History based on User Role:
-  // Admin sees ALL scans across all users and accounts.
-  // Each non-admin user (e.g. 'user', 'sales123', or any custom created user) ONLY sees scans they created.
+  // All previous scans are visible for whomever logs in
   const visibleScanHistory = React.useMemo(() => {
     if (!currentUser) return [];
-    if (currentUser.role === 'admin' || currentUser.username === 'admin') {
-      return scanHistory;
-    }
-    const currentUname = (currentUser.username || '').toLowerCase();
-    const currentUid = (currentUser.id || '').toLowerCase();
-
-    return scanHistory.filter(s => {
-      const creator = (s.createdBy || s.scannedBy || '').toLowerCase();
-      return creator === currentUname || creator === currentUid;
-    });
+    return scanHistory;
   }, [scanHistory, currentUser]);
   
-  // Default to the last active scan ID or the most recent scan in visible history
+  // Default to the last active scan ID or the most recent scan in history
   const [activeScanId, setActiveScanId] = useState(() => {
-    const user = getCurrentUser();
     const history = getStoredScanHistory();
-    const currentUname = (user?.username || '').toLowerCase();
-    const currentUid = (user?.id || '').toLowerCase();
-    const visible = (!user || user.role === 'admin' || user.username === 'admin')
-      ? history
-      : history.filter(s => {
-          const creator = (s.createdBy || s.scannedBy || '').toLowerCase();
-          return creator === currentUname || creator === currentUid;
-        });
-
     const savedActiveId = localStorage.getItem('sennovate_last_active_scan_id');
-    if (savedActiveId && visible.some(s => s.id === savedActiveId)) {
+    if (savedActiveId && history.some(s => s.id === savedActiveId)) {
       return savedActiveId;
     }
-    return visible[0]?.id || "";
+    return history[0]?.id || "";
   });
 
   // Dynamic Scan Findings state - reactively bound to activeScanId and visibleScanHistory
@@ -547,16 +526,9 @@ export default function App() {
       }
     } catch (_) {}
 
-    const visible = user.role === 'admin'
-      ? history
-      : history.filter(s => {
-          const creator = (s.createdBy || s.scannedBy || '').toLowerCase();
-          return creator === user.username.toLowerCase() || creator === 'user' || creator === 'user1';
-        });
-
-    if (visible.length > 0) {
-      setActiveScanId(visible[0].id);
-      localStorage.setItem('sennovate_last_active_scan_id', visible[0].id);
+    if (history && history.length > 0) {
+      setActiveScanId(history[0].id);
+      localStorage.setItem('sennovate_last_active_scan_id', history[0].id);
     } else {
       setActiveScanId('');
       localStorage.removeItem('sennovate_last_active_scan_id');
