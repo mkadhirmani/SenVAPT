@@ -1,3 +1,4 @@
+import './src/server/loadEnv.js';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import crypto from 'crypto';
@@ -518,6 +519,7 @@ function strixBackendPlugin() {
 
             // 1. Dynamic Authentication against Supabase vapt_users table
             let matched = null;
+            console.log(`\n[AUTH] Login attempt received for "${trimmedInput}" (role requested: ${selectedRole || 'any'})...`);
             try {
               const { data: supaUsers, error: supaErr } = await supabase
                 .from('vapt_users')
@@ -525,22 +527,30 @@ function strixBackendPlugin() {
                 .or(`username.ilike.${trimmedInput},email.ilike.${trimmedInput}`)
                 .limit(1);
 
-              if (!supaErr && Array.isArray(supaUsers) && supaUsers.length > 0) {
+              if (supaErr) {
+                console.error(`[AUTH SUPABASE ERROR] Failed to query Supabase vapt_users table:`, supaErr.message);
+              } else if (Array.isArray(supaUsers) && supaUsers.length > 0) {
                 const row = supaUsers[0];
+                console.log(`[AUTH SUPABASE] User record found for "${row.username}" in Supabase vapt_users table. Checking password...`);
                 const valid = (row.password === trimmedPass) || 
                               (row.password && row.password.toLowerCase() === trimmedPass.toLowerCase()) ||
                               (row.alt_password && (row.alt_password === trimmedPass || row.alt_password.toLowerCase() === trimmedPass.toLowerCase())) ||
                               (row.altPassword && (row.altPassword === trimmedPass || row.altPassword.toLowerCase() === trimmedPass.toLowerCase()));
                 if (valid) {
+                  console.log(`[AUTH SUCCESS] Password verified for "${row.username}" against Supabase vapt_users table.`);
                   matched = formatUserFromSupabase(row);
                   const nowStr = new Date().toISOString().replace('T', ' ').slice(0, 19);
                   try {
                     await supabase.from('vapt_users').update({ is_online: true, last_login: nowStr }).eq('id', row.id);
                   } catch (_) {}
+                } else {
+                  console.warn(`[AUTH FAILED] Password mismatch for "${trimmedInput}" against Supabase vapt_users record.`);
                 }
+              } else {
+                console.warn(`[AUTH SUPABASE] No user record found in Supabase vapt_users table for "${trimmedInput}".`);
               }
             } catch (err) {
-              console.warn('Note checking Supabase credentials:', err.message);
+              console.warn('[AUTH ERROR] Supabase check error:', err.message);
             }
 
             // 2. Dynamic fallback to local store if Supabase is offline

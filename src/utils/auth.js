@@ -366,6 +366,7 @@ export async function authenticateUser(usernameOrEmail, password, selectedRole =
   }
 
   // 1. Dynamic Cloud Authentication via Supabase vapt_users table
+  console.log(`[Supabase Auth] Attempting dynamic authentication for "${trimmedInput}" (role: ${selectedRole || 'any'})...`);
   try {
     const { data, error } = await supabase
       .from('vapt_users')
@@ -373,8 +374,11 @@ export async function authenticateUser(usernameOrEmail, password, selectedRole =
       .or(`username.ilike.${trimmedInput},email.ilike.${trimmedInput}`)
       .limit(1);
 
-    if (!error && Array.isArray(data) && data.length > 0) {
+    if (error) {
+      console.error('[Supabase Auth Error] Failed to query vapt_users table:', error.message);
+    } else if (Array.isArray(data) && data.length > 0) {
       const userRow = data[0];
+      console.log(`[Supabase Auth] Record retrieved for "${userRow.username}" from Supabase vapt_users table. Checking password...`);
       const valid = userRow.password === trimmedPass || 
                     (userRow.password && userRow.password.toLowerCase() === trimmedPass.toLowerCase()) ||
                     (userRow.alt_password && (userRow.alt_password === trimmedPass || userRow.alt_password.toLowerCase() === trimmedPass.toLowerCase())) ||
@@ -382,9 +386,11 @@ export async function authenticateUser(usernameOrEmail, password, selectedRole =
 
       if (valid) {
         if (selectedRole === 'admin' && userRow.role !== 'admin') {
+          console.warn(`[Supabase Auth] Account "${userRow.username}" does not have admin privileges.`);
           throw new Error('Access Denied: This account does not have administrator privileges. Please switch to User Login.');
         }
 
+        console.log(`[Supabase Auth SUCCESS] Password verified for "${userRow.username}" against Supabase!`);
         const nowStr = new Date().toISOString().replace('T', ' ').slice(0, 19);
         try {
           await supabase.from('vapt_users').update({ is_online: true, last_login: nowStr }).eq('id', userRow.id);
@@ -393,8 +399,11 @@ export async function authenticateUser(usernameOrEmail, password, selectedRole =
         const formatted = formatUserFromSupabase({ ...userRow, is_online: true, last_login: nowStr });
         return setCurrentUser(formatted);
       } else {
+        console.warn(`[Supabase Auth FAILED] Password mismatch for "${trimmedInput}" against Supabase vapt_users table.`);
         throw new Error('Invalid username or password.');
       }
+    } else {
+      console.warn(`[Supabase Auth] No account found in Supabase vapt_users for "${trimmedInput}".`);
     }
   } catch (err) {
     if (err.message === 'Invalid username or password.' || err.message?.startsWith('Access Denied:')) throw err;

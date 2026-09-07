@@ -7,21 +7,27 @@ if (typeof process !== 'undefined' && typeof window === 'undefined') {
   }
 }
 
-// Statically accessible environment variables (Required for Vite compile-time replacement)
-const viteUrl = (typeof import.meta !== 'undefined' && import.meta.env) ? import.meta.env.VITE_SUPABASE_URL : '';
-const viteKey = (typeof import.meta !== 'undefined' && import.meta.env) ? import.meta.env.VITE_SUPABASE_ANON_KEY : '';
+// Function to resolve current active Supabase URL and Anon Key dynamically
+export function getActiveSupabaseConfig() {
+  const viteUrl = (typeof import.meta !== 'undefined' && import.meta.env) ? import.meta.env.VITE_SUPABASE_URL : '';
+  const viteKey = (typeof import.meta !== 'undefined' && import.meta.env) ? import.meta.env.VITE_SUPABASE_ANON_KEY : '';
 
-// Node.js runtime environment access
-const nodeUrl = (typeof process !== 'undefined' && process.env) ? (process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL) : '';
-const nodeKey = (typeof process !== 'undefined' && process.env) ? (process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_KEY) : '';
+  const nodeUrl = (typeof process !== 'undefined' && process.env) ? (process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL) : '';
+  const nodeKey = (typeof process !== 'undefined' && process.env) ? (process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_KEY) : '';
 
-export const SUPABASE_URL = viteUrl || nodeUrl || '';
-export const SUPABASE_ANON_KEY = viteKey || nodeKey || '';
+  const url = viteUrl || nodeUrl || '';
+  const key = viteKey || nodeKey || '';
+
+  return { url, key };
+}
+
+export const SUPABASE_URL = getActiveSupabaseConfig().url;
+export const SUPABASE_ANON_KEY = getActiveSupabaseConfig().key;
 
 export const isSupabaseConfigured = Boolean(
-  SUPABASE_URL && 
-  SUPABASE_ANON_KEY && 
-  SUPABASE_URL.startsWith('http')
+  getActiveSupabaseConfig().url && 
+  getActiveSupabaseConfig().key && 
+  getActiveSupabaseConfig().url.startsWith('http')
 );
 
 // Universal WebSocket compatibility for Node.js execution environments
@@ -36,20 +42,44 @@ if (typeof globalThis.WebSocket === 'undefined' && typeof window === 'undefined'
   globalThis.WebSocket = UniversalWebSocketFallback;
 }
 
-// Central Supabase Client (Dynamically resolved from environment - zero hardcoded credentials)
-const clientUrl = SUPABASE_URL || 'https://placeholder-vapt.supabase.co';
-const clientKey = SUPABASE_ANON_KEY || 'placeholder-anon-key';
+// Dynamic Client Instance Manager
+let _activeClient = null;
+let _cachedUrl = '';
+let _cachedKey = '';
 
-export const supabase = createClient(clientUrl, clientKey, {
-  auth: {
-    persistSession: true,
-    autoRefreshToken: true,
-    detectSessionInUrl: false
-  },
-  realtime: {
-    params: {
-      eventsPerSecond: 10
+export function getSupabaseClient() {
+  const { url, key } = getActiveSupabaseConfig();
+  const effectiveUrl = url || 'https://placeholder-vapt.supabase.co';
+  const effectiveKey = key || 'placeholder-anon-key';
+
+  if (!_activeClient || _cachedUrl !== effectiveUrl || _cachedKey !== effectiveKey) {
+    _cachedUrl = effectiveUrl;
+    _cachedKey = effectiveKey;
+    _activeClient = createClient(effectiveUrl, effectiveKey, {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: false
+      },
+      realtime: {
+        params: {
+          eventsPerSecond: 10
+        }
+      }
+    });
+  }
+  return _activeClient;
+}
+
+// Central Supabase Client Proxy (Always routes queries to the live configured project)
+export const supabase = new Proxy({}, {
+  get(target, prop) {
+    const client = getSupabaseClient();
+    const val = client[prop];
+    if (typeof val === 'function') {
+      return val.bind(client);
     }
+    return val;
   }
 });
 
