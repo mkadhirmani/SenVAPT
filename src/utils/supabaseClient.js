@@ -9,16 +9,38 @@ if (typeof process !== 'undefined' && typeof window === 'undefined') {
 
 // Function to resolve current active Supabase URL and Anon Key dynamically
 export function getActiveSupabaseConfig() {
+  const winUrl = (typeof window !== 'undefined' && window.__SUPABASE_CONFIG__) ? window.__SUPABASE_CONFIG__.url : '';
+  const winKey = (typeof window !== 'undefined' && window.__SUPABASE_CONFIG__) ? window.__SUPABASE_CONFIG__.key : '';
+
   const viteUrl = (typeof import.meta !== 'undefined' && import.meta.env) ? import.meta.env.VITE_SUPABASE_URL : '';
   const viteKey = (typeof import.meta !== 'undefined' && import.meta.env) ? import.meta.env.VITE_SUPABASE_ANON_KEY : '';
 
   const nodeUrl = (typeof process !== 'undefined' && process.env) ? (process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL) : '';
   const nodeKey = (typeof process !== 'undefined' && process.env) ? (process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_KEY) : '';
 
-  const url = viteUrl || nodeUrl || '';
-  const key = viteKey || nodeKey || '';
+  const url = viteUrl || winUrl || nodeUrl || '';
+  const key = viteKey || winKey || nodeKey || '';
 
   return { url, key };
+}
+
+export async function initSupabaseBrowserConfig() {
+  if (typeof window === 'undefined') return;
+  const { url, key } = getActiveSupabaseConfig();
+  if (!url || !key || url.includes('placeholder')) {
+    try {
+      const res = await fetch('/api/supabase/config');
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.url && data.key) {
+          window.__SUPABASE_CONFIG__ = { url: data.url, key: data.key };
+          _activeClient = null;
+          _cachedUrl = '';
+          _cachedKey = '';
+        }
+      }
+    } catch (_) {}
+  }
 }
 
 export const SUPABASE_URL = getActiveSupabaseConfig().url;

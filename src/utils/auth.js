@@ -1,4 +1,4 @@
-import { supabase, formatUserForSupabase, formatUserFromSupabase, isSupabaseConfigured } from './supabaseClient.js';
+import { supabase, formatUserForSupabase, formatUserFromSupabase, isSupabaseConfigured, initSupabaseBrowserConfig } from './supabaseClient.js';
 
 const USERS_STORAGE_KEY = 'sennovate_vapt_users';
 const CURRENT_USER_KEY = 'sennovate_current_user';
@@ -169,6 +169,7 @@ export async function seedDefaultUsersToSupabase() {
  * with graceful fallback to backend server and local storage
  */
 export async function fetchGlobalUsersList() {
+  await initSupabaseBrowserConfig().catch(() => {});
   // 1. Query Supabase cloud database
   try {
     const { data, error } = await supabase
@@ -365,6 +366,8 @@ export async function authenticateUser(usernameOrEmail, password, selectedRole =
     throw new Error('Please enter both username and password.');
   }
 
+  await initSupabaseBrowserConfig().catch(() => {});
+
   // 1. Dynamic Cloud Authentication via Supabase vapt_users table
   console.log(`[Supabase Auth] Attempting dynamic authentication for "${trimmedInput}" (role: ${selectedRole || 'any'})...`);
   try {
@@ -400,13 +403,14 @@ export async function authenticateUser(usernameOrEmail, password, selectedRole =
         return setCurrentUser(formatted);
       } else {
         console.warn(`[Supabase Auth FAILED] Password mismatch for "${trimmedInput}" against Supabase vapt_users table.`);
-        throw new Error('Invalid username or password.');
+        throw new Error(`Invalid password for "${userRow.username}". Please check the password stored in Supabase vapt_users table.`);
       }
-    } else {
+    } else if (Array.isArray(data) && data.length === 0) {
       console.warn(`[Supabase Auth] No account found in Supabase vapt_users for "${trimmedInput}".`);
+      throw new Error(`User "${trimmedInput}" not found in Supabase vapt_users table.`);
     }
   } catch (err) {
-    if (err.message === 'Invalid username or password.' || err.message?.startsWith('Access Denied:')) throw err;
+    if (err.message?.includes('Supabase vapt_users') || err.message?.startsWith('Access Denied:')) throw err;
     console.warn('[Supabase Auth Note] Cloud query failed, trying local fallback:', err.message);
   }
 

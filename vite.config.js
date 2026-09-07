@@ -26,7 +26,8 @@ import {
   supabase, 
   formatUserFromSupabase, 
   formatUserForSupabase,
-  formatScanForSupabase
+  formatScanForSupabase,
+  getActiveSupabaseConfig
 } from './src/utils/supabaseClient.js';
 import path from 'path';
 import fs from 'fs';
@@ -493,6 +494,14 @@ function strixBackendPlugin() {
         } catch (e) {}
       };
 
+      // 3.6 Supabase Configuration (Public Anon Key & URL for client bootstrapping)
+      server.middlewares.use('/api/supabase/config', (req, res) => {
+        res.setHeader('Content-Type', 'application/json');
+        res.statusCode = 200;
+        const { url, key } = getActiveSupabaseConfig();
+        res.end(JSON.stringify({ success: true, url, key }));
+      });
+
       // Authenticate User Login & Issue Cryptographic Session Token
       server.middlewares.use('/api/auth/login', (req, res) => {
         if (req.method !== 'POST') {
@@ -519,6 +528,8 @@ function strixBackendPlugin() {
 
             // 1. Dynamic Authentication against Supabase vapt_users table
             let matched = null;
+            let supabaseMismatch = false;
+            let userFoundInDb = false;
             console.log(`\n[AUTH] Login attempt received for "${trimmedInput}" (role requested: ${selectedRole || 'any'})...`);
             try {
               const { data: supaUsers, error: supaErr } = await supabase
@@ -530,6 +541,7 @@ function strixBackendPlugin() {
               if (supaErr) {
                 console.error(`[AUTH SUPABASE ERROR] Failed to query Supabase vapt_users table:`, supaErr.message);
               } else if (Array.isArray(supaUsers) && supaUsers.length > 0) {
+                userFoundInDb = true;
                 const row = supaUsers[0];
                 console.log(`[AUTH SUPABASE] User record found for "${row.username}" in Supabase vapt_users table. Checking password...`);
                 const valid = (row.password === trimmedPass) || 
@@ -544,6 +556,7 @@ function strixBackendPlugin() {
                     await supabase.from('vapt_users').update({ is_online: true, last_login: nowStr }).eq('id', row.id);
                   } catch (_) {}
                 } else {
+                  supabaseMismatch = true;
                   console.warn(`[AUTH FAILED] Password mismatch for "${trimmedInput}" against Supabase vapt_users record.`);
                 }
               } else {
@@ -554,7 +567,7 @@ function strixBackendPlugin() {
             }
 
             // 2. Dynamic fallback to local store if Supabase is offline
-            if (!matched) {
+            if (!matched && !userFoundInDb) {
               const rawUsers = getGlobalUsersRaw();
               matched = rawUsers.find(u => {
                 const uName = (u.username || '').toLowerCase();
@@ -568,7 +581,10 @@ function strixBackendPlugin() {
             if (!matched) {
               res.setHeader('Content-Type', 'application/json');
               res.statusCode = 401;
-              res.end(JSON.stringify({ success: false, error: 'Invalid username or password.' }));
+              const msg = supabaseMismatch
+                ? `Invalid password for "${trimmedInput}". Please check the password stored in Supabase vapt_users table.`
+                : `User "${trimmedInput}" not found in Supabase vapt_users table.`;
+              res.end(JSON.stringify({ success: false, error: msg }));
               return;
             }
 

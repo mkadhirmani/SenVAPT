@@ -12,9 +12,11 @@ import {
   EyeOff, 
   Radar,
   Shield,
-  Sparkles
+  Sparkles,
+  Database
 } from 'lucide-react';
 import { authenticateUser, fetchGlobalUsersList } from '../utils/auth';
+import { supabase, getActiveSupabaseConfig, initSupabaseBrowserConfig } from '../utils/supabaseClient';
 
 export default function LoginScreen({ onLoginSuccess, theme = 'dark' }) {
   const [selectedRole, setSelectedRole] = useState('user');
@@ -23,10 +25,62 @@ export default function LoginScreen({ onLoginSuccess, theme = 'dark' }) {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [dbStatus, setDbStatus] = useState({
+    checked: false,
+    connected: false,
+    usersLoaded: 0,
+    projectId: '',
+    error: null
+  });
 
-  // Sync users on login screen mount
+  // Sync users and verify live Supabase connection on mount
   React.useEffect(() => {
-    fetchGlobalUsersList().catch(() => {});
+    let isMounted = true;
+    async function checkSupabase() {
+      await initSupabaseBrowserConfig().catch(() => {});
+      const { url } = getActiveSupabaseConfig();
+      let projectId = '';
+      try {
+        if (url) {
+          const u = new URL(url);
+          projectId = u.hostname.split('.')[0];
+        }
+      } catch (_) {}
+
+      try {
+        const { data, error: qErr } = await supabase.from('vapt_users').select('id, username, role');
+        if (!isMounted) return;
+        if (!qErr && Array.isArray(data)) {
+          setDbStatus({
+            checked: true,
+            connected: true,
+            usersLoaded: data.length,
+            projectId: projectId || 'supabase',
+            error: null
+          });
+        } else {
+          setDbStatus({
+            checked: true,
+            connected: false,
+            usersLoaded: 0,
+            projectId: projectId || 'supabase',
+            error: qErr?.message || 'Unable to query vapt_users'
+          });
+        }
+      } catch (err) {
+        if (!isMounted) return;
+        setDbStatus({
+          checked: true,
+          connected: false,
+          usersLoaded: 0,
+          projectId: projectId || 'supabase',
+          error: err.message
+        });
+      }
+      fetchGlobalUsersList().catch(() => {});
+    }
+    checkSupabase();
+    return () => { isMounted = false; };
   }, []);
 
   const handleRoleSelect = (role) => {
@@ -126,11 +180,49 @@ export default function LoginScreen({ onLoginSuccess, theme = 'dark' }) {
           </button>
         </div>
 
+        {/* Supabase Live Cloud Status Badge */}
+        <div className={`p-2.5 px-3 rounded-xl border text-[11px] font-mono flex items-center justify-between transition-all ${
+          dbStatus.connected 
+            ? 'bg-emerald-950/30 border-emerald-500/30 text-emerald-400 shadow-sm'
+            : dbStatus.checked && dbStatus.error
+            ? 'bg-rose-950/30 border-rose-500/30 text-rose-400'
+            : 'bg-slate-900/40 border-slate-800 text-slate-400'
+        }`}>
+          <div className="flex items-center gap-2 overflow-hidden">
+            <span className={`w-2 h-2 rounded-full flex-shrink-0 ${
+              dbStatus.connected ? 'bg-emerald-400 animate-pulse' : dbStatus.error ? 'bg-rose-400' : 'bg-cyan-400'
+            }`}></span>
+            <span className="truncate">
+              {dbStatus.connected 
+                ? `Supabase: Connected (${dbStatus.projectId})` 
+                : dbStatus.checked && dbStatus.error
+                ? 'Supabase: Cloud Query Error'
+                : 'Connecting to Supabase...'}
+            </span>
+          </div>
+          {dbStatus.connected ? (
+            <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-bold whitespace-nowrap">
+              {dbStatus.usersLoaded} users in vapt_users
+            </span>
+          ) : (
+            <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-400">
+              Live Cloud
+            </span>
+          )}
+        </div>
+
         {/* Error Alert */}
         {error && (
-          <div className="p-3.5 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-600 dark:text-rose-400 text-xs flex items-center gap-2.5">
-            <AlertCircle className="w-4 h-4 flex-shrink-0" />
-            <span className="font-semibold">{error}</span>
+          <div className="p-3.5 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-600 dark:text-rose-400 text-xs flex items-start gap-2.5">
+            <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5 text-rose-400" />
+            <div className="space-y-1">
+              <span className="font-bold block">{error}</span>
+              {error.toLowerCase().includes('password') && (
+                <span className="text-[11px] text-rose-300/90 block leading-tight">
+                  Hint: Passwords must match the record in your Supabase table (<code className="bg-rose-950/50 px-1 py-0.5 rounded text-rose-200">vapt_users</code>). You can verify or edit passwords anytime in your Supabase Table Editor.
+                </span>
+              )}
+            </div>
           </div>
         )}
 
@@ -194,8 +286,24 @@ export default function LoginScreen({ onLoginSuccess, theme = 'dark' }) {
             </div>
           </div>
 
+          {/* Supabase Dynamic Cloud Authentication Info */}
+          <div className={`p-3 rounded-xl border text-[11px] font-mono space-y-1.5 transition-colors ${
+            theme === 'dark' ? 'bg-[#060B16] border-slate-800 text-slate-400' : 'bg-slate-50 border-slate-200 text-slate-600'
+          }`}>
+            <div className="flex items-center justify-between text-xs font-semibold">
+              <span className="flex items-center gap-1.5 text-cyan-400">
+                <Database className="w-3.5 h-3.5" />
+                <span>Supabase Live Auth</span>
+              </span>
+              <span className="text-[10px] text-slate-500 font-normal">Table: vapt_users</span>
+            </div>
+            <div className="text-[10.5px] leading-relaxed text-slate-400">
+              Users & roles are fetched live from your Supabase cloud table. Passwords can be viewed or changed directly in your Supabase Table Editor.
+            </div>
+          </div>
+
           {/* Submit Button */}
-          <div className="pt-3">
+          <div className="pt-2">
             <button
               type="submit"
               disabled={isLoading}

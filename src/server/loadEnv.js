@@ -1,6 +1,18 @@
 import fs from 'fs';
 import path from 'path';
 
+// Universal WebSocket compatibility for Node.js environments (prevents @supabase/supabase-js failure in Node <= 20)
+if (typeof globalThis.WebSocket === 'undefined' && typeof window === 'undefined') {
+  class UniversalWebSocketFallback {
+    constructor() { this.readyState = 3; }
+    addEventListener() {}
+    removeEventListener() {}
+    send() {}
+    close() {}
+  }
+  globalThis.WebSocket = UniversalWebSocketFallback;
+}
+
 // Synchronously load environment variables from .env before any other ES module executes
 export function loadEnvFiles() {
   const envFiles = [

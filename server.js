@@ -28,7 +28,8 @@ import {
   supabase, 
   formatUserFromSupabase, 
   formatUserForSupabase,
-  formatScanForSupabase
+  formatScanForSupabase,
+  getActiveSupabaseConfig
 } from './src/utils/supabaseClient.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -514,6 +515,14 @@ const server = http.createServer(async (req, res) => {
     return res.end(JSON.stringify({ status: 'ok', uptime: process.uptime(), timestamp: new Date().toISOString() }));
   }
 
+  // 1.5 Supabase Configuration (Public Anon Key & URL for client bootstrapping)
+  if (pathname === '/api/supabase/config') {
+    res.setHeader('Content-Type', 'application/json');
+    res.statusCode = 200;
+    const { url, key } = getActiveSupabaseConfig();
+    return res.end(JSON.stringify({ success: true, url, key }));
+  }
+
   // 2. Authentication & Session Verification Routes
   if (pathname === '/api/auth/login' && req.method === 'POST') {
     try {
@@ -541,6 +550,8 @@ const server = http.createServer(async (req, res) => {
 
       // 1. Dynamic Authentication against Supabase vapt_users table
       let matched = null;
+      let supabaseMismatch = false;
+      let userFoundInDb = false;
       console.log(`\n[AUTH] Login attempt received for "${trimmedInput}" (role requested: ${selectedRole || 'any'})...`);
       try {
         const { data: supaUsers, error: supaErr } = await supabase
@@ -552,6 +563,7 @@ const server = http.createServer(async (req, res) => {
         if (supaErr) {
           console.error(`[AUTH SUPABASE ERROR] Failed to query Supabase vapt_users table:`, supaErr.message);
         } else if (Array.isArray(supaUsers) && supaUsers.length > 0) {
+          userFoundInDb = true;
           const row = supaUsers[0];
           console.log(`[AUTH SUPABASE] User record found for "${row.username}" in Supabase vapt_users table. Checking password...`);
           const valid = (row.password === trimmedPass) || 
@@ -566,6 +578,7 @@ const server = http.createServer(async (req, res) => {
               await supabase.from('vapt_users').update({ is_online: true, last_login: nowStr }).eq('id', row.id);
             } catch (_) {}
           } else {
+            supabaseMismatch = true;
             console.warn(`[AUTH FAILED] Password mismatch for "${trimmedInput}" against Supabase vapt_users record.`);
           }
         } else {
@@ -576,7 +589,7 @@ const server = http.createServer(async (req, res) => {
       }
 
       // 2. Dynamic fallback to local store if Supabase is offline
-      if (!matched) {
+      if (!matched && !userFoundInDb) {
         const rawUsers = getGlobalUsersStoreRaw();
         matched = rawUsers.find(u => {
           const uName = (u.username || '').toLowerCase();
@@ -591,7 +604,10 @@ const server = http.createServer(async (req, res) => {
         recordFailedLogin(rateLimitKey);
         res.setHeader('Content-Type', 'application/json');
         res.statusCode = 401;
-        return res.end(JSON.stringify({ success: false, error: 'Invalid username or password.' }));
+        const msg = supabaseMismatch
+          ? `Invalid password for "${trimmedInput}". Please check the password stored in Supabase vapt_users table.`
+          : `User "${trimmedInput}" not found in Supabase vapt_users table.`;
+        return res.end(JSON.stringify({ success: false, error: msg }));
       }
 
       if (selectedRole === 'admin' && matched.role !== 'admin') {
