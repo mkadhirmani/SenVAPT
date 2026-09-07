@@ -528,39 +528,59 @@ function strixBackendPlugin() {
 
             // 1. Dynamic Authentication against Supabase vapt_users table
             let matched = null;
-            let supabaseMismatch = false;
+            let passwordMismatch = false;
             let userFoundInDb = false;
             console.log(`\n[AUTH] Login attempt received for "${trimmedInput}" (role requested: ${selectedRole || 'any'})...`);
             try {
               const { data: supaUsers, error: supaErr } = await supabase
                 .from('vapt_users')
-                .select('*')
-                .or(`username.ilike.${trimmedInput},email.ilike.${trimmedInput}`)
-                .limit(1);
+                .select('*');
 
-              if (supaErr) {
-                console.error(`[AUTH SUPABASE ERROR] Failed to query Supabase vapt_users table:`, supaErr.message);
-              } else if (Array.isArray(supaUsers) && supaUsers.length > 0) {
-                userFoundInDb = true;
-                const row = supaUsers[0];
-                console.log(`[AUTH SUPABASE] User record found for "${row.username}" in Supabase vapt_users table. Checking password...`);
-                const valid = (row.password === trimmedPass) || 
-                              (row.password && row.password.toLowerCase() === trimmedPass.toLowerCase()) ||
-                              (row.alt_password && (row.alt_password === trimmedPass || row.alt_password.toLowerCase() === trimmedPass.toLowerCase())) ||
-                              (row.altPassword && (row.altPassword === trimmedPass || row.altPassword.toLowerCase() === trimmedPass.toLowerCase()));
-                if (valid) {
-                  console.log(`[AUTH SUCCESS] Password verified for "${row.username}" against Supabase vapt_users table.`);
-                  matched = formatUserFromSupabase(row);
-                  const nowStr = new Date().toISOString().replace('T', ' ').slice(0, 19);
-                  try {
-                    await supabase.from('vapt_users').update({ is_online: true, last_login: nowStr }).eq('id', row.id);
-                  } catch (_) {}
+              if (!supaErr && Array.isArray(supaUsers)) {
+                const row = supaUsers.find(u => 
+                  (u.username && u.username.trim().toLowerCase() === trimmedInput) ||
+                  (u.email && u.email.trim().toLowerCase() === trimmedInput) ||
+                  (u.id && u.id.trim().toLowerCase() === trimmedInput)
+                );
+
+                if (row) {
+                  userFoundInDb = true;
+                  console.log(`[AUTH SUPABASE] User record found for "${row.username}" in Supabase vapt_users table. Checking password...`);
+
+                  const unameKey = (row.username || '').toUpperCase();
+                  const uidKey = (row.id || '').toUpperCase();
+                  const primaryEnv = (process.env[unameKey + '_PASSWORD'] || process.env[uidKey + '_PASSWORD'] || '').trim();
+                  const altEnvStr = process.env[unameKey + '_ALT_PASSWORDS'] || process.env[uidKey + '_ALT_PASSWORDS'] || '';
+                  const altEnvList = altEnvStr.split(',').map(s => s.trim()).filter(Boolean);
+
+                  const candidatePasswords = [
+                    row.password,
+                    row.alt_password,
+                    row.altPassword,
+                    primaryEnv,
+                    ...altEnvList
+                  ].filter(p => typeof p === 'string' && p.trim().length > 0);
+
+                  const valid = candidatePasswords.some(p => 
+                    p === trimmedPass || p.toLowerCase() === trimmedPass.toLowerCase()
+                  );
+
+                  if (valid) {
+                    console.log(`[AUTH SUCCESS] Password verified for "${row.username}" against Supabase vapt_users table.`);
+                    matched = formatUserFromSupabase(row);
+                    const nowStr = new Date().toISOString().replace('T', ' ').slice(0, 19);
+                    try {
+                      await supabase.from('vapt_users').update({ is_online: true, last_login: nowStr }).eq('id', row.id);
+                    } catch (_) {}
+                  } else {
+                    passwordMismatch = true;
+                    console.warn(`[AUTH FAILED] Password mismatch for "${trimmedInput}" against Supabase vapt_users record.`);
+                  }
                 } else {
-                  supabaseMismatch = true;
-                  console.warn(`[AUTH FAILED] Password mismatch for "${trimmedInput}" against Supabase vapt_users record.`);
+                  console.warn(`[AUTH SUPABASE] No user record found in Supabase vapt_users table for "${trimmedInput}".`);
                 }
-              } else {
-                console.warn(`[AUTH SUPABASE] No user record found in Supabase vapt_users table for "${trimmedInput}".`);
+              } else if (supaErr) {
+                console.error(`[AUTH SUPABASE ERROR] Failed to query Supabase vapt_users table:`, supaErr.message);
               }
             } catch (err) {
               console.warn('[AUTH ERROR] Supabase check error:', err.message);
@@ -569,19 +589,43 @@ function strixBackendPlugin() {
             // 2. Dynamic fallback to local store if Supabase is offline
             if (!matched && !userFoundInDb) {
               const rawUsers = getGlobalUsersRaw();
-              matched = rawUsers.find(u => {
-                const uName = (u.username || '').toLowerCase();
-                const uEmail = (u.email || '').toLowerCase();
-                const matchesUsername = (uName === trimmedInput || uEmail === trimmedInput);
-                if (!matchesUsername) return false;
-                return u.password === trimmedPass || (u.password && u.password.toLowerCase() === trimmedPass.toLowerCase());
-              });
+              const row = rawUsers.find(u => 
+                (u.username && u.username.trim().toLowerCase() === trimmedInput) ||
+                (u.email && u.email.trim().toLowerCase() === trimmedInput) ||
+                (u.id && u.id.trim().toLowerCase() === trimmedInput)
+              );
+              if (row) {
+                userFoundInDb = true;
+                const unameKey = (row.username || '').toUpperCase();
+                const uidKey = (row.id || '').toUpperCase();
+                const primaryEnv = (process.env[unameKey + '_PASSWORD'] || process.env[uidKey + '_PASSWORD'] || '').trim();
+                const altEnvStr = process.env[unameKey + '_ALT_PASSWORDS'] || process.env[uidKey + '_ALT_PASSWORDS'] || '';
+                const altEnvList = altEnvStr.split(',').map(s => s.trim()).filter(Boolean);
+
+                const candidatePasswords = [
+                  row.password,
+                  row.alt_password,
+                  row.altPassword,
+                  primaryEnv,
+                  ...altEnvList
+                ].filter(p => typeof p === 'string' && p.trim().length > 0);
+
+                const valid = candidatePasswords.some(p => 
+                  p === trimmedPass || p.toLowerCase() === trimmedPass.toLowerCase()
+                );
+
+                if (valid) {
+                  matched = row;
+                } else {
+                  passwordMismatch = true;
+                }
+              }
             }
 
             if (!matched) {
               res.setHeader('Content-Type', 'application/json');
               res.statusCode = 401;
-              const msg = supabaseMismatch
+              const msg = (passwordMismatch || userFoundInDb)
                 ? `Invalid password for "${trimmedInput}".`
                 : `Account "${trimmedInput}" not found.`;
               res.end(JSON.stringify({ success: false, error: msg }));
