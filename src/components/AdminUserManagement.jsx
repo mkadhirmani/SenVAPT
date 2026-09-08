@@ -103,7 +103,7 @@ export default function AdminUserManagement({
     setTimeout(() => setStatusMessage(null), 3000);
   };
 
-  const handleTogglePermission = (userId, permId) => {
+  const handleTogglePermission = async (userId, permId) => {
     const targetUser = users.find(u => u.id === userId);
     if (!targetUser) return;
     
@@ -113,12 +113,12 @@ export default function AdminUserManagement({
     }
 
     const currentVal = Boolean(targetUser.permissions?.[permId]);
-    const updatedUsers = updateUserPermissions(userId, { [permId]: !currentVal });
+    const updatedUsers = await updateUserPermissions(userId, { [permId]: !currentVal });
     setUsers(updatedUsers);
     showFeedback(`Permission '${permId}' updated for ${targetUser.username}`);
   };
 
-  const handleCreateUser = (e) => {
+  const handleCreateUser = async (e) => {
     e.preventDefault();
     if (!newUserData.username || !newUserData.password) {
       showFeedback('Username and password are required');
@@ -126,7 +126,7 @@ export default function AdminUserManagement({
     }
 
     try {
-      const updated = createNewUser({
+      const updated = await createNewUser({
         username: newUserData.username,
         name: newUserData.role === 'admin' ? 'Administrator' : newUserData.username,
         email: newUserData.email || `${newUserData.username}@sennovate.com`,
@@ -137,21 +137,21 @@ export default function AdminUserManagement({
       setUsers(updated);
       setIsAddUserOpen(false);
       setNewUserData({ username: '', email: '', password: '', role: 'user' });
-      showFeedback(`User ${newUserData.username} created successfully!`);
+      showFeedback(`User "${newUserData.username}" created & added to Supabase vapt_users table!`);
     } catch (err) {
       showFeedback(err.message || 'Failed to create user');
     }
   };
 
-  const handleDeleteUser = (userId) => {
+  const handleDeleteUser = async (userId) => {
     if (window.confirm('Are you sure you want to remove this user account?')) {
       try {
-        const updated = deleteUser(userId);
+        const updated = await deleteUser(userId);
         setUsers(updated);
         if (selectedUserId === userId) {
           setSelectedUserId('admin');
         }
-        showFeedback('User account removed');
+        showFeedback('User account removed from Supabase vapt_users');
       } catch (err) {
         showFeedback(err.message);
       }

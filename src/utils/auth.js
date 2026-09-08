@@ -215,6 +215,9 @@ export async function fetchGlobalUsersList() {
  * Get all users from storage or fallback to defaults
  */
 export function getUsersList() {
+  if (typeof window === 'undefined' || typeof localStorage === 'undefined') {
+    return DEFAULT_USERS;
+  }
   try {
     const raw = localStorage.getItem(USERS_STORAGE_KEY);
     let list = DEFAULT_USERS;
@@ -251,6 +254,7 @@ export function getUsersList() {
  * Save users list to localStorage and sync to backend server
  */
 export function saveUsersList(users) {
+  if (typeof window === 'undefined' || typeof localStorage === 'undefined') return;
   try {
     localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(users));
 
@@ -275,6 +279,7 @@ export function saveUsersList(users) {
  * Get the currently logged-in user from active session
  */
 export function getCurrentUser() {
+  if (typeof window === 'undefined' || typeof sessionStorage === 'undefined') return null;
   try {
     const raw = sessionStorage.getItem(CURRENT_USER_KEY);
     if (raw) {
@@ -295,6 +300,7 @@ export function getCurrentUser() {
  * Set the current user session
  */
 export function setCurrentUser(user) {
+  if (typeof window === 'undefined' || typeof sessionStorage === 'undefined') return user;
   try {
     if (user) {
       const allUsers = getUsersList();
@@ -445,11 +451,11 @@ export async function authenticateUser(usernameOrEmail, password, selectedRole =
  * Update permissions for a specific user (Admin only)
  * Syncs immediately to Supabase vapt_users table
  */
-export function updateUserPermissions(userId, newPermissions) {
+export async function updateUserPermissions(userId, newPermissions) {
   const users = getUsersList();
   let targetUser = null;
   const updated = users.map(u => {
-    if (u.id === userId) {
+    if (u.id === userId || u.username === userId) {
       const mergedPerms = { ...u.permissions, ...newPermissions };
       targetUser = { ...u, permissions: mergedPerms };
       return targetUser;
@@ -461,15 +467,20 @@ export function updateUserPermissions(userId, newPermissions) {
   // Sync to Supabase vapt_users table
   if (targetUser) {
     try {
-      supabase.from('vapt_users').update({ permissions: targetUser.permissions }).eq('id', userId).then(({ error }) => {
-        if (error) console.warn('[Supabase Perms Update Note]', error.message);
-      }, () => {});
+      const { error } = await supabase
+        .from('vapt_users')
+        .update({ permissions: targetUser.permissions })
+        .or(`id.eq.${userId},username.eq.${targetUser.username}`);
+
+      if (error) {
+        console.warn('[Supabase Perms Update Note]', error.message);
+      }
     } catch (_) {}
   }
 
   const current = getCurrentUser();
-  if (current && current.id === userId) {
-    const updatedCurrent = updated.find(u => u.id === userId);
+  if (current && (current.id === userId || current.username === userId)) {
+    const updatedCurrent = updated.find(u => u.id === userId || u.username === userId);
     sessionStorage.setItem(CURRENT_USER_KEY, JSON.stringify(updatedCurrent));
   }
 
@@ -480,7 +491,7 @@ export function updateUserPermissions(userId, newPermissions) {
  * Update password for any user or admin
  * Syncs immediately to Supabase vapt_users table
  */
-export function updateUserPassword(userIdOrUsername, newPassword) {
+export async function updateUserPassword(userIdOrUsername, newPassword) {
   if (!newPassword || !newPassword.trim()) {
     throw new Error('New password cannot be empty.');
   }
@@ -508,9 +519,14 @@ export function updateUserPassword(userIdOrUsername, newPassword) {
 
   // Sync to Supabase vapt_users table
   try {
-    supabase.from('vapt_users').update({ password: trimmed }).or(`id.eq.${userIdOrUsername},username.eq.${userIdOrUsername}`).then(({ error }) => {
-      if (error) console.warn('[Supabase Password Update Note]', error.message);
-    }, () => {});
+    const { error } = await supabase
+      .from('vapt_users')
+      .update({ password: trimmed })
+      .or(`id.eq.${userIdOrUsername},username.eq.${userIdOrUsername}`);
+
+    if (error) {
+      console.warn('[Supabase Password Update Note]', error.message);
+    }
   } catch (_) {}
 
   const current = getCurrentUser();
@@ -526,17 +542,29 @@ export function updateUserPassword(userIdOrUsername, newPassword) {
  * Add a new user
  * Immediately writes the record to Supabase vapt_users table
  */
-export function createNewUser(userData) {
+export async function createNewUser(userData) {
   const users = getUsersList();
+  const cleanUsername = (userData.username || '').toLowerCase().trim();
+
+  if (!cleanUsername) {
+    throw new Error('Username is required.');
+  }
+  if (!userData.password || !userData.password.trim()) {
+    throw new Error('Password is required.');
+  }
+  if (users.some(u => u.username?.toLowerCase() === cleanUsername)) {
+    throw new Error(`User "${cleanUsername}" already exists.`);
+  }
+
   const newUser = {
     id: `user-${Date.now()}`,
-    username: userData.username.toLowerCase().trim(),
-    email: userData.email || `${userData.username.toLowerCase().trim()}@sennovate.com`,
-    password: userData.password || '',
+    username: cleanUsername,
+    email: userData.email || `${cleanUsername}@sennovate.com`,
+    password: userData.password.trim(),
     name: userData.name || userData.username,
     role: userData.role || 'user',
     title: userData.title || (userData.role === 'admin' ? 'Administrator' : 'Security Analyst'),
-    avatar: userData.avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${userData.username}`,
+    avatar: userData.avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${cleanUsername}`,
     createdAt: new Date().toISOString().replace('T', ' ').slice(0, 19),
     lastLogin: 'Never',
     isOnline: false,
@@ -561,10 +589,18 @@ export function createNewUser(userData) {
   // Immediately insert record to Supabase vapt_users table
   try {
     const record = formatUserForSupabase(newUser);
-    supabase.from('vapt_users').upsert([record], { onConflict: 'username' }).then(({ error }) => {
-      if (error) console.warn('[Supabase User Insert Note]', error.message);
-    }, () => {});
-  } catch (_) {}
+    const { error } = await supabase
+      .from('vapt_users')
+      .upsert([record], { onConflict: 'username' });
+
+    if (error) {
+      console.warn('[Supabase User Insert Note]', error.message);
+    } else {
+      console.log(`[Supabase User Insert SUCCESS] Added user "${cleanUsername}" to vapt_users table!`);
+    }
+  } catch (err) {
+    console.warn('[Supabase User Insert Catch]', err.message);
+  }
 
   return updated;
 }
@@ -573,20 +609,31 @@ export function createNewUser(userData) {
  * Delete a user
  * Immediately removes record from Supabase vapt_users table
  */
-export function deleteUser(userId) {
+export async function deleteUser(userId) {
   if (userId === 'admin') {
     throw new Error('Cannot delete root Administrator account');
   }
   const users = getUsersList();
-  const updated = users.filter(u => u.id !== userId);
+  const target = users.find(u => u.id === userId || u.username === userId);
+  const targetUsername = target?.username || userId;
+  const updated = users.filter(u => u.id !== userId && u.username !== userId);
   saveUsersList(updated);
 
   // Sync deletion to Supabase vapt_users table
   try {
-    supabase.from('vapt_users').delete().eq('id', userId).then(({ error }) => {
-      if (error) console.warn('[Supabase User Delete Note]', error.message);
-    }, () => {});
-  } catch (_) {}
+    const { error } = await supabase
+      .from('vapt_users')
+      .delete()
+      .or(`id.eq.${userId},username.eq.${targetUsername}`);
+
+    if (error) {
+      console.warn('[Supabase User Delete Note]', error.message);
+    } else {
+      console.log(`[Supabase User Delete SUCCESS] Removed user "${targetUsername}" from vapt_users table!`);
+    }
+  } catch (err) {
+    console.warn('[Supabase User Delete Catch]', err.message);
+  }
 
   return updated;
 }
