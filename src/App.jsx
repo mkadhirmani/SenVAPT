@@ -107,21 +107,37 @@ export default function App() {
   // Scan History state
   const [scanHistory, setScanHistory] = useState(() => getStoredScanHistory());
 
-  // All previous scans are visible for whomever logs in
+  // Scan Visibility Isolation:
+  // - Administrators have full visibility across all scans across the organization
+  // - Non-admin users and newly created users ONLY see their own scans (fresh empty dashboard if new)
   const visibleScanHistory = React.useMemo(() => {
     if (!currentUser) return [];
-    return scanHistory;
+    if (currentUser.role === 'admin') {
+      return scanHistory;
+    }
+    const myUsername = (currentUser.username || '').toLowerCase().trim();
+    const myId = (currentUser.id || '').toLowerCase().trim();
+
+    return scanHistory.filter(s => {
+      if (!s) return false;
+      const createdBy = (s.createdBy || '').toLowerCase().trim();
+      const scannedBy = (s.scannedBy || '').toLowerCase().trim();
+      return (createdBy && (createdBy === myUsername || createdBy === myId)) ||
+             (scannedBy && (scannedBy === myUsername || scannedBy === myId));
+    });
   }, [scanHistory, currentUser]);
   
-  // Default to the last active scan ID or the most recent scan in history
-  const [activeScanId, setActiveScanId] = useState(() => {
-    const history = getStoredScanHistory();
-    const savedActiveId = localStorage.getItem('sennovate_last_active_scan_id');
-    if (savedActiveId && history.some(s => s.id === savedActiveId)) {
-      return savedActiveId;
+  // Default to the last active scan ID or the most recent scan in visible history
+  const [activeScanId, setActiveScanId] = useState('');
+
+  // Keep activeScanId in sync with visibleScanHistory
+  useEffect(() => {
+    if (visibleScanHistory.length === 0) {
+      setActiveScanId('');
+    } else if (!activeScanId || !visibleScanHistory.some(s => s.id === activeScanId)) {
+      setActiveScanId(visibleScanHistory[0]?.id || '');
     }
-    return history[0]?.id || "";
-  });
+  }, [visibleScanHistory, activeScanId]);
 
   // Dynamic Scan Findings state - reactively bound to activeScanId and visibleScanHistory
   const activeScan = React.useMemo(() => {
@@ -528,12 +544,46 @@ export default function App() {
       }
     } catch (_) {}
 
-    if (history && history.length > 0) {
-      setActiveScanId(history[0].id);
-      localStorage.setItem('sennovate_last_active_scan_id', history[0].id);
+    const myUsername = (user.username || '').toLowerCase().trim();
+    const myId = (user.id || '').toLowerCase().trim();
+    const userScans = user.role === 'admin'
+      ? history
+      : (history || []).filter(s => {
+          if (!s) return false;
+          const createdBy = (s.createdBy || '').toLowerCase().trim();
+          const scannedBy = (s.scannedBy || '').toLowerCase().trim();
+          return (createdBy && (createdBy === myUsername || createdBy === myId)) ||
+                 (scannedBy && (scannedBy === myUsername || scannedBy === myId));
+        });
+
+    if (userScans && userScans.length > 0) {
+      setActiveScanId(userScans[0].id);
+      localStorage.setItem('sennovate_last_active_scan_id', userScans[0].id);
     } else {
       setActiveScanId('');
       localStorage.removeItem('sennovate_last_active_scan_id');
+    }
+
+    if (user.role !== 'admin') {
+      try {
+        sessionStorage.removeItem('sennovate_persistent_scanner_state');
+      } catch (_) {}
+      setScannerState({
+        targetUrl: '',
+        companyName: '',
+        logs: [],
+        discoveredFindings: [],
+        scanStats: {
+          requests: 0,
+          tokens: 0,
+          durationSec: 0,
+          currentAgent: 'Autonomous VAPT Agent'
+        },
+        scanFinished: false,
+        activeScanId: '',
+        outputFolderPath: '',
+        scanError: null
+      });
     }
 
     if (user.role === 'admin') {
@@ -546,6 +596,27 @@ export default function App() {
   const handleLogout = () => {
     logoutUser();
     setAuthUser(null);
+    try {
+      sessionStorage.removeItem('sennovate_persistent_scanner_state');
+      localStorage.removeItem('sennovate_last_active_scan_id');
+    } catch (_) {}
+    setActiveScanId('');
+    setScannerState({
+      targetUrl: '',
+      companyName: '',
+      logs: [],
+      discoveredFindings: [],
+      scanStats: {
+        requests: 0,
+        tokens: 0,
+        durationSec: 0,
+        currentAgent: 'Autonomous VAPT Agent'
+      },
+      scanFinished: false,
+      activeScanId: '',
+      outputFolderPath: '',
+      scanError: null
+    });
   };
 
   // Handle syncing all remote runs from the server

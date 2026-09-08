@@ -165,9 +165,14 @@ export default function AdminUserManagement({
   );
 
   const selectedUser = users.find(u => u.id === selectedUserId) || users[0];
-  const selectedUserScans = safeScanHistory.filter(s => 
-    s && (s.scannedBy === selectedUserId || (selectedUserId === 'user' && !s.scannedBy))
-  );
+  const selectedUserScans = safeScanHistory.filter(s => {
+    if (!s || !selectedUser) return false;
+    const uName = (selectedUser.username || '').toLowerCase();
+    const uId = (selectedUser.id || '').toLowerCase();
+    const createdBy = (s.createdBy || '').toLowerCase();
+    const scannedBy = (s.scannedBy || '').toLowerCase();
+    return createdBy === uName || createdBy === uId || scannedBy === uName || scannedBy === uId;
+  });
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-16">
@@ -395,7 +400,14 @@ export default function AdminUserManagement({
             <tbody className="divide-y divide-slate-800/60 text-xs">
               {filteredUsers.map((user) => {
                 const isAdmin = user.role === 'admin';
-                const userScansList = safeScanHistory.filter(s => s && (s.scannedBy === user.id || ((user.id === 'user' || user.id === 'user1') && !s.scannedBy)));
+                const userScansList = safeScanHistory.filter(s => {
+                  if (!s || !user) return false;
+                  const uName = (user.username || '').toLowerCase();
+                  const uId = (user.id || '').toLowerCase();
+                  const createdBy = (s.createdBy || '').toLowerCase();
+                  const scannedBy = (s.scannedBy || '').toLowerCase();
+                  return createdBy === uName || createdBy === uId || scannedBy === uName || scannedBy === uId;
+                });
                 const isSelected = selectedUserId === user.id;
 
                 return (

@@ -269,6 +269,28 @@ Format with clean markdown bullet points and bold headers. Keep the text punchy,
     window.print();
   };
 
+  if (!vulnerabilities || vulnerabilities.length === 0) {
+    return (
+      <div className="space-y-6 max-w-7xl mx-auto pb-12">
+        <div className={`p-12 rounded-2xl border text-center space-y-4 ${
+          theme === 'dark' ? 'bg-[#0B1120] border-slate-800' : 'bg-white border-slate-300 shadow-sm'
+        }`}>
+          <div className="w-12 h-12 rounded-2xl bg-cyan-500/10 text-cyan-400 mx-auto flex items-center justify-center border border-cyan-500/20">
+            <FileText className="w-6 h-6" />
+          </div>
+          <div className="space-y-1">
+            <h4 className={`text-base font-bold ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>
+              No Audit Reports Generated
+            </h4>
+            <p className="text-xs text-slate-500 max-w-md mx-auto">
+              No completed security scans or vulnerabilities are available to compile into an executive report. Run an autonomous VAPT scan first to generate a full deliverable.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-12">
       <div className="flex flex-wrap items-center justify-between gap-4 p-4 rounded-xl border bg-slate-900 border-slate-800 text-white shadow-lg no-print">

@@ -172,6 +172,28 @@ export default function AttackChainView({
     }, 1200);
   };
 
+  if (!activeScan && (!scanHistory || scanHistory.length === 0)) {
+    return (
+      <div className="space-y-6 max-w-7xl mx-auto pb-12">
+        <div className={`p-12 rounded-2xl border text-center space-y-4 ${
+          theme === 'dark' ? 'bg-[#0B1120] border-slate-800' : 'bg-white border-slate-300 shadow-sm'
+        }`}>
+          <div className="w-12 h-12 rounded-2xl bg-cyan-500/10 text-cyan-400 mx-auto flex items-center justify-center border border-cyan-500/20">
+            <GitBranch className="w-6 h-6" />
+          </div>
+          <div className="space-y-1">
+            <h4 className={`text-base font-bold ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>
+              No Attack Chain Available
+            </h4>
+            <p className="text-xs text-slate-500 max-w-md mx-auto">
+              No chained exploit paths exist for your account yet. Launch an automated security scan to generate an end-to-end attack simulation graph.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-12">
       {/* Scan Session Switcher Banner */}
