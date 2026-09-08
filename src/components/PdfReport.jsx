@@ -293,33 +293,33 @@ Format with clean markdown bullet points and bold headers. Keep the text punchy,
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-12">
-      <div className="flex flex-wrap items-center justify-between gap-4 p-4 rounded-xl border bg-slate-900 border-slate-800 text-white shadow-lg no-print">
+      <div className="flex flex-wrap items-center justify-between gap-4 p-4 rounded-2xl border bg-[#001B41] border-[#002B66] text-white shadow-xl no-print">
         <div className="flex items-center gap-3">
-          <div className="p-2 rounded-lg bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
-            <FileText className="w-5 h-5" />
+          <div className="p-2.5 rounded-xl bg-[#006FE3]/15 text-[#006FE3] border border-[#006FE3]/30">
+            <FileText className="w-5 h-5 text-[#006FE3]" />
           </div>
           <div>
-            <h2 className="text-base font-bold text-white flex items-center gap-2">
+            <h2 className="text-base font-bold text-white flex items-center gap-2 font-heading">
               Executive Penetration Testing Report
-              <span className="px-2.5 py-0.5 text-xs rounded-full bg-cyan-500/20 text-cyan-300 font-mono">
+              <span className="px-2.5 py-0.5 text-xs rounded-full bg-[#006FE3]/20 text-[#80B7F1] font-mono border border-[#006FE3]/30">
                 A4 Deliverable &bull; {reportType === 'simple' ? 'Simple' : 'Detailed'} Format &bull; {totalPages} Pages
               </span>
             </h2>
             <p className="text-xs text-slate-400">
-              Target: <span className="font-mono text-cyan-300">{targetUrl}</span> &bull; {sortedVulns.length} Confirmed Vulnerabilities
+              Target: <span className="font-mono text-[#80B7F1]">{targetUrl}</span> &bull; {sortedVulns.length} Confirmed Vulnerabilities
             </p>
           </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
           {/* Two Report Forms Toggle: Simple vs Detailed */}
-          <div className="flex items-center bg-slate-950 p-1 rounded-xl border border-slate-800 shadow-inner">
+          <div className="flex items-center bg-[#001127] p-1 rounded-xl border border-[#002B66] shadow-inner">
             <button
               type="button"
               onClick={() => setReportType('detailed')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold font-heading transition-all ${
                 reportType === 'detailed'
-                  ? 'bg-gradient-to-r from-cyan-600 to-blue-600 text-white shadow-md'
+                  ? 'bg-[#006FE3] text-white shadow-md shadow-[#006FE3]/30'
                   : 'text-slate-400 hover:text-white'
               }`}
             >
@@ -329,9 +329,9 @@ Format with clean markdown bullet points and bold headers. Keep the text punchy,
             <button
               type="button"
               onClick={() => setReportType('simple')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold font-heading transition-all ${
                 reportType === 'simple'
-                  ? 'bg-gradient-to-r from-cyan-600 to-blue-600 text-white shadow-md'
+                  ? 'bg-[#006FE3] text-white shadow-md shadow-[#006FE3]/30'
                   : 'text-slate-400 hover:text-white'
               }`}
             >
@@ -344,12 +344,12 @@ Format with clean markdown bullet points and bold headers. Keep the text punchy,
             <button
               onClick={handleGenerateAiSummary}
               disabled={isGeneratingAiSummary}
-              className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold bg-cyan-950 text-cyan-300 border border-cyan-800 hover:bg-cyan-900 transition-colors disabled:opacity-50 shadow-sm"
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold bg-[#001127] text-[#80B7F1] border border-[#002B66] hover:bg-[#002B66] transition-colors disabled:opacity-50 shadow-sm font-heading"
             >
               {isGeneratingAiSummary ? (
-                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                <RefreshCw className="w-3.5 h-3.5 animate-spin text-[#006FE3]" />
               ) : (
-                <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+                <Sparkles className="w-3.5 h-3.5 text-[#006FE3]" />
               )}
               <span>{isGeneratingAiSummary ? "Synthesizing Summary..." : "Re-generate Executive Summary"}</span>
             </button>
@@ -357,7 +357,7 @@ Format with clean markdown bullet points and bold headers. Keep the text punchy,
 
           <button
             onClick={handlePrint}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold bg-slate-800 text-slate-200 border border-slate-700 hover:bg-slate-700 transition-colors"
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold bg-[#001127] text-slate-200 border border-[#002B66] hover:bg-[#002B66] transition-colors font-heading"
           >
             <Printer className="w-3.5 h-3.5" />
             <span>Print Report</span>
@@ -366,7 +366,7 @@ Format with clean markdown bullet points and bold headers. Keep the text punchy,
           <button
             onClick={handleDownloadPdf}
             disabled={isExporting}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold bg-gradient-to-r from-cyan-500 to-blue-600 text-white hover:from-cyan-600 hover:to-blue-700 transition-all shadow-md hover:shadow-cyan-500/25 disabled:opacity-60"
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-[#006FE3] text-white hover:bg-[#005bbd] transition-all shadow-md shadow-[#006FE3]/25 disabled:opacity-60 font-heading hover:scale-[1.02] active:scale-[0.98]"
           >
             {isExporting ? (
               <RefreshCw className="w-3.5 h-3.5 animate-spin" />

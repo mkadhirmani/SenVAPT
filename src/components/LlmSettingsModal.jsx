@@ -146,18 +146,18 @@ export default function LlmSettingsModal({ isOpen, onClose, theme = 'dark' }) {
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
       <div className={`relative w-full max-w-2xl rounded-2xl border shadow-2xl overflow-hidden transition-colors ${
-        theme === 'dark' ? 'bg-[#0B1120] border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
+        theme === 'dark' ? 'bg-[#001B41] border-[#002B66] text-white' : 'bg-white border-slate-200 text-slate-900'
       }`}>
         {/* Header */}
         <div className={`p-6 border-b flex items-center justify-between ${
-          theme === 'dark' ? 'bg-[#0E162B] border-slate-800' : 'bg-slate-50 border-slate-200'
+          theme === 'dark' ? 'bg-[#001127] border-[#002B66]' : 'bg-slate-50 border-slate-200'
         }`}>
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 text-slate-950 flex items-center justify-center font-bold shadow-md">
+            <div className="w-10 h-10 rounded-xl bg-[#006FE3] text-white flex items-center justify-center font-bold shadow-md shadow-[#006FE3]/30">
               <Cpu className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="font-extrabold text-base">
+              <h3 className="font-extrabold text-base font-heading">
                 Configure Any LLM with API Key
               </h3>
               <p className="text-xs text-slate-400 font-mono">
@@ -169,7 +169,7 @@ export default function LlmSettingsModal({ isOpen, onClose, theme = 'dark' }) {
           <button
             onClick={onClose}
             className={`p-2 rounded-xl transition-colors ${
-              theme === 'dark' ? 'text-slate-400 hover:text-white hover:bg-slate-800' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-200'
+              theme === 'dark' ? 'text-slate-400 hover:text-white hover:bg-[#002B66]' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-200'
             }`}
           >
             <X className="w-5 h-5" />
@@ -177,10 +177,10 @@ export default function LlmSettingsModal({ isOpen, onClose, theme = 'dark' }) {
         </div>
 
         {/* Modal Scrollable Body */}
-        <div className="p-6 space-y-5 max-h-[75vh] overflow-y-auto">
+        <div className="p-6 space-y-5 max-h-[75vh] overflow-y-auto font-sans">
           {/* Quick Preset Selection */}
           <div className="space-y-2">
-            <div className="flex items-center justify-between text-xs font-mono font-bold uppercase tracking-wider text-slate-400">
+            <div className="flex items-center justify-between text-xs font-mono font-bold uppercase tracking-wider text-slate-400 font-heading">
               <span>1. Select Provider:</span>
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
@@ -191,17 +191,17 @@ export default function LlmSettingsModal({ isOpen, onClose, theme = 'dark' }) {
                     key={p.id}
                     type="button"
                     onClick={() => handleApplyPreset(p)}
-                    className={`p-2.5 rounded-xl border text-left transition-all ${
+                    className={`p-3 rounded-xl border text-left transition-all ${
                       isActive
-                        ? 'bg-cyan-500/20 border-cyan-500 text-cyan-400 shadow-sm'
+                        ? 'bg-[#006FE3]/15 border-[#006FE3] text-[#006FE3] shadow-md shadow-[#006FE3]/20'
                         : theme === 'dark'
-                        ? 'bg-[#080E1C] border-slate-800 hover:border-slate-700 text-slate-300'
+                        ? 'bg-[#001127] border-[#002B66] hover:border-[#006FE3]/60 text-slate-300'
                         : 'bg-slate-50 border-slate-200 hover:border-slate-300 text-slate-700'
                     }`}
                   >
                     <div className="flex items-center justify-between mb-0.5">
-                      <span className="font-bold text-xs truncate">{p.name}</span>
-                      <span className="text-[9px] font-mono px-1 py-0.2 rounded bg-slate-800 text-slate-300">
+                      <span className="font-bold text-xs truncate font-heading">{p.name}</span>
+                      <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-[#002B66] text-[#80B7F1]">
                         {p.badge}
                       </span>
                     </div>
@@ -215,8 +215,8 @@ export default function LlmSettingsModal({ isOpen, onClose, theme = 'dark' }) {
           </div>
 
           {/* Quick Model Selector Pills */}
-          <div className="space-y-2 pt-2 border-t border-slate-800/80">
-            <div className="flex items-center justify-between text-xs font-mono font-bold uppercase tracking-wider text-slate-400">
+          <div className="space-y-2 pt-2 border-t border-[#002B66]">
+            <div className="flex items-center justify-between text-xs font-mono font-bold uppercase tracking-wider text-slate-400 font-heading">
               <span>2. Select Model (Or Type Any Below):</span>
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
@@ -229,14 +229,14 @@ export default function LlmSettingsModal({ isOpen, onClose, theme = 'dark' }) {
                     onClick={() => handleSelectModel(m)}
                     className={`px-3 py-2 rounded-xl text-left font-mono text-xs transition-all border ${
                       isSelected
-                        ? 'bg-cyan-500 text-slate-950 font-bold border-cyan-400 shadow-md'
+                        ? 'bg-[#006FE3] text-white font-bold border-[#006FE3] shadow-md shadow-[#006FE3]/25'
                         : theme === 'dark'
-                        ? 'bg-[#080E1C] text-slate-300 border-slate-800 hover:border-cyan-500/50 hover:bg-[#0E172C]'
-                        : 'bg-slate-50 text-slate-700 border-slate-200 hover:border-cyan-500/50 hover:bg-white'
+                        ? 'bg-[#001127] text-slate-300 border-[#002B66] hover:border-[#006FE3]/50 hover:bg-[#002354]'
+                        : 'bg-slate-50 text-slate-700 border-slate-200 hover:border-[#006FE3]/50 hover:bg-white'
                     }`}
                   >
                     <div className="truncate font-bold text-[11px]">{m.id}</div>
-                    <div className={`text-[9px] truncate ${isSelected ? 'text-slate-800' : 'text-slate-400'}`}>
+                    <div className={`text-[9px] truncate ${isSelected ? 'text-white/80' : 'text-slate-400'}`}>
                       {m.provider}
                     </div>
                   </button>
@@ -246,14 +246,14 @@ export default function LlmSettingsModal({ isOpen, onClose, theme = 'dark' }) {
           </div>
 
           {/* Core Configuration Fields */}
-          <div className="space-y-4 pt-2 border-t border-slate-800/80">
+          <div className="space-y-4 pt-2 border-t border-[#002B66]">
             {/* 1. API Base URL Input */}
             <div className="space-y-1.5">
               <label className={`text-xs font-mono font-bold flex items-center justify-between ${
                 theme === 'dark' ? 'text-slate-300' : 'text-slate-700'
               }`}>
-                <span className="flex items-center gap-1.5">
-                  <Globe className="w-3.5 h-3.5 text-cyan-500" />
+                <span className="flex items-center gap-1.5 font-heading">
+                  <Globe className="w-3.5 h-3.5 text-[#006FE3]" />
                   API Base URL:
                 </span>
                 <span className="text-[10px] text-slate-400 font-normal">e.g. https://api.groq.com/openai/v1</span>
@@ -265,8 +265,8 @@ export default function LlmSettingsModal({ isOpen, onClose, theme = 'dark' }) {
                 placeholder="https://api.groq.com/openai/v1 or https://generativelanguage.googleapis.com/v1beta/openai"
                 className={`w-full px-3.5 py-2.5 rounded-xl font-mono text-xs focus:outline-none transition-all ${
                   theme === 'dark'
-                    ? 'bg-[#080E1C] border border-slate-700 text-white placeholder-slate-500 focus:border-cyan-400'
-                    : 'bg-slate-50 border border-slate-300 text-slate-900 placeholder-slate-400 focus:border-cyan-500'
+                    ? 'bg-[#001127] border border-[#002B66] text-white placeholder-slate-500 focus:border-[#006FE3]'
+                    : 'bg-slate-50 border border-slate-300 text-slate-900 placeholder-slate-400 focus:border-[#006FE3]'
                 }`}
               />
             </div>
@@ -276,8 +276,8 @@ export default function LlmSettingsModal({ isOpen, onClose, theme = 'dark' }) {
               <label className={`text-xs font-mono font-bold flex items-center justify-between ${
                 theme === 'dark' ? 'text-slate-300' : 'text-slate-700'
               }`}>
-                <span className="flex items-center gap-1.5">
-                  <Key className="w-3.5 h-3.5 text-cyan-500" />
+                <span className="flex items-center gap-1.5 font-heading">
+                  <Key className="w-3.5 h-3.5 text-[#006FE3]" />
                   Your API Key:
                 </span>
                 <span className="text-[10px] text-slate-400 font-normal">Stored locally in browser</span>
@@ -290,14 +290,14 @@ export default function LlmSettingsModal({ isOpen, onClose, theme = 'dark' }) {
                   placeholder="Paste your API key (gsk_..., AIzaSy..., sk-or-..., sk-...)"
                   className={`w-full pl-3.5 pr-10 py-2.5 rounded-xl font-mono text-xs focus:outline-none transition-all ${
                     theme === 'dark'
-                      ? 'bg-[#080E1C] border border-slate-700 text-white placeholder-slate-500 focus:border-cyan-400'
-                      : 'bg-slate-50 border border-slate-300 text-slate-900 placeholder-slate-400 focus:border-cyan-500'
+                      ? 'bg-[#001127] border border-[#002B66] text-white placeholder-slate-500 focus:border-[#006FE3]'
+                      : 'bg-slate-50 border border-slate-300 text-slate-900 placeholder-slate-400 focus:border-[#006FE3]'
                   }`}
                 />
                 <button
                   type="button"
                   onClick={() => setShowKey(!showKey)}
-                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-white"
+                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-[#006FE3]"
                 >
                   {showKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
@@ -309,11 +309,11 @@ export default function LlmSettingsModal({ isOpen, onClose, theme = 'dark' }) {
               <label className={`text-xs font-mono font-bold flex items-center justify-between ${
                 theme === 'dark' ? 'text-slate-300' : 'text-slate-700'
               }`}>
-                <span className="flex items-center gap-1.5">
-                  <Cpu className="w-3.5 h-3.5 text-cyan-500" />
+                <span className="flex items-center gap-1.5 font-heading">
+                  <Cpu className="w-3.5 h-3.5 text-[#006FE3]" />
                   Model Identifier:
                 </span>
-                <span className="text-[10px] text-cyan-400 font-normal">Type or select any model above</span>
+                <span className="text-[10px] text-[#006FE3] font-normal font-bold">Type or select any model above</span>
               </label>
               <input
                 type="text"
@@ -322,8 +322,8 @@ export default function LlmSettingsModal({ isOpen, onClose, theme = 'dark' }) {
                 placeholder="e.g. llama-3.3-70b-versatile, gemini-2.5-flash, openai/gpt-oss-120b"
                 className={`w-full px-3.5 py-2.5 rounded-xl font-mono text-xs focus:outline-none transition-all ${
                   theme === 'dark'
-                    ? 'bg-[#080E1C] border border-slate-700 text-white placeholder-slate-500 focus:border-cyan-400'
-                    : 'bg-slate-50 border border-slate-300 text-slate-900 placeholder-slate-400 focus:border-cyan-500'
+                    ? 'bg-[#001127] border border-[#002B66] text-white placeholder-slate-500 focus:border-[#006FE3]'
+                    : 'bg-slate-50 border border-slate-300 text-slate-900 placeholder-slate-400 focus:border-[#006FE3]'
                 }`}
               />
             </div>
@@ -334,7 +334,7 @@ export default function LlmSettingsModal({ isOpen, onClose, theme = 'dark' }) {
             <button
               type="button"
               onClick={() => setShowAdvanced(!showAdvanced)}
-              className="text-xs font-mono text-cyan-400 hover:underline flex items-center gap-1 font-semibold"
+              className="text-xs font-mono text-[#006FE3] hover:underline flex items-center gap-1 font-semibold"
             >
               <Sliders className="w-3.5 h-3.5" />
               <span>{showAdvanced ? 'Hide Advanced Sampling Parameters' : 'Show Advanced Sampling Parameters (Temperature, Max Tokens)'}</span>
@@ -342,7 +342,7 @@ export default function LlmSettingsModal({ isOpen, onClose, theme = 'dark' }) {
 
             {showAdvanced && (
               <div className={`mt-3 p-4 rounded-xl border grid grid-cols-1 sm:grid-cols-2 gap-4 ${
-                theme === 'dark' ? 'bg-[#080E1C] border-slate-800' : 'bg-slate-50 border-slate-200'
+                theme === 'dark' ? 'bg-[#001127] border-[#002B66]' : 'bg-slate-50 border-slate-200'
               }`}>
                 <div className="space-y-1">
                   <label className="text-xs font-mono text-slate-400 block">
@@ -355,7 +355,7 @@ export default function LlmSettingsModal({ isOpen, onClose, theme = 'dark' }) {
                     step="0.05"
                     value={config.temperature !== undefined ? config.temperature : 0.3}
                     onChange={(e) => setConfig({ ...config, temperature: parseFloat(e.target.value) })}
-                    className="w-full accent-cyan-500 cursor-pointer"
+                    className="w-full accent-[#006FE3] cursor-pointer"
                   />
                 </div>
 
@@ -368,7 +368,7 @@ export default function LlmSettingsModal({ isOpen, onClose, theme = 'dark' }) {
                     value={config.maxTokens || 2048}
                     onChange={(e) => setConfig({ ...config, maxTokens: parseInt(e.target.value) || 2048 })}
                     className={`w-full px-3 py-1.5 rounded-lg font-mono text-xs focus:outline-none border ${
-                      theme === 'dark' ? 'bg-[#050912] border-slate-700 text-white' : 'bg-white border-slate-300 text-slate-900'
+                      theme === 'dark' ? 'bg-[#000E20] border-[#002B66] text-white' : 'bg-white border-slate-300 text-slate-900'
                     }`}
                   />
                 </div>
@@ -380,13 +380,13 @@ export default function LlmSettingsModal({ isOpen, onClose, theme = 'dark' }) {
           {testResult && (
             <div className={`p-3.5 rounded-xl text-xs font-mono flex items-start gap-2.5 border ${
               testResult.success
-                ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300'
-                : 'bg-rose-500/15 border-rose-500/40 text-rose-300'
+                ? 'bg-[#299346]/15 border-[#299346]/40 text-[#299346]'
+                : 'bg-[#DC2626]/15 border-[#DC2626]/40 text-[#DC2626]'
             }`}>
               {testResult.success ? (
-                <ShieldCheck className="w-4 h-4 text-emerald-400 flex-shrink-0 mt-0.5" />
+                <ShieldCheck className="w-4 h-4 text-[#299346] flex-shrink-0 mt-0.5" />
               ) : (
-                <AlertCircle className="w-4 h-4 text-rose-400 flex-shrink-0 mt-0.5" />
+                <AlertCircle className="w-4 h-4 text-[#DC2626] flex-shrink-0 mt-0.5" />
               )}
               <div className="leading-relaxed">
                 {testResult.message}
@@ -397,16 +397,16 @@ export default function LlmSettingsModal({ isOpen, onClose, theme = 'dark' }) {
 
         {/* Modal Footer */}
         <div className={`p-4 border-t flex items-center justify-between ${
-          theme === 'dark' ? 'bg-[#0E162B] border-slate-800' : 'bg-slate-50 border-slate-200'
+          theme === 'dark' ? 'bg-[#001127] border-[#002B66]' : 'bg-slate-50 border-slate-200'
         }`}>
           <button
             type="button"
             onClick={handleTestConnection}
             disabled={testing}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold font-sans transition-all border ${
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold font-heading transition-all border ${
               theme === 'dark'
-                ? 'bg-[#080E1C] hover:bg-slate-800 text-cyan-300 border-slate-700'
-                : 'bg-white hover:bg-slate-100 text-cyan-700 border-slate-300'
+                ? 'bg-[#001B41] hover:bg-[#002B66] text-[#80B7F1] border-[#002B66]'
+                : 'bg-white hover:bg-slate-100 text-[#006FE3] border-slate-300'
             }`}
           >
             {testing ? (
@@ -416,7 +416,7 @@ export default function LlmSettingsModal({ isOpen, onClose, theme = 'dark' }) {
               </>
             ) : (
               <>
-                <Zap className="w-3.5 h-3.5 text-cyan-400" />
+                <Zap className="w-3.5 h-3.5 text-[#006FE3]" />
                 <span>Test API Connection</span>
               </>
             )}
@@ -425,7 +425,7 @@ export default function LlmSettingsModal({ isOpen, onClose, theme = 'dark' }) {
           <div className="flex items-center gap-2">
             <button
               onClick={onClose}
-              className={`px-4 py-2 rounded-xl text-xs font-semibold transition-colors ${
+              className={`px-4 py-2 rounded-xl text-xs font-semibold font-heading transition-colors ${
                 theme === 'dark' ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
               }`}
             >
@@ -434,7 +434,7 @@ export default function LlmSettingsModal({ isOpen, onClose, theme = 'dark' }) {
 
             <button
               onClick={handleSave}
-              className="flex items-center gap-1.5 px-5 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-bold text-xs shadow-md transition-all font-sans"
+              className="flex items-center gap-1.5 px-5 py-2 rounded-xl bg-[#006FE3] hover:bg-[#005bbd] text-white font-bold text-xs shadow-md shadow-[#006FE3]/25 transition-all font-heading hover:scale-[1.02] active:scale-[0.98]"
             >
               {saveSuccess ? (
                 <>

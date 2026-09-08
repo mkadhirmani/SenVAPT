@@ -172,22 +172,22 @@ export default function StrixConnectionModal({ isOpen, onClose, onConnected, the
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
       <div className={`relative w-full max-w-2xl rounded-2xl border shadow-2xl overflow-hidden transition-all max-h-[90vh] flex flex-col ${
-        theme === 'dark' ? 'bg-[#0B1120] border-slate-800 text-slate-100' : 'bg-white border-slate-300 text-slate-900'
+        theme === 'dark' ? 'bg-[#001B41] border-[#002B66] text-slate-100' : 'bg-white border-slate-200 text-slate-900'
       }`}>
         {/* Modal Header */}
         <div className={`flex items-center justify-between p-5 border-b ${
-          theme === 'dark' ? 'border-slate-800/80' : 'border-slate-200'
+          theme === 'dark' ? 'border-[#002B66] bg-[#001127]' : 'border-slate-200 bg-slate-50'
         }`}>
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-500">
+            <div className="w-10 h-10 rounded-xl bg-[#006FE3] text-white flex items-center justify-center shadow-md shadow-[#006FE3]/30">
               {activeTab === 'n8n' ? <Webhook className="w-5 h-5" /> : <Server className="w-5 h-5" />}
             </div>
             <div>
-              <h3 className={`font-bold text-base font-sans flex items-center gap-2 ${
-                theme === 'dark' ? 'text-white' : 'text-slate-950'
+              <h3 className={`font-bold text-base font-heading flex items-center gap-2 ${
+                theme === 'dark' ? 'text-white' : 'text-[#001B41]'
               }`}>
                 <span>Scanner Trigger &amp; Integration Settings</span>
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/15 border border-cyan-500/30 text-cyan-600 dark:text-cyan-400 font-mono font-normal">
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#006FE3]/20 border border-[#006FE3]/40 text-[#80B7F1] font-mono font-bold">
                   {activeTab === 'n8n' ? 'n8n Public Webhook' : 'Direct Server SSH'}
                 </span>
               </h3>
@@ -199,7 +199,7 @@ export default function StrixConnectionModal({ isOpen, onClose, onConnected, the
           <button
             onClick={onClose}
             className={`p-2 rounded-xl transition-colors ${
-              theme === 'dark' ? 'text-slate-400 hover:text-white hover:bg-slate-800/60' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100'
+              theme === 'dark' ? 'text-slate-400 hover:text-white hover:bg-[#002B66]' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-200'
             }`}
           >
             <X className="w-4 h-4" />
@@ -208,14 +208,14 @@ export default function StrixConnectionModal({ isOpen, onClose, onConnected, the
 
         {/* Tab Switcher */}
         <div className={`flex items-center gap-2 px-6 pt-4 border-b ${
-          theme === 'dark' ? 'border-slate-800/60 bg-[#080E1C]/50' : 'border-slate-200 bg-slate-50/50'
+          theme === 'dark' ? 'border-[#002B66] bg-[#001127]/60' : 'border-slate-200 bg-slate-50/50'
         }`}>
           <button
             type="button"
             onClick={() => { setActiveTab('n8n'); setTestResult(null); }}
-            className={`flex items-center gap-2 pb-3 px-3 text-xs font-mono font-bold border-b-2 transition-all ${
+            className={`flex items-center gap-2 pb-3 px-3 text-xs font-heading font-bold border-b-2 transition-all ${
               activeTab === 'n8n'
-                ? 'border-cyan-400 text-cyan-400'
+                ? 'border-[#006FE3] text-[#006FE3]'
                 : 'border-transparent text-slate-400 hover:text-slate-200'
             }`}
           >
@@ -753,26 +753,26 @@ export default function StrixConnectionModal({ isOpen, onClose, onConnected, the
 
         {/* Modal Footer */}
         <div className={`p-5 border-t flex items-center justify-between gap-3 ${
-          theme === 'dark' ? 'border-slate-800/80 bg-slate-950/40' : 'border-slate-200 bg-slate-50'
+          theme === 'dark' ? 'border-[#002B66] bg-[#001127]' : 'border-slate-200 bg-slate-50'
         }`}>
           <button
             onClick={handleTestConnection}
             disabled={testing || (activeTab === 'ssh' && !config.host) || (activeTab === 'n8n' && !config.n8nWebhookUrl)}
             className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-mono font-bold border transition-colors ${
               theme === 'dark'
-                ? 'bg-[#0E172B] hover:bg-[#152342] border-slate-700 text-slate-200'
-                : 'bg-white hover:bg-slate-100 border-slate-300 text-slate-800 shadow-sm'
+                ? 'bg-[#001B41] hover:bg-[#002B66] border-[#002B66] text-[#80B7F1]'
+                : 'bg-white hover:bg-slate-100 border-slate-300 text-[#006FE3] shadow-sm'
             }`}
           >
             {testing ? (
               <>
-                <RefreshCw className="w-3.5 h-3.5 animate-spin text-cyan-500" />
+                <RefreshCw className="w-3.5 h-3.5 animate-spin text-[#006FE3]" />
                 <span>Testing Connection...</span>
               </>
             ) : (
               <>
-                <Radio className="w-3.5 h-3.5 text-cyan-500" />
-                <span>{activeTab === 'n8n' ? 'Test n8n Webhook' : 'Test SSH Server'}</span>
+                <Radio className="w-3.5 h-3.5 text-[#006FE3]" />
+                <span className="font-heading">{activeTab === 'n8n' ? 'Test n8n Webhook' : 'Test SSH Server'}</span>
               </>
             )}
           </button>
@@ -780,7 +780,7 @@ export default function StrixConnectionModal({ isOpen, onClose, onConnected, the
           <div className="flex items-center gap-2">
             <button
               onClick={onClose}
-              className={`px-4 py-2.5 rounded-xl text-xs font-mono transition-colors ${
+              className={`px-4 py-2.5 rounded-xl text-xs font-heading font-semibold transition-colors ${
                 theme === 'dark' ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-950'
               }`}
             >
@@ -788,11 +788,11 @@ export default function StrixConnectionModal({ isOpen, onClose, onConnected, the
             </button>
             <button
               onClick={handleSave}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-sans font-bold bg-cyan-500 hover:bg-cyan-400 text-slate-950 shadow-md transition-all"
+              className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-heading font-bold bg-[#006FE3] hover:bg-[#005bbd] text-white shadow-md shadow-[#006FE3]/25 transition-all hover:scale-[1.02] active:scale-[0.98]"
             >
               {saveSuccess ? (
                 <>
-                  <CheckCircle2 className="w-4 h-4 text-slate-950" />
+                  <CheckCircle2 className="w-4 h-4 text-white" />
                   <span>Saved!</span>
                 </>
               ) : (

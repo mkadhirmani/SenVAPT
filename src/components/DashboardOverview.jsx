@@ -128,50 +128,55 @@ export default function DashboardOverview({
       <div className="space-y-6 max-w-7xl mx-auto pb-12">
         {/* Logged in User Bar */}
         <div className={`p-4 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs font-mono transition-colors ${
-          theme === 'dark' ? 'bg-[#0B1120] border-slate-800 text-slate-300' : 'bg-white border-slate-300 text-slate-800 shadow-sm'
+          theme === 'dark' ? 'bg-[#001E4B] border-[#0A3778] text-slate-200' : 'bg-white border-slate-200 text-[#001B41] shadow-sm'
         }`}>
           <div className="flex items-center gap-2.5 flex-wrap">
             <div className={`w-7 h-7 rounded-xl flex items-center justify-center font-bold text-xs ${
-              isAdmin ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/40' : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
+              isAdmin ? 'bg-[#006FE3]/20 text-[#4D9AEC] border border-[#006FE3]/40' : 'bg-[#299346]/20 text-[#299346] border border-[#299346]/40'
             }`}>
               {isAdmin ? <Shield className="w-4 h-4" /> : <User className="w-4 h-4" />}
             </div>
             <div>
               <span className="text-slate-400 text-[11px]">Logged in as: </span>
-              <strong className={`font-black text-sm uppercase tracking-wider ${isAdmin ? 'text-cyan-400' : 'text-emerald-400'}`}>
+              <strong className={`font-heading font-black text-sm uppercase tracking-wider ${isAdmin ? 'text-[#006FE3] dark:text-[#4D9AEC]' : 'text-[#299346]'}`}>
                 {currentUser?.username || (isAdmin ? 'admin' : 'user')}
               </strong>
-              <span className="ml-2 px-2 py-0.5 rounded-full text-[10px] font-bold border bg-slate-800/80 border-slate-700 text-slate-300">
+              <span className={`ml-2 px-2 py-0.5 rounded-full text-[10px] font-heading font-bold border ${
+                theme === 'dark' ? 'bg-[#001127] border-[#0A3778] text-slate-300' : 'bg-slate-100 border-slate-200 text-slate-700'
+              }`}>
                 {isAdmin ? 'Administrator' : 'Standard User'}
               </span>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 text-[11px] text-emerald-500 font-bold">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-            <span>Active Authenticated Session</span>
+          <div className="flex items-center gap-2 text-[11px] text-[#299346] font-bold">
+            <span className="w-2 h-2 rounded-full bg-[#299346] animate-pulse"></span>
+            <span className="font-heading">Active Authenticated Session</span>
           </div>
         </div>
 
         {/* Welcome Empty State Card */}
         <div className={`p-8 sm:p-14 rounded-3xl border text-center space-y-6 transition-colors shadow-sm ${
-          theme === 'dark' ? 'bg-[#090F1E] border-slate-800' : 'bg-white border-slate-200'
+          theme === 'dark' ? 'bg-[#001B41] border-[#0A3778]' : 'bg-white border-slate-200'
         }`}>
-          <div className="w-20 h-20 rounded-3xl bg-cyan-500/10 text-cyan-400 mx-auto flex items-center justify-center border border-cyan-500/20 shadow-inner">
-            <ShieldCheck className="w-10 h-10 animate-pulse text-cyan-400" />
+          <div className="w-20 h-20 rounded-3xl bg-[#006FE3]/15 text-[#006FE3] mx-auto flex items-center justify-center border border-[#006FE3]/30 shadow-inner">
+            <ShieldCheck className="w-10 h-10 animate-pulse text-[#006FE3]" />
           </div>
           <div className="space-y-2 max-w-lg mx-auto">
-            <h2 className={`text-2xl sm:text-3xl font-extrabold ${theme === 'dark' ? 'text-white' : 'text-slate-950'}`}>
-              Welcome, <span className="text-cyan-400 uppercase">{currentUser?.username || 'User'}</span>!
+            <h2 className={`text-2xl sm:text-3xl font-heading font-extrabold ${theme === 'dark' ? 'text-white' : 'text-[#001B41]'}`}>
+              Welcome, <span className="text-[#006FE3] dark:text-[#4D9AEC] uppercase">{currentUser?.username || 'User'}</span>!
             </h2>
+            <p className="text-xs font-heading font-semibold text-[#006FE3] dark:text-[#4D9AEC] uppercase tracking-wider">
+              Enterprise Security. Without Compromise.
+            </p>
             <p className={`text-xs sm:text-sm leading-relaxed ${theme === 'dark' ? 'text-slate-400' : 'text-slate-600'}`}>
-              You are signed in as <strong className="text-cyan-400 uppercase">{currentUser?.username || 'User'}</strong> ({isAdmin ? 'Administrator' : 'Standard User'}). You haven't performed any security audits on your account yet. Launch an AI-driven penetration test to discover vulnerabilities, attack paths, and remediation plans.
+              You are signed in as <strong className="text-[#006FE3] dark:text-[#4D9AEC] uppercase">{currentUser?.username || 'User'}</strong> ({isAdmin ? 'Administrator' : 'Standard User'}). Launch an AI-driven penetration test to discover vulnerabilities, attack paths, and remediation plans.
             </p>
           </div>
           <div className="pt-2">
             <button
               onClick={() => onNavigateTab ? onNavigateTab('scan') : null}
-              className="px-8 py-3.5 rounded-2xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-bold text-sm font-sans shadow-lg shadow-cyan-500/20 inline-flex items-center gap-2.5 transition-all cursor-pointer hover:scale-105"
+              className="px-8 py-3.5 rounded-2xl bg-[#006FE3] hover:bg-[#005bbd] text-white font-heading font-bold text-sm shadow-lg shadow-[#006FE3]/30 inline-flex items-center gap-2.5 transition-all cursor-pointer hover:scale-105"
             >
               <Radar className="w-5 h-5" />
               <span>Launch Your First AI Scan &rarr;</span>
@@ -200,48 +205,50 @@ export default function DashboardOverview({
     <div className="space-y-6 max-w-7xl mx-auto pb-12">
       {/* User Login Header Bar */}
       <div className={`p-3.5 px-5 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs font-mono transition-colors ${
-        theme === 'dark' ? 'bg-[#0B1120] border-slate-800 text-slate-300' : 'bg-white border-slate-300 text-slate-800 shadow-sm'
+        theme === 'dark' ? 'bg-[#001E4B] border-[#0A3778] text-slate-200' : 'bg-white border-slate-200 text-[#001B41] shadow-sm'
       }`}>
         <div className="flex items-center gap-2.5 flex-wrap">
           <div className={`w-6 h-6 rounded-lg flex items-center justify-center font-bold text-xs ${
-            isAdmin ? 'bg-cyan-500/20 text-cyan-400' : 'bg-emerald-500/20 text-emerald-400'
+            isAdmin ? 'bg-[#006FE3]/20 text-[#4D9AEC]' : 'bg-[#299346]/20 text-[#299346]'
           }`}>
             {isAdmin ? <Shield className="w-3.5 h-3.5" /> : <User className="w-3.5 h-3.5" />}
           </div>
           <div>
             <span className="text-slate-400 text-[11px]">Logged in as: </span>
-            <strong className={`font-black text-sm uppercase tracking-wider ${isAdmin ? 'text-cyan-400' : 'text-emerald-400'}`}>
+            <strong className={`font-heading font-black text-sm uppercase tracking-wider ${isAdmin ? 'text-[#006FE3] dark:text-[#4D9AEC]' : 'text-[#299346]'}`}>
               {currentUser?.username || (isAdmin ? 'admin' : 'user')}
             </strong>
-            <span className="ml-2 px-2 py-0.5 rounded-full text-[10px] font-bold border bg-slate-800/80 border-slate-700 text-slate-300">
+            <span className={`ml-2 px-2 py-0.5 rounded-full text-[10px] font-heading font-bold border ${
+              theme === 'dark' ? 'bg-[#001127] border-[#0A3778] text-slate-300' : 'bg-slate-100 border-slate-200 text-slate-700'
+            }`}>
               {isAdmin ? 'Administrator' : 'Standard User'}
             </span>
           </div>
         </div>
 
-        <div className="flex items-center gap-2 text-[11px] text-emerald-500 font-bold">
-          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-          <span>Active Session</span>
+        <div className="flex items-center gap-2 text-[11px] text-[#299346] font-bold">
+          <span className="w-2 h-2 rounded-full bg-[#299346] animate-pulse"></span>
+          <span className="font-heading">Active Session</span>
         </div>
       </div>
 
       {/* Scan Session Switcher Banner */}
       {scanHistory.length > 0 && (
         <div className={`p-4 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-4 text-xs font-mono transition-colors ${
-          theme === 'dark' ? 'bg-[#0B1120] border-slate-800 text-slate-300' : 'bg-white border-slate-300 text-slate-800 shadow-sm'
+          theme === 'dark' ? 'bg-[#001E4B] border-[#0A3778] text-slate-200' : 'bg-white border-slate-200 text-[#001B41] shadow-sm'
         }`}>
           <div className="flex items-center gap-2.5 min-w-0 flex-wrap">
-            <span className="text-cyan-500 font-bold uppercase tracking-wider flex items-center gap-1.5">
-              <History className="w-4 h-4" />
+            <span className="text-[#006FE3] dark:text-[#4D9AEC] font-heading font-bold uppercase tracking-wider flex items-center gap-1.5">
+              <History className="w-4 h-4 text-[#006FE3]" />
               Active Target Scan:
             </span>
             {companyName && (
-              <span className={`font-bold truncate text-sm ${theme === 'dark' ? 'text-white' : 'text-slate-950'}`}>
+              <span className={`font-heading font-bold truncate text-sm ${theme === 'dark' ? 'text-white' : 'text-[#001B41]'}`}>
                 {companyName}
               </span>
             )}
             {companyName && targetUrl && (
-              <span className={theme === 'dark' ? 'text-slate-500' : 'text-slate-400'}>&bull;</span>
+              <span className={theme === 'dark' ? 'text-[#4D5F7A]' : 'text-slate-400'}>&bull;</span>
             )}
             {targetUrl && (
               <span className={`truncate hidden sm:inline ${theme === 'dark' ? 'text-slate-400' : 'text-slate-600'}`}>
@@ -251,7 +258,7 @@ export default function DashboardOverview({
             
             {/* Scanned By Attribution Badge (Admin Visible) */}
             {isAdmin && (
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-[#299346]/20 text-[#299346] border border-[#299346]/30 flex items-center gap-1">
                 <UserCheck className="w-3 h-3" />
                 <span>Audited by: {scannedByName}</span>
               </span>
@@ -259,7 +266,7 @@ export default function DashboardOverview({
           </div>
 
           <div className="flex items-center gap-2 flex-shrink-0">
-            <span className={`${theme === 'dark' ? 'text-slate-400' : 'text-slate-600'} text-[11px] font-bold`}>
+            <span className={`${theme === 'dark' ? 'text-slate-300' : 'text-slate-600'} text-[11px] font-heading font-bold`}>
               Switch Target:
             </span>
             <select
@@ -268,10 +275,10 @@ export default function DashboardOverview({
                 const selected = scanHistory.find(s => s.id === e.target.value);
                 if (selected && onSelectScan) onSelectScan(selected, true);
               }}
-              className={`px-3 py-1.5 rounded-xl font-mono text-xs focus:outline-none border transition-all ${
+              className={`px-3 py-1.5 rounded-xl font-mono text-xs focus:outline-none border transition-all cursor-pointer ${
                 theme === 'dark'
-                  ? 'bg-[#080E1C] border-slate-700 text-white focus:border-cyan-400'
-                  : 'bg-slate-50 border-slate-300 text-slate-900 focus:border-cyan-500'
+                  ? 'bg-[#001127] border-[#0A3778] text-white focus:border-[#006FE3]'
+                  : 'bg-slate-50 border-slate-300 text-[#001B41] focus:border-[#006FE3]'
               }`}
             >
               {scanHistory.map((scan) => {
@@ -292,38 +299,38 @@ export default function DashboardOverview({
       {/* Active Scan Overview Banner */}
       <div className={`p-6 sm:p-7 rounded-2xl border flex flex-col md:flex-row md:items-center justify-between gap-5 shadow-sm transition-colors ${
         theme === 'dark' 
-          ? 'bg-gradient-to-r from-[#0D162B] via-[#0A101F] to-[#0D162B] border-slate-800' 
-          : 'bg-gradient-to-r from-slate-50 via-white to-slate-50 border-slate-300'
+          ? 'bg-gradient-to-r from-[#001B41] via-[#002863] to-[#001B41] border-[#0A3778]' 
+          : 'bg-gradient-to-r from-[#E6F1FC] via-white to-[#E6F1FC] border-[#B3D4F7]'
       }`}>
         <div className="space-y-1.5 flex-1 min-w-0">
-          <div className="flex items-center gap-2 text-cyan-600 dark:text-cyan-400 text-xs font-mono font-bold uppercase tracking-wider">
-            <Sparkles className="w-3.5 h-3.5 flex-shrink-0 text-cyan-500" />
+          <div className="flex items-center gap-2 text-[#006FE3] dark:text-[#4D9AEC] text-xs font-heading font-bold uppercase tracking-wider">
+            <Sparkles className="w-3.5 h-3.5 flex-shrink-0 text-[#006FE3]" />
             <span>Autonomous Security Assessment Overview</span>
           </div>
-          <h1 className={`text-2xl sm:text-3xl font-extrabold tracking-tight truncate ${theme === 'dark' ? 'text-white' : 'text-slate-950'}`}>
-            {companyName}: <span className="text-rose-600 dark:text-rose-400">{riskLevel} RISK</span>
+          <h1 className={`text-2xl sm:text-3xl font-heading font-extrabold tracking-tight truncate ${theme === 'dark' ? 'text-white' : 'text-[#001B41]'}`}>
+            {companyName}: <span className="text-rose-500 dark:text-rose-400">{riskLevel} RISK</span>
           </h1>
-          <p className={`text-xs sm:text-sm leading-relaxed max-w-2xl ${theme === 'dark' ? 'text-slate-400' : 'text-slate-700 font-medium'}`}>
-            Automated testing of <strong className={theme === 'dark' ? 'text-slate-200' : 'text-slate-950'}>{targetUrl}</strong> confirmed <strong>{vulnerabilities.length} security findings</strong> ({severityBreakdown}). Most platforms are protected, but urgent remediation is recommended.
+          <p className={`text-xs sm:text-sm leading-relaxed max-w-2xl ${theme === 'dark' ? 'text-slate-300' : 'text-slate-700'}`}>
+            Automated testing of <strong className={theme === 'dark' ? 'text-white' : 'text-[#001B41]'}>{targetUrl}</strong> confirmed <strong className="text-[#006FE3] dark:text-[#4D9AEC]">{vulnerabilities.length} security findings</strong> ({severityBreakdown}). Most systems are protected, but prioritized remediation is advised.
           </p>
         </div>
 
         <div className="flex items-center gap-3 flex-shrink-0">
           <button
             onClick={() => onOpenChatbot(`Summarize all findings for ${companyName} in simple words`)}
-            className={`flex items-center justify-center gap-2 px-4 h-10 rounded-xl border text-xs font-bold font-sans transition-all ${
+            className={`flex items-center justify-center gap-2 px-4 h-10 rounded-xl border text-xs font-heading font-bold transition-all cursor-pointer ${
               theme === 'dark'
-                ? 'bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-300 border-cyan-500/40'
-                : 'bg-cyan-50 hover:bg-cyan-100 text-cyan-900 border-cyan-300 shadow-sm'
+                ? 'bg-[#006FE3]/15 hover:bg-[#006FE3]/25 text-[#4D9AEC] border-[#006FE3]/40'
+                : 'bg-white hover:bg-[#E6F1FC] text-[#006FE3] border-[#B3D4F7] shadow-sm'
             }`}
           >
-            <Bot className="w-4 h-4 text-cyan-500 flex-shrink-0" />
+            <Bot className="w-4 h-4 text-[#006FE3] flex-shrink-0" />
             <span>Ask AI Assistant</span>
           </button>
 
           <button
             onClick={() => onNavigateTab('report')}
-            className="flex items-center justify-center gap-2 px-4 h-10 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 text-xs font-bold font-sans transition-all shadow-md cursor-pointer"
+            className="flex items-center justify-center gap-2 px-4 h-10 rounded-xl bg-[#006FE3] hover:bg-[#005bbd] text-white text-xs font-heading font-bold transition-all shadow-md shadow-[#006FE3]/30 cursor-pointer"
           >
             <span>View Full Report</span>
             <ArrowRight className="w-3.5 h-3.5 flex-shrink-0" />
@@ -335,44 +342,44 @@ export default function DashboardOverview({
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Risk Score */}
         <div className={`p-5 rounded-2xl border flex flex-col justify-between h-36 transition-colors ${
-          theme === 'dark' ? 'bg-[#0B1120] border-slate-800' : 'bg-white border-slate-300 shadow-sm'
+          theme === 'dark' ? 'bg-[#001E4B] border-[#0A3778]' : 'bg-white border-slate-200 shadow-sm'
         }`}>
-          <div className={`flex items-center justify-between text-xs font-mono font-bold ${
-            theme === 'dark' ? 'text-slate-400' : 'text-slate-700'
+          <div className={`flex items-center justify-between text-xs font-heading font-bold ${
+            theme === 'dark' ? 'text-slate-300' : 'text-slate-600'
           }`}>
             <span>RISK RATING</span>
             <Flame className="w-4 h-4 text-rose-500 flex-shrink-0" />
           </div>
-          <div className="text-3xl font-black font-mono text-rose-600 dark:text-rose-400">
-            {riskScore}<span className={`text-sm font-normal ${theme === 'dark' ? 'text-slate-400' : 'text-slate-600'}`}> / 10</span>
+          <div className="text-3xl font-heading font-black text-rose-500 dark:text-rose-400">
+            {riskScore}<span className={`text-sm font-normal ${theme === 'dark' ? 'text-slate-400' : 'text-slate-500'}`}> / 10</span>
           </div>
-          <div className={`text-[11px] font-mono font-bold ${theme === 'dark' ? 'text-slate-400' : 'text-slate-700'}`}>
+          <div className={`text-[11px] font-heading font-bold ${theme === 'dark' ? 'text-slate-300' : 'text-slate-600'}`}>
             {riskLevel} Posture
           </div>
         </div>
 
         {/* Confirmed Findings */}
         <div className={`p-5 rounded-2xl border flex flex-col justify-between h-36 transition-colors ${
-          theme === 'dark' ? 'bg-[#0B1120] border-slate-800' : 'bg-white border-slate-300 shadow-sm'
+          theme === 'dark' ? 'bg-[#001E4B] border-[#0A3778]' : 'bg-white border-slate-200 shadow-sm'
         }`}>
-          <div className={`flex items-center justify-between text-xs font-mono font-bold ${
-            theme === 'dark' ? 'text-slate-400' : 'text-slate-700'
+          <div className={`flex items-center justify-between text-xs font-heading font-bold ${
+            theme === 'dark' ? 'text-slate-300' : 'text-slate-600'
           }`}>
             <span>FINDINGS</span>
-            <ShieldAlert className="w-4 h-4 text-cyan-500 flex-shrink-0" />
+            <ShieldAlert className="w-4 h-4 text-[#006FE3] flex-shrink-0" />
           </div>
-          <div className={`text-3xl font-black font-mono ${theme === 'dark' ? 'text-white' : 'text-slate-950'}`}>
+          <div className={`text-3xl font-heading font-black ${theme === 'dark' ? 'text-white' : 'text-[#001B41]'}`}>
             {vulnerabilities.length}
           </div>
           <div className="text-[11px] font-mono flex items-center gap-1.5 font-bold flex-wrap">
             {critVulns.length > 0 && (
-              <span className="text-red-500 font-black">{critVulns.length} Critical</span>
+              <span className="text-rose-500 font-black">{critVulns.length} Critical</span>
             )}
             {critVulns.length > 0 && (highVulns.length > 0 || medVulns.length > 0 || lowVulns.length > 0) && (
               <span className="text-slate-400">&bull;</span>
             )}
             {highVulns.length > 0 && (
-              <span className="text-orange-500 dark:text-orange-400">{highVulns.length} High</span>
+              <span className="text-[#B9623C] dark:text-orange-400">{highVulns.length} High</span>
             )}
             {highVulns.length > 0 && (medVulns.length > 0 || lowVulns.length > 0) && (
               <span className="text-slate-400">&bull;</span>
@@ -384,46 +391,46 @@ export default function DashboardOverview({
               <span className="text-slate-400">&bull;</span>
             )}
             {lowVulns.length > 0 && (
-              <span className="text-emerald-500 dark:text-emerald-400">{lowVulns.length} Low</span>
+              <span className="text-[#299346] dark:text-emerald-400">{lowVulns.length} Low</span>
             )}
             {vulnerabilities.length === 0 && (
-              <span className="text-slate-400">0 Findings</span>
+              <span className="text-[#299346]">0 Findings</span>
             )}
           </div>
         </div>
 
         {/* Max CVSS */}
         <div className={`p-5 rounded-2xl border flex flex-col justify-between h-36 transition-colors ${
-          theme === 'dark' ? 'bg-[#0B1120] border-slate-800' : 'bg-white border-slate-300 shadow-sm'
+          theme === 'dark' ? 'bg-[#001E4B] border-[#0A3778]' : 'bg-white border-slate-200 shadow-sm'
         }`}>
-          <div className={`flex items-center justify-between text-xs font-mono font-bold ${
-            theme === 'dark' ? 'text-slate-400' : 'text-slate-700'
+          <div className={`flex items-center justify-between text-xs font-heading font-bold ${
+            theme === 'dark' ? 'text-slate-300' : 'text-slate-600'
           }`}>
             <span>MAX SEVERITY</span>
             <Activity className="w-4 h-4 text-rose-500 flex-shrink-0" />
           </div>
-          <div className="text-3xl font-black font-mono text-rose-600 dark:text-rose-400">
+          <div className="text-3xl font-heading font-black text-rose-500 dark:text-rose-400">
             {topVuln ? topVuln.cvss : 8.2}
           </div>
-          <div className={`text-[11px] font-mono truncate font-bold ${theme === 'dark' ? 'text-slate-400' : 'text-slate-700'}`}>
+          <div className={`text-[11px] font-heading truncate font-bold ${theme === 'dark' ? 'text-slate-300' : 'text-slate-600'}`}>
             {topVuln ? `${topVuln.severity} Severity` : 'High Severity'}
           </div>
         </div>
 
         {/* Assets Tested */}
         <div className={`p-5 rounded-2xl border flex flex-col justify-between h-36 transition-colors ${
-          theme === 'dark' ? 'bg-[#0B1120] border-slate-800' : 'bg-white border-slate-300 shadow-sm'
+          theme === 'dark' ? 'bg-[#001E4B] border-[#0A3778]' : 'bg-white border-slate-200 shadow-sm'
         }`}>
-          <div className={`flex items-center justify-between text-xs font-mono font-bold ${
-            theme === 'dark' ? 'text-slate-400' : 'text-slate-700'
+          <div className={`flex items-center justify-between text-xs font-heading font-bold ${
+            theme === 'dark' ? 'text-slate-300' : 'text-slate-600'
           }`}>
             <span>ASSETS TESTED</span>
-            <Server className="w-4 h-4 text-emerald-500 flex-shrink-0" />
+            <Server className="w-4 h-4 text-[#299346] flex-shrink-0" />
           </div>
-          <div className={`text-3xl font-black font-mono ${theme === 'dark' ? 'text-white' : 'text-slate-950'}`}>
+          <div className={`text-3xl font-heading font-black ${theme === 'dark' ? 'text-white' : 'text-[#001B41]'}`}>
             {uniqueAssets.length > 0 ? uniqueAssets.length : 1}
           </div>
-          <div className={`text-[11px] font-mono truncate font-bold ${theme === 'dark' ? 'text-slate-400' : 'text-slate-700'}`}>
+          <div className={`text-[11px] font-mono truncate font-bold ${theme === 'dark' ? 'text-slate-300' : 'text-slate-600'}`}>
             {vulnerabilities.length} With Findings
           </div>
         </div>
@@ -435,36 +442,36 @@ export default function DashboardOverview({
           onClick={onViewAttackChain}
           className={`p-6 rounded-2xl border transition-all cursor-pointer shadow-sm group ${
             theme === 'dark'
-              ? 'bg-gradient-to-r from-[#170C1C] via-[#0D1526] to-[#0A1222] border-rose-500/40 hover:border-rose-400'
+              ? 'bg-gradient-to-r from-[#1A0A1E] via-[#001E4B] to-[#001127] border-rose-500/40 hover:border-rose-400'
               : 'bg-white border-rose-200 hover:border-rose-400 shadow-md'
           }`}
         >
           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
             <div className="flex items-start gap-4">
-              <div className="p-3 rounded-xl bg-rose-500/20 text-rose-600 dark:text-rose-400 border border-rose-500/30 group-hover:scale-105 transition-transform flex-shrink-0 mt-0.5">
+              <div className="p-3 rounded-xl bg-rose-500/20 text-rose-500 border border-rose-500/30 group-hover:scale-105 transition-transform flex-shrink-0 mt-0.5">
                 <GitBranch className="w-6 h-6" />
               </div>
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
-                  <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-rose-500/20 text-rose-600 dark:text-rose-400 border border-rose-500/30">
+                  <span className="px-2 py-0.5 rounded text-[10px] font-heading font-bold bg-rose-500/20 text-rose-500 border border-rose-500/30">
                     TOP SECURITY RISK
                   </span>
                   <span className={`text-xs font-mono ${theme === 'dark' ? 'text-slate-400' : 'text-slate-700 font-bold'}`}>
                     {topVuln.target} &bull; CVSS {topVuln.cvss}
                   </span>
                 </div>
-                <h3 className={`text-base sm:text-lg font-bold group-hover:text-rose-600 dark:group-hover:text-rose-400 transition-colors ${
-                  theme === 'dark' ? 'text-white' : 'text-slate-950'
+                <h3 className={`text-base sm:text-lg font-heading font-bold group-hover:text-rose-500 transition-colors ${
+                  theme === 'dark' ? 'text-white' : 'text-[#001B41]'
                 }`}>
                   {topVuln.title}
                 </h3>
-                <p className={`text-xs max-w-3xl leading-relaxed ${theme === 'dark' ? 'text-slate-400' : 'text-slate-700 font-medium'}`}>
+                <p className={`text-xs max-w-3xl leading-relaxed ${theme === 'dark' ? 'text-slate-300' : 'text-slate-600'}`}>
                   {topVuln.impact || topVuln.description}
                 </p>
               </div>
             </div>
 
-            <div className="flex items-center gap-2 px-4 h-10 rounded-xl bg-rose-500 hover:bg-rose-400 text-slate-950 font-bold text-xs font-sans shadow-md transition-all flex-shrink-0 self-start lg:self-auto">
+            <div className="flex items-center gap-2 px-4 h-10 rounded-xl bg-rose-500 hover:bg-rose-600 text-white font-heading font-bold text-xs shadow-md transition-all flex-shrink-0 self-start lg:self-auto">
               <span>Explore Attack Graph</span>
               <ChevronRight className="w-4 h-4" />
             </div>
@@ -476,18 +483,18 @@ export default function DashboardOverview({
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
         {/* Left 2 Cols: Finding Items */}
         <div className={`lg:col-span-2 p-6 rounded-2xl border space-y-4 flex flex-col justify-between ${
-          theme === 'dark' ? 'bg-[#0B1120] border-slate-800' : 'bg-white border-slate-300 shadow-sm'
+          theme === 'dark' ? 'bg-[#001E4B] border-[#0A3778]' : 'bg-white border-slate-200 shadow-sm'
         }`}>
           <div className={`flex items-center justify-between border-b pb-3 ${
-            theme === 'dark' ? 'border-slate-800' : 'border-slate-200'
+            theme === 'dark' ? 'border-[#0A3778]' : 'border-slate-200'
           }`}>
-            <div className={`flex items-center gap-2 font-bold text-sm ${theme === 'dark' ? 'text-white' : 'text-slate-950'}`}>
-              <Layers className="w-4 h-4 text-cyan-500" />
+            <div className={`flex items-center gap-2 font-heading font-bold text-sm ${theme === 'dark' ? 'text-white' : 'text-[#001B41]'}`}>
+              <Layers className="w-4 h-4 text-[#006FE3]" />
               <span>Confirmed Vulnerabilities ({vulnerabilities.length})</span>
             </div>
             <button
               onClick={() => onNavigateTab('vulnerabilities')}
-              className="text-xs font-sans text-cyan-600 dark:text-cyan-400 hover:underline flex items-center gap-1 font-bold"
+              className="text-xs font-heading text-[#006FE3] dark:text-[#4D9AEC] hover:underline flex items-center gap-1 font-bold cursor-pointer"
             >
               <span>View All</span>
               <ChevronRight className="w-3.5 h-3.5" />
@@ -506,30 +513,30 @@ export default function DashboardOverview({
                   onClick={() => onSelectFinding(vuln)}
                   className={`flex items-center justify-between p-3.5 rounded-xl border transition-all cursor-pointer group ${
                     theme === 'dark'
-                      ? 'bg-[#080E1C] border-slate-800/90 hover:border-cyan-500/40 hover:bg-[#0E172C]'
-                      : 'bg-slate-50 border-slate-200 hover:border-cyan-500 hover:bg-white shadow-sm'
+                      ? 'bg-[#001127]/60 border-[#0A3778] hover:border-[#006FE3] hover:bg-[#002863]'
+                      : 'bg-slate-50 border-slate-200 hover:border-[#006FE3] hover:bg-white shadow-sm'
                   }`}
                 >
                   <div className="flex items-center gap-3 min-w-0">
-                    <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded flex-shrink-0 w-16 text-center ${
+                    <span className={`text-[10px] font-heading font-bold px-2 py-0.5 rounded flex-shrink-0 w-16 text-center border ${
                       isCritical
-                        ? 'bg-red-500/20 text-red-500 dark:text-red-400 border border-red-500/40 font-black'
+                        ? 'bg-rose-500/20 text-rose-500 border-rose-500/40 font-black'
                         : isHigh
-                        ? 'bg-orange-500/20 text-orange-600 dark:text-orange-400 border border-orange-500/30'
+                        ? 'bg-[#B9623C]/20 text-[#B9623C] border-[#B9623C]/30'
                         : isMedium
-                        ? 'bg-amber-500/20 text-amber-700 dark:text-amber-400 border border-amber-500/30'
-                        : 'bg-sky-500/20 text-sky-700 dark:text-sky-400 border border-sky-500/30'
+                        ? 'bg-amber-500/20 text-amber-600 dark:text-amber-400 border-amber-500/30'
+                        : 'bg-[#299346]/20 text-[#299346] border-[#299346]/30'
                     }`}>
                       {vuln.severity}
                     </span>
                     <div className="min-w-0">
-                      <div className={`text-xs font-bold truncate group-hover:text-cyan-600 dark:group-hover:text-cyan-400 transition-colors ${
-                        theme === 'dark' ? 'text-slate-200' : 'text-slate-950'
+                      <div className={`text-xs font-heading font-bold truncate group-hover:text-[#006FE3] dark:group-hover:text-[#4D9AEC] transition-colors ${
+                        theme === 'dark' ? 'text-slate-100' : 'text-[#001B41]'
                       }`}>
                         {vuln.title}
                       </div>
                       <div className={`text-[10px] font-mono truncate ${
-                        theme === 'dark' ? 'text-slate-400' : 'text-slate-600 font-medium'
+                        theme === 'dark' ? 'text-slate-400' : 'text-slate-600'
                       }`}>
                         {vuln.target} &bull; {vuln.cwe}
                       </div>
@@ -539,17 +546,17 @@ export default function DashboardOverview({
                   <div className="flex items-center gap-3 font-mono text-xs flex-shrink-0 ml-3">
                     <span className={`font-bold ${
                       isCritical 
-                        ? 'text-red-500 dark:text-red-400 font-black' 
+                        ? 'text-rose-500 font-black' 
                         : isHigh 
-                        ? 'text-orange-600 dark:text-orange-400' 
-                        : 'text-amber-600 dark:text-amber-400'
+                        ? 'text-[#B9623C]' 
+                        : 'text-amber-500'
                     }`}>
                       CVSS {vuln.cvss}
                     </span>
-                    <div className={`h-7 px-2.5 rounded-lg flex items-center gap-1 text-[11px] font-sans font-bold border transition-colors ${
+                    <div className={`h-7 px-2.5 rounded-lg flex items-center gap-1 text-[11px] font-heading font-bold border transition-colors ${
                       theme === 'dark' 
-                        ? 'bg-[#0D162B] group-hover:bg-cyan-500 text-slate-300 group-hover:text-slate-950 border-slate-700' 
-                        : 'bg-slate-100 group-hover:bg-cyan-500 text-slate-800 group-hover:text-slate-950 border-slate-300'
+                        ? 'bg-[#001E4B] group-hover:bg-[#006FE3] text-slate-200 group-hover:text-white border-[#0A3778]' 
+                        : 'bg-white group-hover:bg-[#006FE3] text-[#001B41] group-hover:text-white border-slate-200'
                     }`}>
                       <span>Inspect</span>
                       <ChevronRight className="w-3.5 h-3.5" />
@@ -563,16 +570,16 @@ export default function DashboardOverview({
 
         {/* Right 1 Col: Asset Surface */}
         <div className={`p-6 rounded-2xl border space-y-4 flex flex-col justify-between ${
-          theme === 'dark' ? 'bg-[#0B1120] border-slate-800' : 'bg-white border-slate-300 shadow-sm'
+          theme === 'dark' ? 'bg-[#001E4B] border-[#0A3778]' : 'bg-white border-slate-200 shadow-sm'
         }`}>
           <div className={`flex items-center justify-between border-b pb-3 ${
-            theme === 'dark' ? 'border-slate-800' : 'border-slate-200'
+            theme === 'dark' ? 'border-[#0A3778]' : 'border-slate-200'
           }`}>
-            <div className={`flex items-center gap-2 font-bold text-sm ${theme === 'dark' ? 'text-white' : 'text-slate-950'}`}>
-              <Server className="w-4 h-4 text-cyan-500" />
+            <div className={`flex items-center gap-2 font-heading font-bold text-sm ${theme === 'dark' ? 'text-white' : 'text-[#001B41]'}`}>
+              <Server className="w-4 h-4 text-[#006FE3]" />
               <span>Asset Surface</span>
             </div>
-            <span className={`text-xs font-mono ${theme === 'dark' ? 'text-slate-400' : 'text-slate-700 font-bold'}`}>
+            <span className={`text-xs font-mono ${theme === 'dark' ? 'text-slate-400' : 'text-slate-600 font-bold'}`}>
               {uniqueAssets.length} Target Assets
             </span>
           </div>
@@ -587,19 +594,19 @@ export default function DashboardOverview({
                 <div
                   key={idx}
                   className={`flex items-center justify-between p-3 rounded-xl border text-xs transition-colors ${
-                    theme === 'dark' ? 'bg-[#080E1C] border-slate-800/70' : 'bg-slate-50 border-slate-200'
+                    theme === 'dark' ? 'bg-[#001127]/60 border-[#0A3778]' : 'bg-slate-50 border-slate-200'
                   }`}
                 >
                   <div className="min-w-0 mr-2">
                     <div className={`font-mono font-bold text-[11px] truncate ${
-                      theme === 'dark' ? 'text-slate-200' : 'text-slate-950'
+                      theme === 'dark' ? 'text-slate-100' : 'text-[#001B41]'
                     }`}>
                       {asset}
                     </div>
                     <div className={`text-[10px] truncate ${
                       hasFindings
                         ? (theme === 'dark' ? 'text-rose-400' : 'text-rose-600 font-semibold')
-                        : (theme === 'dark' ? 'text-slate-400' : 'text-slate-600 font-medium')
+                        : (theme === 'dark' ? 'text-slate-400' : 'text-slate-600')
                     }`}>
                       {hasFindings 
                         ? `${assetVulns.length} Confirmed Finding${assetVulns.length > 1 ? 's' : ''}` 
@@ -607,12 +614,12 @@ export default function DashboardOverview({
                     </div>
                   </div>
 
-                  <span className={`text-[9px] font-mono font-bold px-2 py-0.5 rounded flex-shrink-0 border ${
+                  <span className={`text-[9px] font-heading font-bold px-2 py-0.5 rounded flex-shrink-0 border ${
                     hasFindings
                       ? (hasHigh
-                          ? 'bg-rose-500/20 text-rose-600 dark:text-rose-400 border-rose-500/30'
-                          : 'bg-amber-500/20 text-amber-700 dark:text-amber-400 border-amber-500/30')
-                      : 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border-emerald-500/30'
+                          ? 'bg-rose-500/20 text-rose-500 border-rose-500/30'
+                          : 'bg-[#B9623C]/20 text-[#B9623C] border-[#B9623C]/30')
+                      : 'bg-[#299346]/20 text-[#299346] border-[#299346]/30'
                   }`}>
                     {hasFindings ? (hasHigh ? 'HIGH RISK' : 'FINDING') : 'PROTECTED'}
                   </span>
@@ -625,21 +632,21 @@ export default function DashboardOverview({
 
       {/* Verified Safe Controls Card */}
       <div className={`p-6 rounded-2xl border space-y-4 ${
-        theme === 'dark' ? 'bg-[#0B1120] border-slate-800' : 'bg-white border-slate-300 shadow-sm'
+        theme === 'dark' ? 'bg-[#001E4B] border-[#0A3778]' : 'bg-white border-slate-200 shadow-sm'
       }`}>
-        <div className={`flex items-center gap-2 font-bold text-sm border-b pb-3 ${
-          theme === 'dark' ? 'border-slate-800 text-white' : 'border-slate-200 text-slate-950'
+        <div className={`flex items-center gap-2 font-heading font-bold text-sm border-b pb-3 ${
+          theme === 'dark' ? 'border-[#0A3778] text-white' : 'border-slate-200 text-[#001B41]'
         }`}>
-          <ShieldCheck className="w-4 h-4 text-emerald-500 flex-shrink-0" />
-          <span>Verified Safe &amp; Hardened Systems</span>
+          <ShieldCheck className="w-4 h-4 text-[#299346] flex-shrink-0" />
+          <span>Verified Safe &amp; Hardened Controls</span>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
           {dynamicPositiveControls.slice(0, 4).map((ctrl, idx) => (
             <div key={idx} className={`flex items-start gap-2.5 p-3.5 rounded-xl border ${
-              theme === 'dark' ? 'bg-[#080E1C] border-slate-800 text-slate-300' : 'bg-slate-50 border-slate-200 text-slate-800 font-medium'
+              theme === 'dark' ? 'bg-[#001127]/60 border-[#0A3778] text-slate-300' : 'bg-slate-50 border-slate-200 text-slate-700'
             }`}>
-              <CheckCircle2 className="w-4 h-4 text-emerald-500 flex-shrink-0 mt-0.5" />
+              <CheckCircle2 className="w-4 h-4 text-[#299346] flex-shrink-0 mt-0.5" />
               <span className="leading-relaxed font-sans">{ctrl}</span>
             </div>
           ))}

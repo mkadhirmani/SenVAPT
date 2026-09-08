@@ -1973,12 +1973,12 @@ export default function ScanHud({
     <div className="space-y-6 max-w-7xl mx-auto pb-12">
       {/* Target Link & Company Configuration Card */}
       <div className={`p-6 sm:p-7 rounded-2xl border space-y-5 transition-colors shadow-sm ${
-        theme === 'dark' ? 'bg-[#0B1120] border-slate-800' : 'bg-white border-slate-300'
+        theme === 'dark' ? 'bg-[#001E4B] border-[#0A3778]' : 'bg-white border-slate-300'
       }`}>
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="space-y-1">
-            <div className="flex items-center gap-2 text-cyan-600 dark:text-cyan-400 font-mono text-xs font-bold uppercase tracking-wider">
-              <Radar className={`w-4 h-4 text-cyan-500 ${isScanning ? 'animate-spin' : ''}`} />
+            <div className="flex items-center gap-2 text-[#006FE3] dark:text-[#4D9AEC] font-mono text-xs font-bold uppercase tracking-wider">
+              <Radar className={`w-4 h-4 text-[#006FE3] ${isScanning ? 'animate-spin' : ''}`} />
               <span>Autonomous AI Penetration Testing Engine</span>
             </div>
             <h2 className={`text-xl sm:text-2xl font-black ${theme === 'dark' ? 'text-white' : 'text-slate-950'}`}>
@@ -1986,7 +1986,7 @@ export default function ScanHud({
             </h2>
             <p className={`text-xs ${theme === 'dark' ? 'text-slate-400' : 'text-slate-600 font-medium'}`}>
               {isAdmin ? (
-                <>Autonomous multi-agent scan running on remote server with <code className="text-cyan-600 dark:text-cyan-400 font-bold">{serverConfig.strixLlm || 'openrouter/deepseek/deepseek-v4-flash'}</code>.</>
+                <>Autonomous multi-agent scan running on remote server with <code className="text-[#006FE3] dark:text-[#4D9AEC] font-bold">{serverConfig.strixLlm || 'openrouter/deepseek/deepseek-v4-flash'}</code>.</>
               ) : (
                 <>Conduct automated OWASP security assessments against approved target domains. Findings are rendered cleanly upon scan completion.</>
               )}
@@ -1997,7 +1997,7 @@ export default function ScanHud({
             {/* Logged in User / Operator Badge */}
             <div className={`px-3 py-1.5 rounded-xl border text-xs font-mono font-bold flex items-center gap-2 ${
               isAdmin
-                ? 'bg-cyan-500/15 border-cyan-500/40 text-cyan-400'
+                ? 'bg-[#006FE3]/15 border-[#006FE3]/40 text-[#4D9AEC]'
                 : 'bg-emerald-500/15 border-emerald-500/40 text-emerald-400'
             }`}>
               <User className="w-3.5 h-3.5" />
@@ -2016,7 +2016,7 @@ export default function ScanHud({
                     : 'bg-slate-100 hover:bg-slate-200 text-slate-800 border-slate-300'
                 }`}
               >
-                <Server className="w-3.5 h-3.5 text-cyan-500" />
+                <Server className="w-3.5 h-3.5 text-[#006FE3]" />
                 <span>
                   {serverConfig.host ? `SSH: ${serverConfig.username || 'root'}@${serverConfig.host}` : 'Configure Remote SSH Server'}
                 </span>
@@ -2032,7 +2032,7 @@ export default function ScanHud({
             <label className={`text-xs font-mono font-bold flex items-center gap-1.5 ${
               theme === 'dark' ? 'text-slate-300' : 'text-slate-800'
             }`}>
-              <Globe className="w-3.5 h-3.5 text-cyan-500" />
+              <Globe className="w-3.5 h-3.5 text-[#006FE3]" />
               <span>Target Domain Name:</span>
             </label>
             <input
@@ -2043,8 +2043,8 @@ export default function ScanHud({
               placeholder="Enter domain name (e.g. example.com)"
               className={`w-full px-4 py-2.5 rounded-xl font-mono text-xs focus:outline-none transition-all ${
                 theme === 'dark'
-                  ? 'bg-[#080E1C] border border-slate-700 text-white placeholder-slate-500 focus:border-cyan-400'
-                  : 'bg-slate-50 border border-slate-300 text-slate-900 placeholder-slate-400 focus:border-cyan-500 font-medium'
+                  ? 'bg-[#001127] border border-slate-700 text-white placeholder-slate-500 focus:border-[#006FE3]'
+                  : 'bg-slate-50 border border-slate-300 text-slate-900 placeholder-slate-400 focus:border-[#006FE3] font-medium'
               }`}
             />
           </div>
@@ -2054,7 +2054,7 @@ export default function ScanHud({
             <label className={`text-xs font-mono font-bold flex items-center gap-1.5 ${
               theme === 'dark' ? 'text-slate-300' : 'text-slate-800'
             }`}>
-              <Building className="w-3.5 h-3.5 text-cyan-500" />
+              <Building className="w-3.5 h-3.5 text-[#006FE3]" />
               <span>Target Organization / Company Name:</span>
             </label>
             <input
@@ -2065,8 +2065,8 @@ export default function ScanHud({
               placeholder="Enter organization or target name"
               className={`w-full px-4 py-2.5 rounded-xl font-mono text-xs focus:outline-none transition-all ${
                 theme === 'dark'
-                  ? 'bg-[#080E1C] border border-slate-700 text-white placeholder-slate-500 focus:border-cyan-400'
-                  : 'bg-slate-50 border border-slate-300 text-slate-900 placeholder-slate-400 focus:border-cyan-500 font-medium'
+                  ? 'bg-[#001127] border border-slate-700 text-white placeholder-slate-500 focus:border-[#006FE3]'
+                  : 'bg-slate-50 border border-slate-300 text-slate-900 placeholder-slate-400 focus:border-[#006FE3] font-medium'
               }`}
             />
           </div>
@@ -2074,13 +2074,13 @@ export default function ScanHud({
 
         {/* Action Buttons & Status */}
         <div className={`flex flex-wrap items-center justify-between gap-4 pt-2 border-t ${
-          theme === 'dark' ? 'border-slate-800' : 'border-slate-200'
+          theme === 'dark' ? 'border-[#0A3778]' : 'border-slate-200'
         }`}>
           <div className="flex items-center gap-3 flex-wrap">
             <button
               onClick={handleStartRealScan}
               disabled={isScanning || !targetUrl.trim()}
-              className="flex items-center gap-2 px-6 h-11 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-black text-xs font-sans shadow-lg disabled:opacity-40 transition-all cursor-pointer"
+              className="flex items-center gap-2 px-6 h-11 rounded-xl bg-gradient-to-r bg-[#006FE3] hover:bg-[#005bbd] text-white font-black text-xs font-sans shadow-lg disabled:opacity-40 transition-all cursor-pointer"
             >
               {isScanning ? (
                 <>
@@ -2114,13 +2114,13 @@ export default function ScanHud({
               disabled={isScanning}
               className={`flex items-center gap-2 px-5 h-11 rounded-xl border text-xs font-bold font-sans transition-all ${
                 isScanning
-                  ? 'bg-slate-100 dark:bg-slate-900 text-slate-400 border-slate-300 dark:border-slate-800 cursor-not-allowed opacity-60'
+                  ? 'bg-slate-100 dark:bg-slate-900 text-slate-400 border-slate-300 dark:border-[#0A3778] cursor-not-allowed opacity-60'
                   : scanFinished
-                  ? 'bg-cyan-500 hover:bg-cyan-400 text-slate-950 border-cyan-400 shadow-md font-extrabold cursor-pointer'
+                  ? 'bg-[#006FE3] hover:bg-[#005bbd] text-white border-cyan-400 shadow-md font-extrabold cursor-pointer'
                   : 'bg-slate-100 hover:bg-slate-200 text-slate-800 border-slate-300 cursor-pointer'
               }`}
             >
-              <LayoutDashboard className="w-4 h-4 text-cyan-500" />
+              <LayoutDashboard className="w-4 h-4 text-[#006FE3]" />
               <span>{isScanning ? 'Scan in Progress...' : 'View Dashboard & Findings'}</span>
               <ArrowRight className="w-3.5 h-3.5" />
             </button>
@@ -2129,8 +2129,8 @@ export default function ScanHud({
           {/* Status Badge */}
           <div className="flex items-center gap-3 text-xs font-mono">
             {isScanning ? (
-              <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-cyan-500/15 border border-cyan-500/40 text-cyan-600 dark:text-cyan-300 font-bold">
-                <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping"></span>
+              <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#006FE3]/15 border border-[#006FE3]/40 text-[#006FE3] dark:text-[#80B7F1] font-bold">
+                <span className="w-2 h-2 rounded-full bg-[#006FE3] animate-ping"></span>
                 <span>Active Agent: {displayAgent}</span>
               </span>
             ) : scanFinished ? (
@@ -2188,13 +2188,13 @@ export default function ScanHud({
           {/* LEFT COLUMN: Live Security Engine Terminal */}
           <div className="lg:col-span-7 space-y-3">
             <div className={`p-5 rounded-2xl border space-y-3 transition-colors ${
-              theme === 'dark' ? 'bg-[#0B1120] border-slate-800' : 'bg-white border-slate-300 shadow-sm'
+              theme === 'dark' ? 'bg-[#001E4B] border-[#0A3778]' : 'bg-white border-slate-300 shadow-sm'
             }`}>
               <div className="flex items-center justify-between">
                 <span className={`text-xs font-mono font-bold flex items-center gap-2 ${
                   theme === 'dark' ? 'text-slate-300' : 'text-slate-800'
                 }`}>
-                  <TerminalIcon className="w-4 h-4 text-cyan-500" />
+                  <TerminalIcon className="w-4 h-4 text-[#006FE3]" />
                   <span>Live Security Engine Terminal &amp; Interactive Output</span>
                 </span>
                 <div className="flex items-center gap-3">
@@ -2214,7 +2214,7 @@ export default function ScanHud({
                         STREAMING LIVE
                       </span>
                     ) : scanFinished ? (
-                      <span className="text-cyan-400 font-bold">SCAN COMPLETED</span>
+                      <span className="text-[#4D9AEC] font-bold">SCAN COMPLETED</span>
                     ) : (
                       'IDLE'
                     )}
@@ -2222,7 +2222,7 @@ export default function ScanHud({
                 </div>
               </div>
 
-              <div className="rounded-2xl bg-[#050914] border border-slate-800 shadow-2xl overflow-hidden flex flex-col">
+              <div className="rounded-2xl bg-[#001127] border border-[#0A3778] shadow-2xl overflow-hidden flex flex-col">
                 <div 
                   ref={terminalBoxRef}
                   onScroll={handleTerminalScroll}
@@ -2230,7 +2230,7 @@ export default function ScanHud({
                 >
                   {logs.length === 0 ? (
                     <div className="h-full flex flex-col items-center justify-center text-slate-400 space-y-2">
-                      <Radar className="w-8 h-8 opacity-50 animate-spin text-cyan-400" />
+                      <Radar className="w-8 h-8 opacity-50 animate-spin text-[#4D9AEC]" />
                       <span className="font-sans">Ready to scan. Enter target domain (e.g. example.com) above and click Launch Autonomous Security Scan.</span>
                     </div>
                   ) : (
@@ -2243,8 +2243,8 @@ export default function ScanHud({
                 </div>
 
                 {isScanning && (
-                  <form onSubmit={handleSendTerminalInput} className="p-2.5 bg-slate-900 border-t border-slate-800 flex items-center gap-2">
-                    <span className="text-cyan-400 font-mono text-xs font-bold pl-1">&gt;</span>
+                  <form onSubmit={handleSendTerminalInput} className="p-2.5 bg-slate-900 border-t border-[#0A3778] flex items-center gap-2">
+                    <span className="text-[#4D9AEC] font-mono text-xs font-bold pl-1">&gt;</span>
                     <input
                       type="text"
                       value={terminalInput}
@@ -2255,7 +2255,7 @@ export default function ScanHud({
                     <button
                       type="submit"
                       disabled={!terminalInput.trim()}
-                      className="p-1.5 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-950 disabled:opacity-30 transition-colors cursor-pointer"
+                      className="p-1.5 rounded-lg bg-[#006FE3] hover:bg-[#005bbd] text-white disabled:opacity-30 transition-colors cursor-pointer"
                     >
                       <Send className="w-3.5 h-3.5" />
                     </button>
@@ -2268,10 +2268,10 @@ export default function ScanHud({
           {/* RIGHT COLUMN: Telemetry */}
           <div className="lg:col-span-5 space-y-4">
             <div className={`p-4 rounded-2xl border flex items-center justify-between transition-colors ${
-              theme === 'dark' ? 'bg-[#0B1120] border-slate-800' : 'bg-white border-slate-300 shadow-sm'
+              theme === 'dark' ? 'bg-[#001E4B] border-[#0A3778]' : 'bg-white border-slate-300 shadow-sm'
             }`}>
               <div className="flex items-center gap-3">
-                <div className="p-2.5 rounded-xl bg-cyan-500/15 text-cyan-400 border border-cyan-500/30 flex-shrink-0">
+                <div className="p-2.5 rounded-xl bg-[#006FE3]/15 text-[#4D9AEC] border border-[#006FE3]/30 flex-shrink-0">
                   <Cpu className="w-4 h-4" />
                 </div>
                 <div>
@@ -2286,13 +2286,13 @@ export default function ScanHud({
 
             <div className="grid grid-cols-2 gap-3">
               <div className={`p-4 rounded-2xl border space-y-1 transition-colors ${
-                theme === 'dark' ? 'bg-[#0B1120] border-slate-800' : 'bg-white border-slate-300 shadow-sm'
+                theme === 'dark' ? 'bg-[#001E4B] border-[#0A3778]' : 'bg-white border-slate-300 shadow-sm'
               }`}>
                 <div className="flex items-center justify-between text-[10px] font-mono font-bold text-slate-500 uppercase">
                   <span>Total AI Tokens</span>
-                  <Zap className="w-3.5 h-3.5 text-cyan-500" />
+                  <Zap className="w-3.5 h-3.5 text-[#006FE3]" />
                 </div>
-                <div className="text-xl font-black font-mono text-cyan-400">
+                <div className="text-xl font-black font-mono text-[#4D9AEC]">
                   {displayTotalTokens}
                 </div>
                 <div className="text-[10px] font-mono text-slate-500 truncate">
@@ -2301,7 +2301,7 @@ export default function ScanHud({
               </div>
 
               <div className={`p-4 rounded-2xl border space-y-1 transition-colors ${
-                theme === 'dark' ? 'bg-[#0B1120] border-slate-800' : 'bg-white border-slate-300 shadow-sm'
+                theme === 'dark' ? 'bg-[#001E4B] border-[#0A3778]' : 'bg-white border-slate-300 shadow-sm'
               }`}>
                 <div className="flex items-center justify-between text-[10px] font-mono font-bold text-slate-500 uppercase">
                   <span>Estimated AI Cost</span>
@@ -2318,13 +2318,13 @@ export default function ScanHud({
 
             <div className="grid grid-cols-2 gap-3">
               <div className={`p-4 rounded-2xl border space-y-1 transition-colors ${
-                theme === 'dark' ? 'bg-[#0B1120] border-slate-800' : 'bg-white border-slate-300 shadow-sm'
+                theme === 'dark' ? 'bg-[#001E4B] border-[#0A3778]' : 'bg-white border-slate-300 shadow-sm'
               }`}>
                 <div className="flex items-center justify-between text-[10px] font-mono font-bold text-slate-500 uppercase">
                   <span>Security Checks</span>
-                  <Server className="w-3.5 h-3.5 text-cyan-500" />
+                  <Server className="w-3.5 h-3.5 text-[#006FE3]" />
                 </div>
-                <div className="text-xl font-black font-mono text-cyan-400">
+                <div className="text-xl font-black font-mono text-[#4D9AEC]">
                   {activeRequests}
                 </div>
                 <div className="text-[10px] font-mono text-slate-500">
@@ -2333,11 +2333,11 @@ export default function ScanHud({
               </div>
 
               <div className={`p-4 rounded-2xl border space-y-1 transition-colors ${
-                theme === 'dark' ? 'bg-[#0B1120] border-slate-800' : 'bg-white border-slate-300 shadow-sm'
+                theme === 'dark' ? 'bg-[#001E4B] border-[#0A3778]' : 'bg-white border-slate-300 shadow-sm'
               }`}>
                 <div className="flex items-center justify-between text-[10px] font-mono font-bold text-slate-500 uppercase">
                   <span>Scan Duration</span>
-                  <Clock className="w-3.5 h-3.5 text-cyan-500" />
+                  <Clock className="w-3.5 h-3.5 text-[#006FE3]" />
                 </div>
                 <div className={`text-xl font-black font-mono ${theme === 'dark' ? 'text-white' : 'text-slate-950'}`}>
                   {displayDuration}
@@ -2350,10 +2350,10 @@ export default function ScanHud({
 
             {/* Scan Output Folder & Ingest Card */}
             <div className={`p-4 rounded-2xl border space-y-3 text-xs font-mono transition-colors ${
-              theme === 'dark' ? 'bg-[#080E1C] border-slate-800 text-slate-300' : 'bg-slate-50 border-slate-300 text-slate-800 shadow-sm'
+              theme === 'dark' ? 'bg-[#001127] border-[#0A3778] text-slate-300' : 'bg-slate-50 border-slate-300 text-slate-800 shadow-sm'
             }`}>
               <div className="flex items-center justify-between">
-                <span className="text-cyan-400 font-bold uppercase tracking-wider flex items-center gap-1.5">
+                <span className="text-[#4D9AEC] font-bold uppercase tracking-wider flex items-center gap-1.5">
                   <Folder className="w-3.5 h-3.5" />
                   Load Strix Output Folder (7 Files):
                 </span>
@@ -2361,7 +2361,7 @@ export default function ScanHud({
                   type="button"
                   onClick={refreshLocalFolders}
                   title="Refresh local downloads"
-                  className="text-[10px] text-slate-400 hover:text-cyan-400 font-mono flex items-center gap-1 transition-colors cursor-pointer"
+                  className="text-[10px] text-slate-400 hover:text-[#4D9AEC] font-mono flex items-center gap-1 transition-colors cursor-pointer"
                 >
                   <RefreshCw className="w-3 h-3" />
                   <span>Scan ~/Downloads</span>
@@ -2385,11 +2385,11 @@ export default function ScanHud({
                         }}
                         className={`px-2.5 py-1 rounded-lg text-[11px] font-mono font-bold border transition-all flex items-center gap-1.5 cursor-pointer ${
                           customFolderInput === f.folderName || outputFolderPath === f.fullPath
-                            ? 'bg-cyan-500/20 border-cyan-400 text-cyan-300 shadow-sm'
-                            : 'bg-[#050914] border-slate-700/80 text-slate-300 hover:border-cyan-500/50 hover:text-white'
+                            ? 'bg-[#006FE3]/20 border-cyan-400 text-[#80B7F1] shadow-sm'
+                            : 'bg-[#001127] border-slate-700/80 text-slate-300 hover:border-[#006FE3]/50 hover:text-white'
                         }`}
                       >
-                        <Folder className="w-3 h-3 text-cyan-400" />
+                        <Folder className="w-3 h-3 text-[#4D9AEC]" />
                         <span>{f.folderName}</span>
                         {f.findingsCount > 0 && (
                           <span className="text-[9px] px-1 rounded bg-rose-500/20 text-rose-400 border border-rose-500/30">
@@ -2410,15 +2410,15 @@ export default function ScanHud({
                   placeholder="Enter scan folder name or path..."
                   className={`flex-1 min-w-[200px] px-3 py-2 rounded-xl text-xs font-mono focus:outline-none transition-all ${
                     theme === 'dark'
-                      ? 'bg-[#040813] border border-slate-700 text-cyan-300 placeholder-slate-500 focus:border-cyan-400'
-                      : 'bg-white border border-slate-300 text-cyan-700 placeholder-slate-400 focus:border-cyan-500'
+                      ? 'bg-[#001127] border border-slate-700 text-[#80B7F1] placeholder-slate-500 focus:border-[#006FE3]'
+                      : 'bg-white border border-slate-300 text-cyan-700 placeholder-slate-400 focus:border-[#006FE3]'
                   }`}
                 />
                 <button
                   type="button"
                   onClick={() => handleFetchFromPath(customFolderInput || effectiveOutputFolder)}
                   disabled={isFetchingPath || (!customFolderInput && !effectiveOutputFolder)}
-                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs font-sans transition-all cursor-pointer shadow-sm disabled:opacity-50 flex-shrink-0"
+                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#006FE3] hover:bg-[#005bbd] text-white font-bold text-xs font-sans transition-all cursor-pointer shadow-sm disabled:opacity-50 flex-shrink-0"
                 >
                   <RefreshCw className={`w-3.5 h-3.5 ${isFetchingPath ? 'animate-spin' : ''}`} />
                   <span>{isFetchingPath ? 'Loading...' : 'Ingest Local'}</span>
@@ -2437,7 +2437,7 @@ export default function ScanHud({
 
               {effectiveOutputFolder && !customFolderInput && (
                 <div className="text-[10px] text-slate-400 truncate">
-                  Detected path: <code className="text-cyan-400 font-bold">{effectiveOutputFolder}</code>
+                  Detected path: <code className="text-[#4D9AEC] font-bold">{effectiveOutputFolder}</code>
                 </div>
               )}
 
@@ -2453,9 +2453,9 @@ export default function ScanHud({
             </div>
 
             <div className={`p-4 rounded-2xl border flex items-center gap-3 transition-colors ${
-              theme === 'dark' ? 'bg-[#0B1120] border-slate-800 text-slate-400' : 'bg-white border-slate-300 text-slate-700 shadow-sm'
+              theme === 'dark' ? 'bg-[#001E4B] border-[#0A3778] text-slate-400' : 'bg-white border-slate-300 text-slate-700 shadow-sm'
             }`}>
-              <Shield className="w-4 h-4 text-cyan-500 flex-shrink-0" />
+              <Shield className="w-4 h-4 text-[#006FE3] flex-shrink-0" />
               <div className="text-[11px] font-mono leading-relaxed">
                 <strong>Audit Standard:</strong> OWASP WSTG v4.2 &amp; Autonomous Multi-Agent Engine
               </div>
@@ -2467,17 +2467,17 @@ export default function ScanHud({
         <div className="space-y-6">
           {/* Main Assessment Progress Card */}
           <div className={`p-6 sm:p-7 rounded-2xl border space-y-6 transition-colors shadow-sm ${
-            theme === 'dark' ? 'bg-[#0B1120] border-slate-800' : 'bg-white border-slate-300'
+            theme === 'dark' ? 'bg-[#001E4B] border-[#0A3778]' : 'bg-white border-slate-300'
           }`}>
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800/80 pb-5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#0A3778]/80 pb-5">
               <div className="space-y-1">
-                <div className={`text-cyan-400 font-mono text-xs font-bold uppercase tracking-wider flex items-center gap-2 ${
-                  scanError ? 'text-rose-400' : 'text-cyan-400'
+                <div className={`text-[#4D9AEC] font-mono text-xs font-bold uppercase tracking-wider flex items-center gap-2 ${
+                  scanError ? 'text-rose-400' : 'text-[#4D9AEC]'
                 }`}>
                   {scanError ? (
                     <AlertTriangle className="w-4 h-4 text-rose-500" />
                   ) : (
-                    <Radar className={`w-4 h-4 text-cyan-400 ${isScanning ? 'animate-spin' : ''}`} />
+                    <Radar className={`w-4 h-4 text-[#4D9AEC] ${isScanning ? 'animate-spin' : ''}`} />
                   )}
                   <span>{scanError ? 'Server Connection Error' : 'Autonomous Assessment Progress'}</span>
                 </div>
@@ -2504,7 +2504,7 @@ export default function ScanHud({
                 )}
                 <div className="text-right">
                   <div className={`text-2xl sm:text-3xl font-black font-mono ${
-                    scanError ? 'text-rose-500' : 'text-cyan-400'
+                    scanError ? 'text-rose-500' : 'text-[#4D9AEC]'
                   }`}>
                     {scanProgressPercent}%
                   </div>
@@ -2519,10 +2519,10 @@ export default function ScanHud({
             <div className="space-y-2.5">
               <div className="flex items-center justify-between text-xs font-mono font-bold">
                 <span className={`flex items-center gap-1.5 ${
-                  scanError ? 'text-rose-400' : 'text-cyan-400'
+                  scanError ? 'text-rose-400' : 'text-[#4D9AEC]'
                 }`}>
                   <span className={`w-2 h-2 rounded-full ${
-                    scanError ? 'bg-rose-500' : isScanning ? 'bg-cyan-400 animate-ping' : 'bg-emerald-400'
+                    scanError ? 'bg-rose-500' : isScanning ? 'bg-[#006FE3] animate-ping' : 'bg-emerald-400'
                   }`}></span>
                   {scanError
                     ? 'Server is not connected - Assessment Aborted'
@@ -2534,7 +2534,7 @@ export default function ScanHud({
               </div>
 
               {/* Progress Track */}
-              <div className="w-full h-4 bg-slate-950 rounded-full overflow-hidden p-0.5 border border-slate-800 shadow-inner relative">
+              <div className="w-full h-4 bg-slate-950 rounded-full overflow-hidden p-0.5 border border-[#0A3778] shadow-inner relative">
                 <div
                   className={`h-full rounded-full transition-all duration-500 ease-out shadow-[0_0_12px_rgba(6,182,212,0.5)] relative overflow-hidden ${
                     scanError 
@@ -2551,19 +2551,19 @@ export default function ScanHud({
 
               {/* 3 Progress Indicators */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
-                <div className={`p-3 rounded-xl border ${theme === 'dark' ? 'bg-[#080E1C] border-slate-800/80' : 'bg-slate-50 border-slate-200'}`}>
+                <div className={`p-3 rounded-xl border ${theme === 'dark' ? 'bg-[#001127] border-[#0A3778]/80' : 'bg-slate-50 border-slate-200'}`}>
                   <div className="text-[10px] font-mono text-slate-500 font-bold uppercase">Time Elapsed</div>
                   <div className={`text-sm font-bold font-mono mt-0.5 ${theme === 'dark' ? 'text-white' : 'text-slate-950'}`}>{displayDuration}</div>
                 </div>
 
-                <div className={`p-3 rounded-xl border ${theme === 'dark' ? 'bg-[#080E1C] border-slate-800/80' : 'bg-slate-50 border-slate-200'}`}>
+                <div className={`p-3 rounded-xl border ${theme === 'dark' ? 'bg-[#001127] border-[#0A3778]/80' : 'bg-slate-50 border-slate-200'}`}>
                   <div className="text-[10px] font-mono text-slate-500 font-bold uppercase">Active Stage</div>
-                  <div className="text-sm font-bold font-mono text-cyan-400 mt-0.5 truncate">
+                  <div className="text-sm font-bold font-mono text-[#4D9AEC] mt-0.5 truncate">
                     {isScanning ? `Phase 0${currentPhase} Active` : 'All 4 Phases Done'}
                   </div>
                 </div>
 
-                <div className={`p-3 rounded-xl border ${theme === 'dark' ? 'bg-[#080E1C] border-slate-800/80' : 'bg-slate-50 border-slate-200'}`}>
+                <div className={`p-3 rounded-xl border ${theme === 'dark' ? 'bg-[#001127] border-[#0A3778]/80' : 'bg-slate-50 border-slate-200'}`}>
                   <div className="text-[10px] font-mono text-slate-500 font-bold uppercase">Checks Executed</div>
                   <div className="text-sm font-bold font-mono text-emerald-400 mt-0.5">
                     {activeRequests > 0 ? `${activeRequests} Security Probes` : (isScanning ? 'Fuzzing Endpoints...' : '404 Probes')}
@@ -2583,23 +2583,23 @@ export default function ScanHud({
                     key={stage.num}
                     className={`p-5 rounded-2xl border flex flex-col justify-between h-40 transition-all relative overflow-hidden ${
                       isActive
-                        ? 'bg-cyan-500/10 border-cyan-500/50 shadow-md ring-1 ring-cyan-500/30'
+                        ? 'bg-[#006FE3]/10 border-[#006FE3]/50 shadow-md ring-1 ring-[#006FE3]/30'
                         : isDone
                         ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-300'
                         : theme === 'dark'
-                        ? 'bg-[#080E1C] border-slate-800 text-slate-500'
+                        ? 'bg-[#001127] border-[#0A3778] text-slate-500'
                         : 'bg-slate-50 border-slate-200 text-slate-500'
                     }`}
                   >
                     {isActive && (
-                      <div className="absolute top-0 right-0 left-0 h-1 bg-gradient-to-r from-cyan-400 to-blue-500 animate-pulse"></div>
+                      <div className="absolute top-0 right-0 left-0 h-1 bg-gradient-to-r from-[#006FE3] to-[#4D9AEC] animate-pulse"></div>
                     )}
 
                     <div className="space-y-2">
                       <div className="flex items-center justify-between">
                         <span className={`text-xs font-mono font-bold px-2 py-0.5 rounded-full ${
                           isActive
-                            ? 'bg-cyan-500 text-slate-950 font-black'
+                            ? 'bg-[#006FE3] text-slate-950 font-black'
                             : isDone
                             ? 'bg-emerald-500/20 text-emerald-400'
                             : 'bg-slate-800 text-slate-400'
@@ -2610,7 +2610,7 @@ export default function ScanHud({
                         {isDone ? (
                           <CheckCircle2 className="w-4 h-4 text-emerald-400" />
                         ) : isActive ? (
-                          <RefreshCw className="w-4 h-4 text-cyan-400 animate-spin" />
+                          <RefreshCw className="w-4 h-4 text-[#4D9AEC] animate-spin" />
                         ) : (
                           <span className="w-2 h-2 rounded-full bg-slate-700"></span>
                         )}
@@ -2633,12 +2633,12 @@ export default function ScanHud({
 
             {/* Option to Upload Scan Archive (.ZIP) or Ingest Server Output Path */}
             <div className={`p-5 rounded-2xl border space-y-4 text-xs font-mono transition-colors ${
-              theme === 'dark' ? 'bg-[#080E1C] border-cyan-500/30 text-slate-300' : 'bg-slate-50 border-slate-300 text-slate-800 shadow-sm'
+              theme === 'dark' ? 'bg-[#001127] border-[#006FE3]/30 text-slate-300' : 'bg-slate-50 border-slate-300 text-slate-800 shadow-sm'
             }`}>
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800/60 pb-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#0A3778]/60 pb-3">
                 <div>
-                  <span className="text-cyan-400 font-bold uppercase tracking-wider flex items-center gap-1.5 text-xs">
-                    <Server className="w-4 h-4 text-cyan-400" />
+                  <span className="text-[#4D9AEC] font-bold uppercase tracking-wider flex items-center gap-1.5 text-xs">
+                    <Server className="w-4 h-4 text-[#4D9AEC]" />
                     <span>Upload Scan File (.ZIP) from Downloads or Fetch from Server:</span>
                   </span>
                   <p className="text-[11px] text-slate-400 font-sans mt-0.5">
@@ -2683,7 +2683,7 @@ export default function ScanHud({
                       type="button"
                       onClick={refreshLocalFolders}
                       title="Refresh local scan downloads"
-                      className="text-[10px] text-slate-400 hover:text-cyan-400 font-mono flex items-center gap-1 transition-colors cursor-pointer"
+                      className="text-[10px] text-slate-400 hover:text-[#4D9AEC] font-mono flex items-center gap-1 transition-colors cursor-pointer"
                     >
                       <RefreshCw className="w-3 h-3" />
                       <span>Refresh</span>
@@ -2700,11 +2700,11 @@ export default function ScanHud({
                         }}
                         className={`px-2.5 py-1 rounded-lg text-[11px] font-mono font-bold border transition-all flex items-center gap-1.5 cursor-pointer ${
                           customFolderInput === f.folderName || outputFolderPath === f.fullPath
-                            ? 'bg-cyan-500/20 border-cyan-400 text-cyan-300 shadow-sm'
-                            : 'bg-[#050914] border-slate-700/80 text-slate-300 hover:border-cyan-500/50 hover:text-white'
+                            ? 'bg-[#006FE3]/20 border-cyan-400 text-[#80B7F1] shadow-sm'
+                            : 'bg-[#001127] border-slate-700/80 text-slate-300 hover:border-[#006FE3]/50 hover:text-white'
                         }`}
                       >
-                        <Folder className="w-3 h-3 text-cyan-400" />
+                        <Folder className="w-3 h-3 text-[#4D9AEC]" />
                         <span>{f.folderName}</span>
                         {f.findingsCount > 0 && (
                           <span className="text-[9px] px-1 rounded bg-rose-500/20 text-rose-400 border border-rose-500/30">
@@ -2726,8 +2726,8 @@ export default function ScanHud({
                     placeholder="Enter Server Output Path (e.g. /root/sennovate.com-scan/strix_runs/sennovate-com_1641)..."
                     className={`w-full px-3.5 py-2.5 rounded-xl text-xs font-mono focus:outline-none transition-all ${
                       theme === 'dark'
-                        ? 'bg-[#040813] border border-slate-700 text-cyan-300 placeholder-slate-500 focus:border-cyan-400'
-                        : 'bg-white border border-slate-300 text-cyan-700 placeholder-slate-400 focus:border-cyan-500'
+                        ? 'bg-[#001127] border border-slate-700 text-[#80B7F1] placeholder-slate-500 focus:border-[#006FE3]'
+                        : 'bg-white border border-slate-300 text-cyan-700 placeholder-slate-400 focus:border-[#006FE3]'
                     }`}
                   />
                 </div>
@@ -2737,7 +2737,7 @@ export default function ScanHud({
                   onClick={() => handleFetchFromN8nZip(customFolderInput || effectiveOutputFolder)}
                   disabled={isFetchingPath || (!customFolderInput && !effectiveOutputFolder && !targetUrl)}
                   title="Fetch and download all 7 scan files directly from the server output path"
-                  className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-bold text-xs font-sans transition-all cursor-pointer shadow-md disabled:opacity-50 flex-shrink-0"
+                  className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r bg-[#006FE3] hover:bg-[#005bbd] text-white font-bold text-xs font-sans transition-all cursor-pointer shadow-md disabled:opacity-50 flex-shrink-0"
                 >
                   <FolderOpen className={`w-4 h-4 ${isFetchingPath ? 'animate-spin' : ''}`} />
                   <span>{isFetchingPath ? 'Fetching from Server...' : 'Fetch from Server Path'}</span>
@@ -2757,7 +2757,7 @@ export default function ScanHud({
 
               {effectiveOutputFolder && !customFolderInput && (
                 <div className="text-[10px] text-slate-400 truncate">
-                  Current Detected Output Path: <code className="text-cyan-400 font-bold">{effectiveOutputFolder}</code>
+                  Current Detected Output Path: <code className="text-[#4D9AEC] font-bold">{effectiveOutputFolder}</code>
                 </div>
               )}
 
@@ -2776,7 +2776,7 @@ export default function ScanHud({
             {/* When Scan Completes: Output Folder Findings Summary & Dashboard Link */}
             {scanFinished && (
               <div className={`p-6 rounded-2xl border flex flex-col md:flex-row md:items-center justify-between gap-5 animate-fadeIn ${
-                theme === 'dark' ? 'bg-[#0E1629] border-cyan-500/40' : 'bg-cyan-50/60 border-cyan-200'
+                theme === 'dark' ? 'bg-[#0E1629] border-[#006FE3]/40' : 'bg-cyan-50/60 border-cyan-200'
               }`}>
                 <div className="space-y-1">
                   <div className="flex items-center gap-2 text-emerald-400 font-mono text-xs font-bold">
@@ -2794,7 +2794,7 @@ export default function ScanHud({
                 <div className="flex items-center gap-3 flex-shrink-0">
                   <button
                     onClick={onViewFindings}
-                    className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-bold text-xs font-sans shadow-md flex items-center gap-2 cursor-pointer"
+                    className="px-6 py-2.5 rounded-xl bg-gradient-to-r bg-[#006FE3] hover:bg-[#005bbd] text-white font-bold text-xs font-sans shadow-md flex items-center gap-2 cursor-pointer"
                   >
                     <span>View Findings in Dashboard</span>
                     <ArrowRight className="w-4 h-4" />

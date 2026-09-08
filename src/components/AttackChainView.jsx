@@ -197,26 +197,27 @@ export default function AttackChainView({
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-12">
       {/* Scan Session Switcher Banner */}
+      {/* Scan Session Switcher Banner */}
       {scanHistory.length > 0 && (
         <div className={`p-4 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-4 text-xs font-mono transition-colors ${
-          theme === 'dark' ? 'bg-[#0B1120] border-slate-800 text-slate-300' : 'bg-white border-slate-300 text-slate-800 shadow-sm'
+          theme === 'dark' ? 'bg-[#001B41] border-[#002B66] text-slate-300' : 'bg-white border-slate-200 text-slate-800 shadow-sm'
         }`}>
           <div className="flex items-center gap-2.5 min-w-0">
-            <span className="text-cyan-500 font-bold uppercase tracking-wider flex items-center gap-1.5">
-              <History className="w-4 h-4" />
+            <span className="text-[#006FE3] font-bold uppercase tracking-wider flex items-center gap-1.5 font-heading">
+              <History className="w-4 h-4 text-[#006FE3]" />
               Target Attack Graph:
             </span>
-            <span className={`font-bold truncate text-sm ${theme === 'dark' ? 'text-white' : 'text-slate-950'}`}>
+            <span className={`font-bold truncate text-sm font-heading ${theme === 'dark' ? 'text-white' : 'text-[#001B41]'}`}>
               {companyName}
             </span>
             <span className="text-slate-400 hidden sm:inline">&bull;</span>
-            <span className="text-slate-500 truncate hidden sm:inline">
+            <span className="text-slate-400 truncate hidden sm:inline font-mono">
               {targetUrl}
             </span>
           </div>
 
           <div className="flex items-center gap-2 flex-shrink-0">
-            <span className={`${theme === 'dark' ? 'text-slate-400' : 'text-slate-600'} text-[11px] font-bold`}>
+            <span className={`${theme === 'dark' ? 'text-slate-400' : 'text-slate-600'} text-[11px] font-bold font-sans`}>
               Switch Scan Session:
             </span>
             <select
@@ -230,8 +231,8 @@ export default function AttackChainView({
               }}
               className={`px-3 py-1.5 rounded-xl font-mono text-xs focus:outline-none border transition-all ${
                 theme === 'dark'
-                  ? 'bg-[#080E1C] border-slate-700 text-white focus:border-cyan-400'
-                  : 'bg-slate-50 border-slate-300 text-slate-900 focus:border-cyan-500'
+                  ? 'bg-[#001127] border-[#002B66] text-white focus:border-[#006FE3]'
+                  : 'bg-slate-50 border-slate-300 text-slate-900 focus:border-[#006FE3]'
               }`}
             >
               {scanHistory.map((scan) => {
@@ -251,29 +252,29 @@ export default function AttackChainView({
 
       {/* Header Panel */}
       <div className={`p-6 rounded-2xl border space-y-4 transition-colors ${
-        theme === 'dark' ? 'bg-[#0B1120] border-slate-800' : 'bg-white border-slate-300 shadow-sm'
+        theme === 'dark' ? 'bg-[#001B41] border-[#002B66]' : 'bg-white border-slate-200 shadow-sm'
       }`}>
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="space-y-1">
-            <div className="flex items-center gap-2 text-rose-500 font-mono text-xs font-bold uppercase">
-              <GitBranch className="w-4 h-4 text-rose-500" />
+            <div className="flex items-center gap-2 text-[#006FE3] font-mono text-xs font-bold uppercase tracking-wider font-heading">
+              <GitBranch className="w-4 h-4 text-[#006FE3]" />
               <span>Chained Exploit Path &bull; {companyName}</span>
             </div>
-            <h2 className={`text-2xl font-black tracking-tight ${theme === 'dark' ? 'text-white' : 'text-slate-950'}`}>
+            <h2 className={`text-2xl font-extrabold tracking-tight font-heading ${theme === 'dark' ? 'text-white' : 'text-[#001B41]'}`}>
               {effectiveChain.title}
             </h2>
             <p className={`text-xs ${theme === 'dark' ? 'text-slate-300' : 'text-slate-700'}`}>
-              Target: <strong className="text-cyan-600 dark:text-cyan-400 font-mono">{effectiveChain.targetAsset}</strong> &bull; Combined Risk: <strong className="text-rose-600 dark:text-rose-400 font-mono">HIGH (CVSS {effectiveChain.cvss})</strong>
+              Target: <strong className="text-[#006FE3] font-mono">{effectiveChain.targetAsset}</strong> &bull; Combined Risk: <strong className="text-[#DC2626] font-mono font-bold">HIGH (CVSS {effectiveChain.cvss})</strong>
             </p>
           </div>
 
           <button
             onClick={handlePlaySimulation}
             disabled={isPlaying}
-            className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-xs font-sans transition-all ${
+            className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-xs font-heading transition-all ${
               isPlaying
-                ? 'bg-rose-500/20 text-rose-500 border border-rose-500/40 cursor-wait animate-pulse'
-                : 'bg-rose-500 hover:bg-rose-400 text-slate-950 shadow-md'
+                ? 'bg-[#006FE3]/20 text-[#006FE3] border border-[#006FE3]/40 cursor-wait animate-pulse'
+                : 'bg-[#006FE3] hover:bg-[#005bbd] text-white shadow-md shadow-[#006FE3]/25 hover:scale-[1.02] active:scale-[0.98]'
             }`}
           >
             <Play className="w-4 h-4 fill-current" />
@@ -284,17 +285,17 @@ export default function AttackChainView({
 
       {/* Stepper Card */}
       <div className={`p-6 rounded-2xl border space-y-6 transition-colors ${
-        theme === 'dark' ? 'bg-[#0B1120] border-slate-800' : 'bg-white border-slate-300 shadow-sm'
+        theme === 'dark' ? 'bg-[#001B41] border-[#002B66]' : 'bg-white border-slate-200 shadow-sm'
       }`}>
         <div className={`flex items-center justify-between border-b pb-3 ${
-          theme === 'dark' ? 'border-slate-800' : 'border-slate-200'
+          theme === 'dark' ? 'border-[#002B66]' : 'border-slate-200'
         }`}>
           <span className={`text-xs font-mono font-bold uppercase ${
             theme === 'dark' ? 'text-slate-400' : 'text-slate-700'
           }`}>
             Multi-Stage Attack Path ({steps.length} Stages)
           </span>
-          <span className="text-xs font-mono text-cyan-600 dark:text-cyan-400 font-bold">
+          <span className="text-xs font-mono text-[#006FE3] font-bold">
             Click any step to inspect technical payload
           </span>
         </div>
@@ -305,41 +306,53 @@ export default function AttackChainView({
             const isSelected = safeActiveStep === idx;
             const isPassed = safeActiveStep >= idx;
 
+            // Brand stage color assignment
+            const isImpact = step.type === 'IMPACT' || step.type === 'EXPLOIT';
+            const isPivot = step.type === 'PIVOT' || step.type === 'INTERNAL' || step.type === 'ESCALATE';
+
             return (
               <div
                 key={idx}
                 onClick={() => setActiveStep(idx)}
                 className={`p-4 rounded-xl cursor-pointer border transition-all ${
                   isSelected
-                    ? 'bg-rose-500/15 border-rose-500 ring-2 ring-rose-500/50 shadow-md'
+                    ? 'bg-[#006FE3]/15 border-[#006FE3] ring-2 ring-[#006FE3]/40 shadow-lg'
                     : isPassed
-                    ? theme === 'dark' ? 'bg-[#0E172B] border-slate-700' : 'bg-slate-50 border-slate-300'
-                    : theme === 'dark' ? 'bg-[#080E1C] border-slate-800 opacity-60' : 'bg-slate-100 border-slate-200 opacity-60'
+                    ? theme === 'dark' ? 'bg-[#001127] border-[#002B66]' : 'bg-slate-50 border-slate-300'
+                    : theme === 'dark' ? 'bg-[#001127]/60 border-[#002B66]/60 opacity-60' : 'bg-slate-100 border-slate-200 opacity-60'
                 }`}
               >
                 <div className="flex items-center justify-between mb-2">
                   <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-mono font-bold ${
                     isSelected
-                      ? 'bg-rose-500 text-slate-950'
+                      ? 'bg-[#006FE3] text-white shadow-sm'
                       : isPassed
-                      ? 'bg-cyan-500/20 text-cyan-600 dark:text-cyan-400 border border-cyan-500/40'
-                      : 'bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-400'
+                      ? isImpact
+                        ? 'bg-[#DC2626]/20 text-[#DC2626] border border-[#DC2626]/40'
+                        : isPivot
+                        ? 'bg-[#3C2C86]/30 text-[#80B7F1] border border-[#3C2C86]'
+                        : 'bg-[#006FE3]/20 text-[#006FE3] border border-[#006FE3]/40'
+                      : 'bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
                   }`}>
                     {step.stepNumber}
                   </span>
                   <span className={`text-[10px] font-mono font-bold ${
-                    theme === 'dark' ? 'text-slate-400' : 'text-slate-600'
+                    isImpact 
+                      ? 'text-[#DC2626]' 
+                      : isPivot 
+                      ? 'text-[#80B7F1]' 
+                      : theme === 'dark' ? 'text-slate-400' : 'text-slate-600'
                   }`}>
                     {step.type}
                   </span>
                 </div>
 
-                <div className={`text-xs font-bold mb-1 line-clamp-1 ${
-                  theme === 'dark' ? 'text-white' : 'text-slate-900'
+                <div className={`text-xs font-bold font-heading mb-1 line-clamp-1 ${
+                  theme === 'dark' ? 'text-white' : 'text-[#001B41]'
                 }`}>
                   {step.title}
                 </div>
-                <div className="text-[11px] font-mono text-rose-600 dark:text-rose-400 font-bold">
+                <div className="text-[11px] font-mono text-[#006FE3] font-bold">
                   Ref: {step.findingRef}
                 </div>
               </div>
@@ -349,16 +362,16 @@ export default function AttackChainView({
 
         {/* Node Detail Box */}
         <div className={`p-6 rounded-xl border space-y-4 ${
-          theme === 'dark' ? 'bg-[#070D1A] border-slate-800' : 'bg-slate-50 border-slate-300'
+          theme === 'dark' ? 'bg-[#001127] border-[#002B66]' : 'bg-slate-50 border-slate-200'
         }`}>
           <div className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b pb-3 ${
-            theme === 'dark' ? 'border-slate-800' : 'border-slate-200'
+            theme === 'dark' ? 'border-[#002B66]' : 'border-slate-200'
           }`}>
             <div className="flex items-center gap-3">
-              <span className="text-xs font-mono font-bold px-2.5 py-1 rounded bg-rose-500 text-slate-950 shadow-sm">
+              <span className="text-xs font-mono font-bold px-2.5 py-1 rounded bg-[#006FE3] text-white shadow-sm">
                 Step {currentStepData.stepNumber}: {currentStepData.type}
               </span>
-              <h3 className={`text-base font-bold ${theme === 'dark' ? 'text-white' : 'text-slate-950'}`}>
+              <h3 className={`text-base font-bold font-heading ${theme === 'dark' ? 'text-white' : 'text-[#001B41]'}`}>
                 {currentStepData.title}
               </h3>
             </div>
@@ -366,8 +379,8 @@ export default function AttackChainView({
             {linkedVuln && (
               <button
                 onClick={() => onSelectVuln(linkedVuln)}
-                className={`flex items-center gap-1.5 text-xs font-mono font-bold text-cyan-600 dark:text-cyan-400 px-3 py-1.5 rounded-lg border transition-all ${
-                  theme === 'dark' ? 'bg-[#0A1224] border-slate-700 hover:bg-slate-800' : 'bg-white border-slate-300 hover:bg-slate-100 shadow-sm'
+                className={`flex items-center gap-1.5 text-xs font-mono font-bold text-[#006FE3] px-3 py-1.5 rounded-lg border transition-all ${
+                  theme === 'dark' ? 'bg-[#001B41] border-[#002B66] hover:bg-[#006FE3] hover:text-white' : 'bg-white border-slate-200 hover:bg-[#006FE3] hover:text-white shadow-sm'
                 }`}
               >
                 <span>Inspect {currentStepData.findingRef}</span>
@@ -377,20 +390,20 @@ export default function AttackChainView({
           </div>
 
           <p className={`text-xs sm:text-sm leading-relaxed font-sans ${
-            theme === 'dark' ? 'text-slate-200' : 'text-slate-800'
+            theme === 'dark' ? 'text-slate-300' : 'text-slate-700'
           }`}>
             {currentStepData.description}
           </p>
 
           {currentStepData.impact && (
-            <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-600 dark:text-rose-400 text-xs font-mono leading-relaxed">
+            <div className="p-3.5 rounded-xl bg-[#DC2626]/10 border border-[#DC2626]/30 text-[#DC2626] text-xs font-mono leading-relaxed">
               <strong>Impact:</strong> {currentStepData.impact}
             </div>
           )}
 
           {/* Technical Code Snippet */}
           {currentStepData.codeSnippet && (
-            <pre className="p-4 rounded-xl bg-[#03060E] border border-slate-800 text-cyan-300 font-mono text-xs overflow-x-auto select-all leading-relaxed">
+            <pre className="p-4 rounded-xl bg-[#000E20] border border-[#002B66] text-cyan-300 font-mono text-xs overflow-x-auto select-all leading-relaxed">
               <code>{currentStepData.codeSnippet}</code>
             </pre>
           )}

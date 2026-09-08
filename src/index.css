@@ -2,9 +2,50 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --sennovate-blue: #006FE3;
+  --sennovate-blue-70: #4D9AEC;
+  --sennovate-blue-50: #80B7F1;
+  --sennovate-blue-30: #B3D4F7;
+  --sennovate-blue-10: #E6F1FC;
+  --sennovate-dark: #001B41;
+  --sennovate-dark-deep: #001127;
+  --sennovate-dark-card: #001E4B;
+  --sennovate-dark-elevated: #002863;
+  --sennovate-dark-border: #0A3778;
+  --sennovate-green: #299346;
+  --sennovate-purple: #3C2C86;
+  --sennovate-amber: #B9623C;
+}
+
 @layer base {
   body {
     @apply font-sans;
+  }
+
+  h1, h2, h3, h4, .heading-brand {
+    font-family: 'Satoshi', 'Inter', system-ui, sans-serif;
+  }
+}
+
+@layer utilities {
+  .font-heading {
+    font-family: 'Satoshi', 'Inter', system-ui, sans-serif;
+  }
+  .font-brand {
+    font-family: 'Satoshi', 'Inter', system-ui, sans-serif;
+  }
+  
+  .sennovate-glass-dark {
+    background: rgba(0, 27, 65, 0.85);
+    backdrop-filter: blur(12px);
+    border-color: rgba(10, 55, 120, 0.5);
+  }
+
+  .sennovate-glass-light {
+    background: rgba(255, 255, 255, 0.9);
+    backdrop-filter: blur(12px);
+    border-color: rgba(226, 232, 240, 0.8);
   }
 }
 
@@ -13,33 +54,38 @@
   width: 6px;
   height: 6px;
 }
+
 .dark ::-webkit-scrollbar-track {
-  background: #0B0F19;
+  background: #001127;
 }
+
 .dark ::-webkit-scrollbar-thumb {
-  background: #1E293B;
+  background: #0A3778;
   border-radius: 4px;
 }
+
 .dark ::-webkit-scrollbar-thumb:hover {
-  background: #334155;
+  background: #006FE3;
 }
 
 ::-webkit-scrollbar-track {
   background: #F1F5F9;
 }
+
 ::-webkit-scrollbar-thumb {
-  background: #CBD5E1;
+  background: #B3D4F7;
   border-radius: 4px;
 }
+
 ::-webkit-scrollbar-thumb:hover {
-  background: #94A3B8;
+  background: #006FE3;
 }
 
 /* PDF Print styles */
 @media print {
   body {
     background: #ffffff !important;
-    color: #0f172a !important;
+    color: #001B41 !important;
   }
   .no-print {
     display: none !important;
