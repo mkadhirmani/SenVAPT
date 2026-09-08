@@ -1,6 +1,6 @@
 import React from 'react';
 
-export default function Logo({ theme = 'dark', size = 'md', iconOnly = false, className = '' }) {
+export default function Logo({ theme = 'light', size = 'md', iconOnly = false, className = '' }) {
   if (iconOnly) {
     return (
       <img

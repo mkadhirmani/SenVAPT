@@ -41,7 +41,7 @@ export default function DashboardOverview({
   onViewAttackChain, 
   onOpenChatbot, 
   onNavigateTab,
-  theme = 'dark'
+  theme = 'light'
 }) {
   const isAdmin = currentUser?.role === 'admin';
   const canViewTokens = isAdmin || checkUserPermission(currentUser, 'view_tokens');

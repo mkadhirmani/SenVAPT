@@ -16,7 +16,7 @@ import {
 import { initializeKnowledgeBase } from '../utils/ragEngine';
 import { fetchLocalStrixFolder, listLocalScanFoldersApi } from '../utils/strixApi';
 
-export default function ScanDataLoader({ isOpen, onClose, onDataLoaded, currentTarget, theme = 'dark' }) {
+export default function ScanDataLoader({ isOpen, onClose, onDataLoaded, currentTarget, theme = 'light' }) {
   const [folderInput, setFolderInput] = useState('');
   const [dragActive, setDragActive] = useState(false);
   const [loading, setLoading] = useState(false);

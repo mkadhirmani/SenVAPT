@@ -166,7 +166,7 @@ export default function PdfReport({
   vulnerabilities = [], 
   metadata = {}, 
   companyName = "Target Organization", 
-  theme = 'dark' 
+  theme = 'light' 
 }) {
   const [reportType, setReportType] = useState('detailed'); // 'detailed' | 'simple'
   const [isExporting, setIsExporting] = useState(false);

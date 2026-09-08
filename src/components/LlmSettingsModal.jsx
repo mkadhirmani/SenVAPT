@@ -20,7 +20,7 @@ import {
 } from 'lucide-react';
 import { getLlmConfig, saveLlmConfig, testLlmConnection, USER_REQUESTED_MODELS } from '../utils/llmEngine';
 
-export default function LlmSettingsModal({ isOpen, onClose, theme = 'dark' }) {
+export default function LlmSettingsModal({ isOpen, onClose, theme = 'light' }) {
   const [config, setConfig] = useState(() => getLlmConfig());
   const [showKey, setShowKey] = useState(false);
   const [testing, setTesting] = useState(false);

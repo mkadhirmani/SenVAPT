@@ -9,8 +9,6 @@ import {
   FileText, 
   Download, 
   FolderOpen, 
-  Sun, 
-  Moon, 
   Sparkles, 
   History, 
   Building, 
@@ -32,8 +30,7 @@ export default function Sidebar({
   setActiveTab, 
   currentUser,
   onLogout,
-  theme, 
-  toggleTheme, 
+  theme = 'light', 
   isScanning, 
   onTriggerScan, 
   onExportPdf, 
@@ -371,28 +368,7 @@ export default function Sidebar({
           </div>
         )}
 
-        {/* Theme Toggle Button */}
-        <button
-          onClick={toggleTheme}
-          className={`w-full h-9 flex items-center justify-between px-3 rounded-xl text-xs font-medium border transition-all cursor-pointer ${
-            theme === 'dark'
-              ? 'bg-[#001E4B] border-[#0A3778] text-slate-200 hover:text-white hover:border-[#006FE3]'
-              : 'bg-white border-slate-200 text-[#001B41] hover:bg-[#E6F1FC] shadow-sm'
-          }`}
-        >
-          <div className="flex items-center gap-2">
-            {theme === 'dark' ? (
-              <Moon className="w-3.5 h-3.5 text-[#80B7F1] flex-shrink-0" />
-            ) : (
-              <Sun className="w-3.5 h-3.5 text-[#B9623C] flex-shrink-0" />
-            )}
-            <span className="font-heading font-semibold">{theme === 'dark' ? 'Dark Theme' : 'Light Theme'}</span>
-          </div>
 
-          <span className="text-[10px] font-mono text-[#006FE3] dark:text-[#4D9AEC] font-bold">
-            Toggle
-          </span>
-        </button>
 
         {/* Export PDF Button */}
         <button

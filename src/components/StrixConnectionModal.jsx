@@ -28,7 +28,7 @@ import {
   testN8nFetchWebhookApi
 } from '../utils/strixApi';
 
-export default function StrixConnectionModal({ isOpen, onClose, onConnected, theme = 'dark' }) {
+export default function StrixConnectionModal({ isOpen, onClose, onConnected, theme = 'light' }) {
   const [config, setConfig] = useState(() => getStrixServerConfig());
   const [activeTab, setActiveTab] = useState(() => config.triggerMode || 'n8n');
   const [showPassword, setShowPassword] = useState(false);

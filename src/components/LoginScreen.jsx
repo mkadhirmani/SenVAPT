@@ -13,7 +13,7 @@ import {
 import { authenticateUser, fetchGlobalUsersList } from '../utils/auth';
 import { initSupabaseBrowserConfig } from '../utils/supabaseClient';
 
-export default function LoginScreen({ onLoginSuccess, theme = 'dark' }) {
+export default function LoginScreen({ onLoginSuccess, theme = 'light' }) {
   const [selectedRole, setSelectedRole] = useState('user');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');

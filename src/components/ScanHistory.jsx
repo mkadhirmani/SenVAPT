@@ -28,7 +28,7 @@ export default function ScanHistory({
   onDeleteScan, 
   onTriggerNewScan,
   onSyncAllServerScans,
-  theme = 'dark' 
+  theme = 'light' 
 }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterRisk, setFilterRisk] = useState('ALL');

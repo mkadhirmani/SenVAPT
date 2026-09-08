@@ -99,10 +99,8 @@ export default function App() {
   // Authentication State
   const [currentUser, setAuthUser] = useState(() => getCurrentUser());
 
-  // Theme state
-  const [theme, setTheme] = useState(() => {
-    return localStorage.getItem('sennovate_theme') || 'dark';
-  });
+  // Theme state - strictly light theme
+  const theme = 'light';
 
   // Scan History state
   const [scanHistory, setScanHistory] = useState(() => getStoredScanHistory());
@@ -210,22 +208,12 @@ export default function App() {
     return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
 
-  // Apply theme to HTML root
+  // Enforce light theme exclusively on HTML root
   useEffect(() => {
-    localStorage.setItem('sennovate_theme', theme);
-    if (theme === 'dark') {
-      document.documentElement.classList.add('dark');
-      document.documentElement.classList.remove('light');
-    } else {
-      document.documentElement.classList.remove('dark');
-      document.documentElement.classList.add('light');
-    }
-  }, [theme]);
-
-  // Toggle Theme helper
-  const toggleTheme = () => {
-    setTheme(prev => (prev === 'dark' ? 'light' : 'dark'));
-  };
+    localStorage.setItem('sennovate_theme', 'light');
+    document.documentElement.classList.remove('dark');
+    document.documentElement.classList.add('light');
+  }, []);
 
   // Auto-sync server config, LLM config, users, and scans on initial load with session verification
   useEffect(() => {
@@ -789,9 +777,7 @@ export default function App() {
   }
 
   return (
-    <div className={`min-h-screen flex transition-colors duration-200 ${
-      theme === 'dark' ? 'bg-[#060A13] text-slate-100' : 'bg-slate-50 text-slate-900'
-    }`}>
+    <div className="min-h-screen flex bg-slate-50 text-slate-900 transition-colors duration-200">
       {/* Sidebar Navigation */}
       <Sidebar
         activeTab={activeTab}
@@ -799,8 +785,7 @@ export default function App() {
         currentUser={currentUser}
         onLogout={handleLogout}
         isScanning={isScanning}
-        theme={theme}
-        toggleTheme={toggleTheme}
+        theme="light"
         onTriggerScan={() => setActiveTab('scan')}
         onOpenDataLoader={() => setIsDataLoaderOpen(true)}
         onOpenLlmSettings={() => setIsLlmSettingsOpen(true)}
@@ -820,8 +805,7 @@ export default function App() {
           setActiveTab={setActiveTab}
           currentUser={currentUser}
           onLogout={handleLogout}
-          theme={theme}
-          toggleTheme={toggleTheme}
+          theme="light"
           isScanning={isScanning}
           onTriggerScan={() => setActiveTab('scan')}
           onOpenLlmSettings={() => setIsLlmSettingsOpen(true)}

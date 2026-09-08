@@ -3,8 +3,6 @@ import {
   Globe, 
   Radar, 
   Activity, 
-  Sun, 
-  Moon, 
   Key,
   Server,
   User,
@@ -23,8 +21,7 @@ export default function TopHeader({
   setActiveTab, 
   currentUser,
   onLogout,
-  theme, 
-  toggleTheme, 
+  theme = 'light', 
   isScanning, 
   onTriggerScan, 
   onOpenLlmSettings,
@@ -134,19 +131,6 @@ export default function TopHeader({
             <span className="hidden sm:inline">LLM Key</span>
           </button>
         )}
-
-        {/* Theme Toggle */}
-        <button
-          onClick={toggleTheme}
-          title="Toggle Light / Dark Theme"
-          className={`w-9 h-9 flex items-center justify-center rounded-xl border transition-all cursor-pointer ${
-            theme === 'dark'
-              ? 'bg-[#001E4B] border-[#0A3778] text-[#80B7F1] hover:bg-[#002863]'
-              : 'bg-slate-100 border-slate-200 text-[#B9623C] hover:bg-slate-200'
-          }`}
-        >
-          {theme === 'dark' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
-        </button>
 
         {/* Scan Target Button (If permitted) */}
         {(isAdmin || checkUserPermission(currentUser, 'run_scans')) && (

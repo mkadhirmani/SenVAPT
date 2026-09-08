@@ -27,7 +27,7 @@ export default function AttackChainView({
   scanHistory = [],
   activeScanId = '',
   onSelectScan,
-  theme = 'dark' 
+  theme = 'light' 
 }) {
   const [activeStep, setActiveStep] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);

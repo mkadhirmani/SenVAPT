@@ -53,7 +53,7 @@ export default function ScanHud({
   onViewFindings,
   onSaveNewScan,
   onOpenStrixSettings,
-  theme = 'dark' 
+  theme = 'light' 
 }) {
   const currentTarget = activeScan || scanHistory.find(s => s.id === activeScanId) || {};
 

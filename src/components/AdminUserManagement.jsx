@@ -49,7 +49,7 @@ export default function AdminUserManagement({
   currentUser, 
   scanHistory = [], 
   onSelectScan, 
-  theme = 'dark' 
+  theme = 'light' 
 }) {
   const [users, setUsers] = useState(() => getUsersList());
   const [searchTerm, setSearchTerm] = useState('');

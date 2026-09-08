@@ -21,7 +21,7 @@ import {
 import { askLlmWithRag, getLlmConfig } from '../utils/llmEngine';
 
 export default function Chatbot({ 
-  theme = 'dark', 
+  theme = 'light', 
   isFullPage = false, 
   onClose,
   onOpenLlmSettings,
