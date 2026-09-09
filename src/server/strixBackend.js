@@ -97,28 +97,14 @@ export async function isSafeWebhookUrl(urlStr) {
 }
 
 /**
- * Automatically persist completed structured scan record into Supabase vapt_scans table immediately
+ * Persist completed structured scan record
+ * SECURITY POLICY: Confirmed vulnerability findings and penetration tests remain
+ * strictly local on the secure server and DO NOT penetrate to the cloud Supabase database.
  */
 export async function autoPersistScanToSupabase(scanData) {
   if (!scanData) return null;
-  try {
-    const formatted = formatScanForSupabase(scanData);
-    if (!formatted || !formatted.id) return null;
-
-    const { data, error } = await supabase
-      .from('vapt_scans')
-      .upsert([formatted], { onConflict: 'id' });
-
-    if (error) {
-      console.error(`[SUPABASE vapt_scans AUTO-SAVE ERROR] for scan "${formatted.id}":`, error.message);
-      return null;
-    }
-    console.log(`[SUPABASE vapt_scans AUTO-SAVE SUCCESS] Successfully persisted scan "${formatted.id}" (${formatted.company_name}) to vapt_scans table! Path: ${formatted.output_folder_path}`);
-    return data;
-  } catch (err) {
-    console.warn('[SUPABASE vapt_scans AUTO-SAVE NOTE]:', err.message);
-    return null;
-  }
+  // Security policy: Vulnerability scans and security checks do not penetrate to Supabase cloud.
+  return Promise.resolve({ success: true, localOnly: true, id: scanData.id });
 }
 
 // In-memory active scan sessions store with stream references for interactive input

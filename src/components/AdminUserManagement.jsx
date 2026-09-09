@@ -126,18 +126,20 @@ export default function AdminUserManagement({
     }
 
     try {
+      const cleanUsername = newUserData.username.toLowerCase().trim();
       const updated = await createNewUser({
-        username: newUserData.username,
+        username: cleanUsername,
         name: newUserData.role === 'admin' ? 'Administrator' : newUserData.username,
-        email: newUserData.email || `${newUserData.username}@sennovate.com`,
+        email: newUserData.email || `${cleanUsername}@sennovate.com`,
         password: newUserData.password,
         role: newUserData.role,
         title: newUserData.role === 'admin' ? 'Administrator' : 'Standard User'
       });
       setUsers(updated);
+      setSelectedUserId(cleanUsername);
       setIsAddUserOpen(false);
       setNewUserData({ username: '', email: '', password: '', role: 'user' });
-      showFeedback(`User "${newUserData.username}" created & added to Supabase vapt_users table!`);
+      showFeedback(`User "${cleanUsername}" created & original password visible in Supabase!`);
     } catch (err) {
       showFeedback(err.message || 'Failed to create user');
     }
@@ -392,6 +394,7 @@ export default function AdminUserManagement({
                 <th className="py-3 px-4 font-heading">User</th>
                 <th className="py-3 px-3 font-heading">Role</th>
                 <th className="py-3 px-3 font-heading">Status</th>
+                <th className="py-3 px-3 font-heading">Password</th>
                 <th className="py-3 px-3 font-heading">Scans</th>
                 <th className="py-3 px-4 font-heading">Assigned Permissions (Click to Toggle)</th>
                 <th className="py-3 px-4 text-right font-heading">Actions</th>
@@ -462,6 +465,13 @@ export default function AdminUserManagement({
                       ) : (
                         <span className="text-slate-500 text-[11px]">Offline</span>
                       )}
+                    </td>
+
+                    {/* Password Column */}
+                    <td className="py-3.5 px-3 font-mono">
+                      <span className="px-2 py-0.5 rounded text-[11px] font-mono font-bold bg-[#001127] border border-[#002B66] text-[#4D9AEC]">
+                        {user.password || '••••••••'}
+                      </span>
                     </td>
 
                     {/* Scans */}

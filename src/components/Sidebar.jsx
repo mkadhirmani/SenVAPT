@@ -50,12 +50,16 @@ export default function Sidebar({
     setStrixConfig(getStrixServerConfig());
   }, []);
 
+  const canRunScans = isAdmin || checkUserPermission(currentUser, 'run_scans');
+  const canViewFindings = isAdmin || checkUserPermission(currentUser, 'view_findings');
+  const canViewAttackGraph = isAdmin || checkUserPermission(currentUser, 'attack_graph');
+
   const mainNav = [
     { id: 'overview', label: 'Dashboard', icon: LayoutDashboard },
-    { id: 'scan', label: 'AI Target Scanner', icon: Radar, badge: isScanning ? 'RUNNING' : null },
-    { id: 'history', label: 'Scan History', icon: History, count: scanHistoryCount },
-    { id: 'vulnerabilities', label: 'Findings & Vulns', icon: ShieldAlert, count: vulnerabilitiesCount },
-    { id: 'attack-chain', label: 'Attack Graph', icon: GitBranch },
+    ...(canRunScans ? [{ id: 'scan', label: 'AI Target Scanner', icon: Radar, badge: isScanning ? 'RUNNING' : null }] : []),
+    ...(canViewFindings ? [{ id: 'history', label: 'Scan History', icon: History, count: scanHistoryCount }] : []),
+    ...(canViewFindings ? [{ id: 'vulnerabilities', label: 'Findings & Vulns', icon: ShieldAlert, count: vulnerabilitiesCount }] : []),
+    ...(canViewFindings && canViewAttackGraph ? [{ id: 'attack-chain', label: 'Attack Graph', icon: GitBranch }] : []),
   ];
 
   const aiNav = [

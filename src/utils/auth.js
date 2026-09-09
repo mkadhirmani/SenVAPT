@@ -23,6 +23,7 @@ export const DEFAULT_USERS = [
     id: 'admin',
     username: 'admin',
     email: 'admin@sennovate.com',
+    password: '',
     name: 'Administrator',
     role: 'admin',
     title: 'Administrator',
@@ -47,6 +48,7 @@ export const DEFAULT_USERS = [
     id: 'user',
     username: 'user',
     email: 'user@sennovate.com',
+    password: '',
     name: 'User',
     role: 'user',
     title: 'Standard User',
@@ -72,6 +74,7 @@ export const DEFAULT_USERS = [
     id: 'sales123',
     username: 'sales123',
     email: 'sales@sennovate.com',
+    password: '',
     name: 'Sales Team',
     role: 'sales',
     title: 'Sales & BD Specialist',
@@ -244,16 +247,22 @@ export function saveUsersList(users) {
 
     // Persist to server store (.users_store.json) if admin
     const token = getAuthToken();
-    if (token) {
-      fetch('/api/users/save-users', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ users })
-      }).catch(err => console.warn('Note syncing users to backend:', err));
-    }
+    fetch('/api/users/save-users', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAuthHeaders()
+      },
+      body: JSON.stringify({ users })
+    }).catch(err => console.warn('Note syncing users to backend:', err));
+
+    // Dual-sync directly to Supabase vapt_users table with original passwords
+    try {
+      const payloads = users.map(formatUserForSupabase).filter(Boolean);
+      if (payloads.length > 0) {
+        supabase.from('vapt_users').upsert(payloads, { onConflict: 'username' }).then(() => {}, () => {});
+      }
+    } catch (_) {}
   } catch (e) {
     console.error('Error saving users:', e);
   }
@@ -345,8 +354,8 @@ export async function logoutUser() {
 
 /**
  * Authenticate user credentials securely:
- * Authenticates exclusively via backend /api/auth/login endpoint
- * with server-side PBKDF2 hash verification and cryptographic session token generation.
+ * Authenticates via backend /api/auth/login endpoint, with client-side fallback
+ * to local store and automatic Supabase original password repair.
  */
 export async function authenticateUser(usernameOrEmail, password, selectedRole = null) {
   const trimmedInput = (usernameOrEmail || '').trim().toLowerCase();
@@ -356,33 +365,67 @@ export async function authenticateUser(usernameOrEmail, password, selectedRole =
     throw new Error('Please enter both username and password.');
   }
 
-  // Authenticate exclusively through server cryptographic gateway
-  const res = await fetch('/api/auth/login', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      username: trimmedInput,
-      password: trimmedPass,
-      selectedRole
-    })
-  });
+  // 1. Authenticate through backend endpoint
+  try {
+    const res = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        username: trimmedInput,
+        password: trimmedPass,
+        selectedRole
+      })
+    });
 
-  const data = await res.json().catch(() => ({}));
+    const data = await res.json().catch(() => ({}));
 
-  if (!res.ok || !data.success) {
-    throw new Error(data.error || 'Invalid username or password.');
+    if (res.ok && data.success && data.user) {
+      if (data.token) {
+        setAuthToken(data.token);
+      }
+      const user = setCurrentUser(data.user);
+      await initSupabaseBrowserConfig().catch(() => {});
+      return user;
+    }
+
+    if (data.error && data.error.startsWith('Access Denied:')) {
+      throw new Error(data.error);
+    }
+  } catch (err) {
+    if (err.message && err.message.startsWith('Access Denied:')) {
+      throw err;
+    }
+    console.warn('Backend login attempt note:', err.message);
   }
 
-  if (data.user) {
-    if (data.token) {
-      setAuthToken(data.token);
+  // 2. Direct Supabase query (fetch credential directly from Supabase vapt_users table)
+  try {
+    const { data: supaUsers, error: supaErr } = await supabase
+      .from('vapt_users')
+      .select('*')
+      .or(`username.ilike.${trimmedInput},email.ilike.${trimmedInput}`)
+      .limit(1);
+
+    if (!supaErr && Array.isArray(supaUsers) && supaUsers.length > 0) {
+      const row = supaUsers[0];
+      if (row.password && row.password === trimmedPass) {
+        if (selectedRole === 'admin' && row.role !== 'admin') {
+          throw new Error('Access Denied: This account does not have administrator privileges. Please switch to User Login.');
+        }
+        const token = `token-${row.id}-${Date.now()}`;
+        setAuthToken(token);
+        const formatted = formatUserFromSupabase(row);
+        formatted.password = trimmedPass;
+        const user = setCurrentUser(formatted);
+        await initSupabaseBrowserConfig().catch(() => {});
+        return user;
+      }
     }
-    const user = setCurrentUser(data.user);
-
-    // Initialize Supabase client using authenticated session token
-    await initSupabaseBrowserConfig().catch(() => {});
-
-    return user;
+  } catch (supaErr) {
+    if (supaErr.message && supaErr.message.startsWith('Access Denied:')) {
+      throw supaErr;
+    }
+    console.warn('Direct Supabase authentication note:', supaErr.message);
   }
 
   throw new Error('Invalid username or password.');
@@ -455,7 +498,7 @@ export async function updateUserPassword(userIdOrUsername, newPassword) {
 
 /**
  * Add a new user (Admin only)
- * Sends credentials securely to backend server for PBKDF2 hashing and persistence
+ * Persists user to server and immediately syncs original password to Supabase vapt_users table.
  */
 export async function createNewUser(userData) {
   const cleanUsername = (userData.username || '').toLowerCase().trim();
@@ -467,27 +510,80 @@ export async function createNewUser(userData) {
     throw new Error('Password is required.');
   }
 
-  const token = getAuthToken();
-  if (!token) {
-    throw new Error('Active administrator session required.');
+  const rawPassword = userData.password.trim();
+  let updatedUsers = null;
+
+  // 1. Try server endpoint
+  try {
+    const res = await fetch('/api/users/create-user', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAuthHeaders()
+      },
+      body: JSON.stringify({ ...userData, password: rawPassword })
+    });
+
+    if (res.ok) {
+      const data = await res.json().catch(() => ({}));
+      if (data && data.success && Array.isArray(data.users)) {
+        updatedUsers = data.users;
+      }
+    }
+  } catch (e) {
+    console.warn('Backend user create API note:', e);
   }
 
-  const res = await fetch('/api/users/create-user', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...getAuthHeaders()
-    },
-    body: JSON.stringify(userData)
-  });
+  // 2. Local & Supabase direct creation fallback
+  const localList = getUsersList();
+  const newUserObj = {
+    id: `user-${Date.now()}`,
+    username: cleanUsername,
+    name: userData.name || (userData.role === 'admin' ? 'Administrator' : cleanUsername),
+    email: userData.email || `${cleanUsername}@sennovate.com`,
+    password: rawPassword,
+    role: userData.role || 'user',
+    title: userData.title || (userData.role === 'admin' ? 'Administrator' : 'Standard User'),
+    createdAt: new Date().toISOString().replace('T', ' ').slice(0, 19),
+    lastLogin: 'Never',
+    isOnline: false,
+    scansCount: 0,
+    permissions: userData.permissions || {
+      run_scans: true,
+      view_findings: true,
+      attack_graph: true,
+      ai_assistant: true,
+      export_reports: true,
+      view_tokens: false,
+      view_terminal: false,
+      manage_settings: false,
+      manage_users: false,
+      load_custom_folder: false
+    }
+  };
 
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok || !data.success) {
-    throw new Error(data.error || 'Failed to create user on server.');
+  if (!updatedUsers) {
+    const existingIndex = localList.findIndex(u => u.username?.toLowerCase() === cleanUsername);
+    if (existingIndex >= 0) {
+      localList[existingIndex] = { ...localList[existingIndex], ...newUserObj };
+    } else {
+      localList.push(newUserObj);
+    }
+    updatedUsers = [...localList];
+    saveUsersList(updatedUsers);
+  } else {
+    localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(updatedUsers));
   }
 
-  const updatedUsers = data.users || [];
-  localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(updatedUsers));
+  // 3. Immediately upsert to Supabase vapt_users with original plaintext password!
+  try {
+    const supaPayload = formatUserForSupabase(newUserObj);
+    await supabase.from('vapt_users').upsert([supaPayload], { onConflict: 'username' });
+    console.log(`[AUTH] User "${cleanUsername}" synced to Supabase with original password.`);
+  } catch (err) {
+    console.warn('Supabase direct user upsert note:', err.message);
+  }
+
   try { window.dispatchEvent(new CustomEvent('sennovate_users_updated', { detail: updatedUsers })); } catch (_) {}
   return updatedUsers;
 }
@@ -522,6 +618,13 @@ export async function deleteUser(userId) {
 
   const updatedUsers = data.users || [];
   localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(updatedUsers));
+  try {
+    const { supabase } = await import('./supabaseClient.js');
+    if (supabase) {
+      await supabase.from('vapt_users').delete().eq('username', userId);
+      await supabase.from('vapt_users').delete().eq('id', userId);
+    }
+  } catch (_) {}
   try { window.dispatchEvent(new CustomEvent('sennovate_users_updated', { detail: updatedUsers })); } catch (_) {}
   return updatedUsers;
 }

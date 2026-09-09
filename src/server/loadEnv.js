@@ -96,9 +96,6 @@ export function loadEnvFiles() {
   if (!process.env.SUPABASE_ANON_KEY) process.env.SUPABASE_ANON_KEY = DEFAULT_SUPA_KEY;
   if (!process.env.VITE_SUPABASE_ANON_KEY) process.env.VITE_SUPABASE_ANON_KEY = DEFAULT_SUPA_KEY;
 
-  if (!process.env.ADMIN_PASSWORD) process.env.ADMIN_PASSWORD = atob('QEExOTh2YXB0');
-  if (!process.env.USER_PASSWORD) process.env.USER_PASSWORD = atob('QHVzZXIxdmFwdA==');
-  if (!process.env.SALES_PASSWORD) process.env.SALES_PASSWORD = atob('QHNhbGVzMXZhcHQ=');
 }
 
 loadEnvFiles();

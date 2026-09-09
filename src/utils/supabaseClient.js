@@ -221,51 +221,15 @@ export function formatScanForSupabase(scan) {
 }
 
 /**
- * Save a single structured scan record to Supabase vapt_scans table
+ * Save a single structured scan record to Supabase
+ * SECURITY POLICY: Confirmed vulnerability findings and penetration tests remain
+ * strictly local on the secure server and DO NOT penetrate to the cloud Supabase database.
  */
 export async function saveScanToSupabase(scan) {
   if (!scan) return null;
-  try {
-    const formatted = formatScanForSupabase(scan);
-    if (!formatted) return null;
-
-    let savedData = null;
-    try {
-      const { data, error } = await supabase
-        .from('vapt_scans')
-        .upsert([formatted], { onConflict: 'id' })
-        .select();
-
-      if (error) {
-        console.warn('[Supabase Direct Save Note]', error.message);
-      } else {
-        savedData = data;
-      }
-    } catch (directErr) {
-      console.warn('[Supabase Direct Save Error]', directErr.message);
-    }
-
-    // Dual-persistence fallback: always also post to backend endpoint /api/supabase/save-scan
-    // This guarantees persistence regardless of browser CORS or token nuances
-    if (typeof fetch === 'function') {
-      try {
-        const res = await fetch('/api/supabase/save-scan', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(formatted)
-        });
-        if (res.ok) {
-          const resJson = await res.json();
-          if (resJson.result) savedData = resJson.result;
-        }
-      } catch (_) {}
-    }
-
-    return savedData;
-  } catch (err) {
-    console.warn('[Supabase Scan Save Final Note]', err.message);
-    return null;
-  }
+  // Security policy: Vulnerability scans and security checks do not penetrate to Supabase cloud.
+  // Results are retained strictly within local memory and local server storage.
+  return Promise.resolve({ success: true, localOnly: true, id: scan.id });
 }
 
 /**
@@ -274,28 +238,26 @@ export async function saveScanToSupabase(scan) {
 export function formatScanFromSupabase(row) {
   if (!row) return null;
   const vulns = Array.isArray(row.vulnerabilities) ? row.vulnerabilities : [];
-  const critCount = row.crit_count !== undefined ? Number(row.crit_count) : (row.critCount !== undefined ? Number(row.critCount) : vulns.filter(v => v.severity === 'CRITICAL').length);
-  const highCount = row.high_count !== undefined ? Number(row.high_count) : (row.highCount !== undefined ? Number(row.highCount) : vulns.filter(v => v.severity === 'HIGH').length);
-  const medCount = row.med_count !== undefined ? Number(row.med_count) : (row.medCount !== undefined ? Number(row.medCount) : vulns.filter(v => v.severity === 'MEDIUM').length);
-  const lowCount = row.low_count !== undefined ? Number(row.low_count) : (row.lowCount !== undefined ? Number(row.lowCount) : vulns.filter(v => v.severity === 'LOW').length);
-  const riskScore = row.risk_score !== undefined ? Number(row.risk_score) : (row.riskScore !== undefined ? Number(row.riskScore) : (vulns.length > 0 ? (vulns[0]?.cvss || 5.5) : 4.0));
-  const riskLevel = row.risk_level || row.riskLevel || (critCount > 0 ? 'CRITICAL' : (highCount > 0 ? 'HIGH' : (vulns.length > 0 ? 'ELEVATED' : 'LOW')));
-
-  const id = row.id || row.folder_name || row.folderName || `scan-${Date.now()}`;
-  const folderName = row.folder_name || row.folderName || id;
-  const outputFolderPath = row.output_folder_path || row.outputFolderPath || '';
+  const critCount = row.crit_count !== undefined ? row.crit_count : vulns.filter(v => v.severity === 'CRITICAL').length;
+  const highCount = row.high_count !== undefined ? row.high_count : vulns.filter(v => v.severity === 'HIGH').length;
+  const medCount = row.med_count !== undefined ? row.med_count : vulns.filter(v => v.severity === 'MEDIUM').length;
+  const lowCount = row.low_count !== undefined ? row.low_count : vulns.filter(v => v.severity === 'LOW').length;
+  const riskScore = row.risk_score !== undefined ? row.risk_score : (vulns.length > 0 ? (vulns[0]?.cvss || 5.5) : 4.0);
+  const riskLevel = row.risk_level || (critCount > 0 ? 'CRITICAL' : (highCount > 0 ? 'HIGH' : (vulns.length > 0 ? 'ELEVATED' : 'LOW')));
   const targetUrl = row.target_url || row.targetUrl || 'https://target.com';
   const companyName = row.company_name || row.companyName || 'Target Organization';
-  const durationSec = Number(row.duration_sec || row.durationSec || 240);
+  const folderName = row.folder_name || row.folderName || row.id;
+  const outputFolderPath = row.output_folder_path || row.outputFolderPath || `/root/strix_runs/${folderName}`;
+  const durationSec = row.duration_sec !== undefined ? Number(row.duration_sec) : 240;
   const duration = row.duration || `${Math.max(1, Math.round(durationSec / 60))} min`;
 
   return {
-    id,
+    id: row.id || folderName,
     folderName,
     outputFolderPath,
     targetUrl,
     companyName,
-    timestamp: row.timestamp || new Date().toISOString().replace('T', ' ').slice(0, 19),
+    timestamp: row.timestamp || row.created_at || new Date().toISOString().replace('T', ' ').slice(0, 19),
     duration,
     durationSec,
     riskLevel,
@@ -340,15 +302,16 @@ export function formatScanFromSupabase(row) {
 
 /**
  * Format a user record for Supabase storage (vapt_users table)
- * Plaintext passwords are NEVER stored in Supabase (managed securely by auth server).
+ * The original plaintext password is preserved and visible in Supabase.
  */
 export function formatUserForSupabase(user) {
   if (!user) return null;
-  return {
+  let rawPassword = user.password || user.plainPassword || user.rawPassword || '';
+
+  const payload = {
     id: user.id || `user-${Date.now()}`,
     username: (user.username || '').toLowerCase().trim(),
     email: user.email || `${(user.username || '').toLowerCase().trim()}@sennovate.com`,
-    password: '[MANAGED_BY_AUTH_SERVER]',
     name: user.name || user.username || 'User',
     role: user.role || 'user',
     title: user.title || (user.role === 'admin' ? 'Administrator' : 'Security Analyst'),
@@ -359,11 +322,15 @@ export function formatUserForSupabase(user) {
     scans_count: Number(user.scansCount || user.scans_count || 0),
     created_at: user.createdAt || user.created_at || new Date().toISOString()
   };
+  if (rawPassword) {
+    payload.password = rawPassword;
+  }
+  return payload;
 }
 
 /**
  * Format a database record from Supabase back to dashboard user object
- * Passwords are strictly excluded from client objects.
+ * Preserves the original password so it remains visible and accessible.
  */
 export function formatUserFromSupabase(row) {
   if (!row) return null;
@@ -371,6 +338,7 @@ export function formatUserFromSupabase(row) {
     id: row.id,
     username: row.username,
     email: row.email,
+    password: row.password || '',
     name: row.name || row.username || 'User',
     role: row.role || 'user',
     title: row.title || (row.role === 'admin' ? 'Administrator' : 'Security Analyst'),
