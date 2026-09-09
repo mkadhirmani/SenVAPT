@@ -20,7 +20,8 @@ import {
   fetchServerFileProxy,
   getGlobalServerConfig,
   getSanitizedServerConfig,
-  saveGlobalServerConfig
+  saveGlobalServerConfig,
+  checkAndSyncScanCompletion
 } from './src/server/strixBackend.js';
 import { 
   supabase, 
@@ -1112,6 +1113,30 @@ function strixBackendPlugin() {
           try {
             const payload = JSON.parse(body || '{}');
             const result = await fetchN8nScanResultsProxy(payload);
+            res.setHeader('Content-Type', 'application/json');
+            res.statusCode = 200;
+            res.end(JSON.stringify(result));
+          } catch (err) {
+            res.setHeader('Content-Type', 'application/json');
+            res.statusCode = 500;
+            res.end(JSON.stringify({ success: false, error: err.message }));
+          }
+        });
+      });
+
+      // 12.4 Check scan.log on Server & Auto-Sync Completed Scan to Supabase
+      server.middlewares.use('/api/strix/check-scan-log', async (req, res) => {
+        if (req.method !== 'POST') {
+          res.statusCode = 405;
+          return res.end('Method Not Allowed');
+        }
+
+        let body = '';
+        req.on('data', chunk => { body += chunk; });
+        req.on('end', async () => {
+          try {
+            const payload = JSON.parse(body || '{}');
+            const result = await checkAndSyncScanCompletion(payload);
             res.setHeader('Content-Type', 'application/json');
             res.statusCode = 200;
             res.end(JSON.stringify(result));

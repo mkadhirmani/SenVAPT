@@ -3,6 +3,32 @@ import path from 'path';
 import os from 'os';
 import { execSync, execFileSync } from 'child_process';
 import { Client } from 'ssh2';
+import { supabase, formatScanForSupabase } from '../utils/supabaseClient.js';
+
+/**
+ * Automatically persist completed structured scan record into Supabase vapt_scans table immediately
+ */
+export async function autoPersistScanToSupabase(scanData) {
+  if (!scanData) return null;
+  try {
+    const formatted = formatScanForSupabase(scanData);
+    if (!formatted || !formatted.id) return null;
+
+    const { data, error } = await supabase
+      .from('vapt_scans')
+      .upsert([formatted], { onConflict: 'id' });
+
+    if (error) {
+      console.error(`[SUPABASE vapt_scans AUTO-SAVE ERROR] for scan "${formatted.id}":`, error.message);
+      return null;
+    }
+    console.log(`[SUPABASE vapt_scans AUTO-SAVE SUCCESS] Successfully persisted scan "${formatted.id}" (${formatted.company_name}) to vapt_scans table! Path: ${formatted.output_folder_path}`);
+    return data;
+  } catch (err) {
+    console.warn('[SUPABASE vapt_scans AUTO-SAVE NOTE]:', err.message);
+    return null;
+  }
+}
 
 // In-memory active scan sessions store with stream references for interactive input
 const activeScans = new Map();
@@ -936,7 +962,7 @@ export function parseLocalStrixFolder(folderPath) {
   const lowCount = parsedVulns.filter(v => v.severity === 'LOW' || v.severity === 'INFO').length;
   const maxCvss = parsedVulns.length > 0 ? (parsedVulns[0]?.cvss || 5.5) : 0.0;
 
-  return {
+  const resultObj = {
     outputFolderPath: resolvedPath,
     folderName: path.basename(resolvedPath),
     targetUrl: actualTargetUrl,
@@ -987,6 +1013,15 @@ export function parseLocalStrixFolder(folderPath) {
       remoteRunDir: resolvedPath
     }
   };
+
+  // Auto-persist immediately to Supabase vapt_scans table
+  if (parsedVulns.length > 0 || raw.report_md || runData.run_id) {
+    try {
+      autoPersistScanToSupabase(resultObj).catch(() => {});
+    } catch (_) {}
+  }
+
+  return resultObj;
 }
 
 /**
@@ -1230,7 +1265,7 @@ export function resolveStrixOutputFolderFromExtract(extractDir, minStartTimeMs =
   let parsedTokens = 0;
   let parsedCost = 0;
 
-  const compRegex = /(?:Penetration\s+test\s+completed|Scan\s+completed|Scan\s+finished|All\s+tasks\s+completed|VAPT\s+assessment\s+completed|Saved\s+final\s+penetration\s+test\s+report\s+to|Essential\s+scan\s+data\s+saved\s+to|Strix\s+process\s+completed|Execution\s+finished)/i;
+  const compRegex = /(?:Penetration\s+test\s+completed|Scan\s+completed|Scan\s+finished|All\s+tasks\s+completed|VAPT\s+assessment\s+completed|Saved\s+final\s+penetration\s+test\s+report\s+to|Essential\s+scan\s+data\s+saved\s+to|Strix\s+process\s+completed|Execution\s+finished|Vulnerabilities\s+CRITICAL)/i;
   const initRegex = /(?:Penetration\s+test\s+initiated|Starting\s+penetration\s+test|Launching\s+autonomous\s+scan|Autonomous\s+penetration\s+test\s+started)/i;
 
   const parseMultiplier = (str) => {
@@ -1280,25 +1315,30 @@ export function resolveStrixOutputFolderFromExtract(extractDir, minStartTimeMs =
       if (outTokenMatch) parsedTokens += parseMultiplier(outTokenMatch[1]);
       if (costMatch && !parsedCost) parsedCost = parseFloat(costMatch[1]) || 0;
 
-      // Parse Target domain from Strix header/summary box
-      const targetMatch = content.match(/(?:Target|Target\s+Domain)\s+([a-zA-Z0-9\.\-]+)/i);
+      // Parse Target domain from Strix header/summary box (handles single domain and multi-target boxes)
+      const targetMatch = content.match(/(?:Target|Target\s+Domain)\s+(?:(?:\d+)\s+targets\s*)?([a-zA-Z0-9\.\-]+)/i);
       if (targetMatch && targetMatch[1] && targetMatch[1].includes('.') && !targetMatch[1].startsWith('.')) {
         detectedTargetDomain = targetMatch[1].trim();
+      } else {
+        const targetIdx = filteredLines.findIndex(l => /Target\s+/i.test(l));
+        if (targetIdx !== -1) {
+          for (let j = targetIdx; j < Math.min(filteredLines.length, targetIdx + 8); j++) {
+            const domM = filteredLines[j].match(/([a-zA-Z0-9][a-zA-Z0-9\-]*\.[a-zA-Z]{2,}(?:\.[a-zA-Z]{2,})?)/);
+            if (domM) {
+              detectedTargetDomain = domM[1].trim();
+              break;
+            }
+          }
+        }
       }
 
-      // Parse Output path from completed section or anywhere in log
+      // Parse Output path from completed section or anywhere in log using robust dynamic extractor
       const compText = lastCompLineIdx !== -1 ? filteredLines.slice(lastCompLineIdx).join('\n') : content;
-
-      // Extract full output path (e.g. /root/emcochem.com-scan/strix_runs/emcochem-com_2c93 or strix_runs/...)
-      const outFullMatch = compText.match(/Output\s+([^\r\n│]+)/i) ||
-                           content.match(/Output\s+([^\r\n│]+)/i);
-      if (outFullMatch && outFullMatch[1]) {
-        const cleanOut = outFullMatch[1].trim().replace(/[│'"\(\)]/g, '').trim();
-        if (cleanOut.toLowerCase() !== 'tokens' && !cleanOut.toLowerCase().startsWith('tokens')) {
-          latestRunFullPath = cleanOut;
-          const segments = cleanOut.split('/').filter(Boolean);
-          latestRunOutputFolder = segments[segments.length - 1] || null;
-        }
+      const discoveredOut = extractOutputDirFromText(compText) || extractOutputDirFromText(content);
+      if (discoveredOut) {
+        latestRunFullPath = discoveredOut;
+        const segments = discoveredOut.split('/').filter(Boolean);
+        latestRunOutputFolder = segments[segments.length - 1] || null;
       }
 
       // Also check "View strix view <run_id>" or "strix view <run_id>"
@@ -1321,13 +1361,10 @@ export function resolveStrixOutputFolderFromExtract(extractDir, minStartTimeMs =
       // Check initiated block for Output path as well (for live tracking while running)
       if (lastInitLineIdx !== -1) {
         const initText = filteredLines.slice(lastInitLineIdx, lastInitLineIdx + 15).join('\n');
-        const initOutMatch = initText.match(/Output\s+([^\r\n│]+)/i);
-        if (initOutMatch && initOutMatch[1]) {
-          const cleanInit = initOutMatch[1].trim().replace(/[│'"\(\)]/g, '').trim();
-          if (cleanInit.toLowerCase() !== 'tokens') {
-            const initSegs = cleanInit.split('/').filter(Boolean);
-            initiatedRunOutputFolder = initSegs[initSegs.length - 1] || null;
-          }
+        const initOut = extractOutputDirFromText(initText);
+        if (initOut) {
+          const initSegs = initOut.split('/').filter(Boolean);
+          initiatedRunOutputFolder = initSegs[initSegs.length - 1] || null;
         }
       }
 
@@ -1763,6 +1800,21 @@ export async function fetchN8nScanResultsProxy(payload) {
         if (fs.existsSync(cachePath)) cache = JSON.parse(fs.readFileSync(cachePath, 'utf8'));
         cache[finalFolderName] = { timestamp: Date.now(), path: bestExtractDir };
         fs.writeFileSync(cachePath, JSON.stringify(cache, null, 2));
+    } catch (_) {}
+
+    // Auto-persist immediately to Supabase vapt_scans table
+    try {
+      const supaScanRecord = {
+        id: finalFolderName,
+        folderName: finalFolderName,
+        outputFolderPath: resolvedResult.outputFullPath || bestExtractDir,
+        companyName: parsed.companyName,
+        targetUrl: parsed.targetUrl,
+        ...parsed
+      };
+      autoPersistScanToSupabase(supaScanRecord).catch(err => {
+        console.warn('[SUPABASE N8N AUTO-SAVE NOTE]', err.message);
+      });
     } catch (_) {}
 
     return {
@@ -2696,6 +2748,13 @@ print("===END_JSON===")
               }
             };
 
+            // Auto-persist immediately to Supabase vapt_scans table
+            try {
+              autoPersistScanToSupabase(res).catch(err => {
+                console.warn('[SUPABASE SSH AUTO-SAVE NOTE]', err.message);
+              });
+            } catch (_) {}
+
             resolve(res);
           } catch (e) {
             reject(new Error(`Error parsing remote findings JSON: ${e.message}`));
@@ -3023,6 +3082,7 @@ export function extractLiveTelemetryFromLine(line) {
   let tokens = null;
   let requests = null;
   let cost = null;
+  let vulnCounts = null;
 
   // 1. Matches "Cost $0.3670", "Cost: $0.0122", "Cost: 0.0122", "[Cost: $0.0122]", "│ Cost: $0.0122", "$0.0122"
   const costMatch = line.match(/(?:Cost|cost|Total cost|LLM cost)[\s:|=]+\$?([0-9\.]+)/i);
@@ -3034,10 +3094,12 @@ export function extractLiveTelemetryFromLine(line) {
   // 2. Matches STRIX box format "Input Tokens 16.4M  ·  Cached Tokens 15.4M  ·  Output Tokens 139.0K"
   const inTokMatch = line.match(/Input Tokens[\s:|=]+([0-9\.,]+)\s*([kKmMbB])?/i);
   const outTokMatch = line.match(/Output Tokens[\s:|=]+([0-9\.,]+)\s*([kKmMbB])?/i);
+  const cachedTokMatch = line.match(/Cached Tokens[\s:|=]+([0-9\.,]+)\s*([kKmMbB])?/i);
   if (inTokMatch || outTokMatch) {
     const inTokens = inTokMatch ? parseTokenUnits(inTokMatch[1], inTokMatch[2]) : 0;
     const outTokens = outTokMatch ? parseTokenUnits(outTokMatch[1], outTokMatch[2]) : 0;
-    tokens = inTokens + outTokens;
+    const cachedTokens = cachedTokMatch ? parseTokenUnits(cachedTokMatch[1], cachedTokMatch[2]) : 0;
+    tokens = inTokens + outTokens + cachedTokens;
   }
 
   // 3. Matches "Tokens: 399.9k", "Tokens: 1.2M", "Tokens: 399,920", "[Tokens: 399.9k]", "│ Tokens: 399.9k"
@@ -3072,64 +3134,72 @@ export function extractLiveTelemetryFromLine(line) {
     }
   }
 
-  return { tokens, requests, cost };
+  // 7. Matches "Vulnerabilities  CRITICAL: 5 | HIGH: 1 | MEDIUM: 6 (Total: 12)"
+  const vulnMatch = line.match(/Vulnerabilities\s+CRITICAL:\s*(\d+)\s*\|\s*HIGH:\s*(\d+)\s*\|\s*MEDIUM:\s*(\d+)(?:\s*\|\s*LOW:\s*(\d+))?(?:\s*\(Total:\s*(\d+)\))?/i);
+  if (vulnMatch) {
+    const crit = parseInt(vulnMatch[1], 10) || 0;
+    const high = parseInt(vulnMatch[2], 10) || 0;
+    const med = parseInt(vulnMatch[3], 10) || 0;
+    const low = vulnMatch[4] ? (parseInt(vulnMatch[4], 10) || 0) : 0;
+    const total = vulnMatch[5] ? (parseInt(vulnMatch[5], 10) || 0) : (crit + high + med + low);
+    vulnCounts = { critical: crit, high, medium: med, low, total };
+  }
+
+  return { tokens, requests, cost, vulnCounts };
 }
 
 export function extractOutputDirFromText(text) {
   if (!text || typeof text !== 'string') return null;
+  const cleanText = stripAnsi(text).trim();
+  if (!cleanText) return null;
 
-  // 1. Matches dynamic STRIX box lines like "│  /root/<target>-scan/strix_runs/<run_id>  │"
-  const mBox = text.match(/(?:\/|│\s*)(\/(?:root|home\/[^\/]+|tmp)\/[^\s\r\n│\t,)]*strix_runs\/[^\s\r\n│\t,)\/]+)/i);
-  if (mBox) {
-    let p = cleanScanPath(mBox[1]);
+  // 1. Matches STRIX completed or initiated output lines:
+  // e.g. "│  Output  /root/sennovate.ai-scan/strix_runs/sennovate-ai_6e31  │"
+  // e.g. "│  Output  strix_runs/sennovate-ai_6e31  │"
+  // e.g. "Output  /root/<domainname>-scan/strix_runs/<runId>"
+  const mOutput = cleanText.match(/(?:Output|output|run_dir)\s*[:|=]?\s*['"]?([^\s\r\n│\t,)"']*(?:strix_runs\/|\/root\/)[^\s\r\n│\t,)"']+)['"]?/i);
+  if (mOutput) {
+    let p = cleanScanPath(mOutput[1]);
     if (p) return p;
   }
 
-  // 2. Matches "strix view <runId>"
-  const mView = text.match(/strix view\s+([a-zA-Z0-9_\-]+)/i);
-  if (mView) {
-    return `/root/strix_runs/${mView[1]}`;
+  // 2. Matches box lines with "│ Output <path>"
+  const mBoxOut = cleanText.match(/│\s*Output\s+([^\s\r\n│]+)/i);
+  if (mBoxOut) {
+    let p = cleanScanPath(mBoxOut[1]);
+    if (p) return p;
   }
 
-  // 3. Matches "[OUTPUT FOLDER PATH] /root/..."
-  const m1 = text.match(/\[OUTPUT FOLDER PATH\]\s*([^\s\r\n\t,)]+)/i);
+  // 3. Matches full absolute /root/... or /home/... strix_runs paths anywhere in line
+  const mFullRuns = cleanText.match(/(\/(?:root|home\/[^\/]+|tmp)\/[^\s\r\n│\t,)]*strix_runs\/[^\s\r\n│\t,)\/]+)/i);
+  if (mFullRuns) {
+    let p = cleanScanPath(mFullRuns[1]);
+    if (p) return p;
+  }
+
+  // 4. Matches relative "strix_runs/<runId>"
+  const mRelRuns = cleanText.match(/strix_runs\/([a-zA-Z0-9_\-\.]+)/i);
+  if (mRelRuns) {
+    return `/root/strix_runs/${mRelRuns[1].trim()}`;
+  }
+
+  // 5. Matches "strix view <runId>" or "View strix view <runId>"
+  const mView = cleanText.match(/(?:View\s+)?strix view\s+([a-zA-Z0-9_\-]+)/i);
+  if (mView) {
+    return `/root/strix_runs/${mView[1].trim()}`;
+  }
+
+  // 6. Matches "[OUTPUT FOLDER PATH] /root/..."
+  const m1 = cleanText.match(/\[OUTPUT FOLDER PATH\]\s*([^\s\r\n│\t,)]+)/i);
   if (m1) {
     let p = cleanScanPath(m1[1]);
     if (p) return p;
   }
 
-  // 4. Matches "run_dir=/root/..." or "run_dir='/root/...'"
-  const m2 = text.match(/run_dir=['"]?([^\s\r\n\t,'")]+)['"]?/i);
-  if (m2) {
-    let p = cleanScanPath(m2[1]);
-    if (p) return p;
-  }
-
-  // 5. Matches "Essential scan data saved to: /root/..."
-  const m3 = text.match(/Essential scan data saved to:?\s*([^\s\r\n\t,)]+)/i);
-  if (m3) {
-    let p = cleanScanPath(m3[1]);
-    if (p) return p;
-  }
-
-  // 6. Matches "Saved final penetration test report to: /root/..."
-  const m4 = text.match(/Saved final penetration test report to:?\s*([^\s\r\n\t,)]+)/i);
-  if (m4) {
-    let p = cleanScanPath(m4[1]);
-    if (p) return p;
-  }
-
-  // 7. Matches "Updated vulnerability index: /root/..." or "Wrote SARIF ... /root/..."
-  const m5 = text.match(/(?:Updated vulnerability index|Wrote SARIF[^\n:]*):?\s*([^\s\r\n\t,)]+)/i);
-  if (m5) {
-    let p = cleanScanPath(m5[1]);
-    if (p) return p;
-  }
-
-  // 8. Any direct match of a path with /strix_runs/<runId>
-  const m6 = text.match(/(\/(?:root|home\/[^\/]+|tmp)\/[^\s\r\n\t,)]*strix_runs\/[^\s\r\n\t,)\/]+)/i);
-  if (m6) {
-    let p = cleanScanPath(m6[1]);
+  // 7. Matches "Essential scan data saved to: /root/..." or "Saved final penetration test report to: /root/..."
+  const mSaved = cleanText.match(/(?:Essential scan data saved to|Saved final penetration test report to|Updated vulnerability index|Wrote SARIF[^\n:]*):?\s*([^\s\r\n│\t,)]+)/i);
+  if (mSaved) {
+    let p = cleanScanPath(mSaved[1]);
     if (p) return p;
   }
 
@@ -3138,9 +3208,12 @@ export function extractOutputDirFromText(text) {
 
 function cleanScanPath(p) {
   if (!p) return null;
-  let s = p.trim().replace(/^['"`]|['"`]$/g, '').replace(/[.,:;)]+$/, '');
+  let s = p.trim().replace(/^[│'"`\s]+|[│'"`\s]+$/g, '').replace(/[.,:;)]+$/, '');
   if (s.endsWith('.md') || s.endsWith('.csv') || s.endsWith('.sarif') || s.endsWith('.json') || s.endsWith('.log')) {
     s = s.substring(0, s.lastIndexOf('/'));
+  }
+  if (s.startsWith('strix_runs/')) {
+    return `/root/${s}`;
   }
   return (s && s.startsWith('/') && s.length > 3) ? s : null;
 }
@@ -3338,7 +3411,7 @@ export function startRemoteStrixScan(rawParams = {}) {
               scanSession.stage = 'SARIF Report Generation';
             }
 
-            if (strixStarted && ((trimmed.includes('root@') && trimmed.endsWith('#')) || trimmed.includes('Finished in') || trimmed.includes('Completed scan'))) {
+            if (strixStarted && (trimmed.includes('Penetration test completed') || (trimmed.includes('root@') && trimmed.endsWith('#')) || trimmed.includes('Finished in') || trimmed.includes('Completed scan'))) {
               if (scanSession.outputDir) {
                 appendLog(`[OUTPUT FOLDER PATH] ${scanSession.outputDir}`);
               }
@@ -3346,6 +3419,15 @@ export function startRemoteStrixScan(rawParams = {}) {
               if (scanSession.status !== 'cancelled') {
                 scanSession.status = 'completed';
                 scanSession.stage = 'Completed';
+
+                if (scanSession.outputDir && !scanSession.supabaseSaved) {
+                  scanSession.supabaseSaved = true;
+                  fetchRemoteStrixResults(params, targetUrl, scanSession.outputDir)
+                    .then(res => {
+                      appendLog(`[SUPABASE AUTO-SAVE] Successfully persisted scan ${res.id} to Supabase vapt_scans!`);
+                    })
+                    .catch(e => console.warn('Supabase SSH auto-save note:', e.message));
+                }
               }
             }
           }
@@ -3360,12 +3442,14 @@ export function startRemoteStrixScan(rawParams = {}) {
           const effectiveKey = openrouterApiKey || llmApiKey || '';
 
           let brandSlug = 'target';
+          let domainName = 'target.com';
           try {
             const host = targetUrl.replace(/^https?:\/\//, '').split('/')[0].replace('www.', '');
+            domainName = host;
             brandSlug = host.split('.')[0] || 'target';
           } catch (e) {}
 
-          const targetScanDir = `/root/${brandSlug}-scan`;
+          const targetScanDir = `/root/${domainName}-scan`;
 
           appendLog(`[STEP 3] Configuring LLM: STRIX_LLM="${effectiveLlm}"`);
           if (effectiveKey) {
@@ -3393,8 +3477,8 @@ export function startRemoteStrixScan(rawParams = {}) {
 
           envCmds.push(`mkdir -p "${targetScanDir}"`);
           envCmds.push(`cd "${targetScanDir}"`);
-          envCmds.push(`strix -t "${targetUrl}" -n`);
-          envCmds.push(`LATEST_RUN_DIR=$(ls -td "${targetScanDir}/strix_runs/"* 2>/dev/null | head -n 1 || ls -td /root/strix_runs/* 2>/dev/null | head -n 1)`);
+          envCmds.push(`strix -t "${targetUrl}" -n | tee -a "${targetScanDir}/scan.log"`);
+          envCmds.push(`LATEST_RUN_DIR=$(ls -td "${targetScanDir}/strix_runs/"* 2>/dev/null | head -n 1 || ls -td "/root/${brandSlug}-scan/strix_runs/"* 2>/dev/null | head -n 1 || ls -td /root/strix_runs/* 2>/dev/null | head -n 1)`);
           envCmds.push(`echo "[OUTPUT FOLDER PATH] $LATEST_RUN_DIR"`);
 
           stream.write(`${envCmds.join('; ')}\n`);
@@ -3405,6 +3489,15 @@ export function startRemoteStrixScan(rawParams = {}) {
             appendLog(`[COMPLETE] Strix process session closed on server`);
             scanSession.status = 'completed';
             scanSession.stage = 'Completed';
+
+            if (scanSession.outputDir && !scanSession.supabaseSaved) {
+              scanSession.supabaseSaved = true;
+              fetchRemoteStrixResults(params, targetUrl, scanSession.outputDir)
+                .then(res => {
+                  appendLog(`[SUPABASE AUTO-SAVE] Successfully persisted scan ${res.id} to Supabase vapt_scans!`);
+                })
+                .catch(e => console.warn('Supabase SSH auto-save on close note:', e.message));
+            }
           }
           scanSession.endTime = new Date().toISOString();
           conn.end();
@@ -3571,5 +3664,189 @@ export function getScanSession(scanId) {
       durationSec: durationSec,
       currentAgent: 'Autonomous VAPT Agent'
     }
+  };
+}
+
+/**
+ * Check whether a scan has completed by reading /root/<domainname>-scan/scan.log
+ * Once completed, fetches all 7 findings files and immediately saves to Supabase vapt_scans
+ */
+export async function checkAndSyncScanCompletion(params = {}) {
+  const { domain, targetUrl, runDir, folderPath } = params;
+  let cleanDomain = (domain || targetUrl || '').trim();
+  cleanDomain = cleanDomain.replace(/^https?:\/\//i, '').replace(/^www\./i, '').split('/')[0].split('?')[0].split('#')[0].split(':')[0].trim().toLowerCase();
+
+  // 1. Check if an explicit local folder or downloaded scan already exists
+  const explicitPath = folderPath || runDir;
+  if (explicitPath) {
+    try {
+      const localResult = parseLocalStrixFolder(explicitPath);
+      if (localResult && (localResult.findingsCount > 0 || localResult.reportMarkdown)) {
+        await autoPersistScanToSupabase(localResult);
+        return {
+          success: true,
+          completed: true,
+          saved: true,
+          outputFolderPath: localResult.outputFolderPath,
+          scanData: localResult
+        };
+      }
+    } catch (_) {}
+  }
+
+  // 2. Check SSH Remote Server if configured
+  if (globalStrixConfig?.host) {
+    try {
+      const { effConfig, connOptions } = buildSshConnectionOptions(globalStrixConfig);
+      const checkResult = await new Promise((resolve, reject) => {
+        const conn = new Client();
+        const timeout = setTimeout(() => {
+          try { conn.end(); } catch (_) {}
+          reject(new Error('SSH check timed out'));
+        }, 20000);
+
+        conn.on('ready', () => {
+          clearTimeout(timeout);
+          const pyScript = `
+import os, glob, json, sys, re
+
+domain = "${cleanDomain}".strip()
+possible_dirs = []
+if domain:
+    possible_dirs.extend([
+        f"/root/{domain}-scan",
+        f"/root/{domain.split('.')[0]}-scan",
+        f"/home/ubuntu/{domain}-scan",
+        f"/home/ubuntu/{domain.split('.')[0]}-scan"
+    ])
+possible_dirs.extend(glob.glob("/root/*-scan"))
+possible_dirs.extend(glob.glob("/home/ubuntu/*-scan"))
+possible_dirs.extend(["/root", "/home/ubuntu", "/tmp"])
+
+log_files = []
+for d in possible_dirs:
+    for lf in ["scan.log", "strix.log"]:
+        lp = os.path.join(d, lf)
+        if os.path.exists(lp):
+            log_files.append((lp, os.path.getmtime(lp)))
+
+log_files.sort(key=lambda x: x[1], reverse=True)
+
+if not log_files:
+    print(json.dumps({"found": False, "message": "No scan.log found"}))
+    sys.exit(0)
+
+target_log = log_files[0][0]
+lines = []
+try:
+    with open(target_log, "r", errors="ignore") as f:
+        lines = f.readlines()
+except Exception as e:
+    pass
+
+tail = "".join(lines[-100:])
+full_text = "".join(lines)
+is_completed = bool(re.search(r'(?:penetration\\s+test\\s+completed|scan\\s+completed|vulnerabilities\\s+critical)', full_text, re.I))
+
+output_path = None
+m_out = re.findall(r'Output\\s+([^\\r\\n│]+)', full_text, re.IGNORECASE)
+if m_out:
+    for o in reversed(m_out):
+        clean_o = o.strip().replace("│", "").strip()
+        if "strix_runs" in clean_o:
+            output_path = clean_o
+            break
+
+if not output_path:
+    m_view = re.findall(r'strix\\s+view\\s+([a-zA-Z0-9_\\-]+)', full_text, re.IGNORECASE)
+    if m_view:
+        output_path = f"/root/strix_runs/{m_view[-1].strip()}"
+
+print(json.dumps({
+    "found": True,
+    "log_path": target_log,
+    "completed": is_completed,
+    "output_path": output_path,
+    "tail": tail
+}))
+`;
+          const b64 = Buffer.from(pyScript).toString('base64');
+          conn.exec(`python3 -c "$(echo '${b64}' | base64 -d)"`, (err, stream) => {
+            if (err) { conn.end(); return reject(err); }
+            let out = '';
+            stream.on('data', d => { out += d.toString(); });
+            stream.on('close', () => {
+              conn.end();
+              try {
+                const parsed = JSON.parse(out.trim());
+                resolve(parsed);
+              } catch (e) {
+                reject(e);
+              }
+            });
+          });
+        });
+
+        conn.on('error', err => {
+          clearTimeout(timeout);
+          reject(err);
+        });
+
+        conn.connect(connOptions);
+      });
+
+      if (checkResult && checkResult.completed && checkResult.output_path) {
+        // Fetch the 7 files from the completed run directory and persist to Supabase
+        const scanData = await fetchRemoteStrixResults(globalStrixConfig, targetUrl || cleanDomain, checkResult.output_path);
+        await autoPersistScanToSupabase(scanData);
+        return {
+          success: true,
+          completed: true,
+          saved: true,
+          outputFolderPath: checkResult.output_path,
+          scanData
+        };
+      } else if (checkResult && checkResult.found) {
+        return {
+          success: true,
+          completed: false,
+          saved: false,
+          logPath: checkResult.log_path,
+          liveLogTail: checkResult.tail,
+          message: 'Scan is actively running on server...'
+        };
+      }
+    } catch (sshErr) {
+      console.warn('SSH check error:', sshErr.message);
+    }
+  }
+
+  // 3. Check n8n webhook mode if configured
+  if (globalStrixConfig?.n8nFetchWebhookUrl) {
+    try {
+      const n8nResult = await fetchN8nScanResultsProxy({
+        domain: cleanDomain,
+        targetUrl: targetUrl || cleanDomain,
+        requireFresh: true
+      });
+      if (n8nResult && n8nResult.scanFinished) {
+        await autoPersistScanToSupabase(n8nResult);
+        return {
+          success: true,
+          completed: true,
+          saved: true,
+          outputFolderPath: n8nResult.outputFolderPath,
+          scanData: n8nResult
+        };
+      }
+    } catch (n8nErr) {
+      console.warn('n8n check error:', n8nErr.message);
+    }
+  }
+
+  return {
+    success: false,
+    completed: false,
+    message: 'Scan has not completed or log could not be located.'
   };
 }

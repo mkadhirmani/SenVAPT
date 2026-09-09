@@ -22,7 +22,8 @@ import {
   fetchServerFileProxy,
   getGlobalServerConfig,
   getSanitizedServerConfig,
-  saveGlobalServerConfig
+  saveGlobalServerConfig,
+  checkAndSyncScanCompletion
 } from './src/server/strixBackend.js';
 import { 
   supabase, 
@@ -1108,6 +1109,20 @@ const server = http.createServer(async (req, res) => {
       try {
         const payload = await parseJsonBody(req);
         const result = await fetchN8nScanResultsProxy(payload);
+        res.setHeader('Content-Type', 'application/json');
+        res.statusCode = 200;
+        return res.end(JSON.stringify(result));
+      } catch (err) {
+        res.setHeader('Content-Type', 'application/json');
+        res.statusCode = 500;
+        return res.end(JSON.stringify({ success: false, error: err.message }));
+      }
+    }
+
+    if (pathname === '/api/strix/check-scan-log') {
+      try {
+        const payload = await parseJsonBody(req);
+        const result = await checkAndSyncScanCompletion(payload);
         res.setHeader('Content-Type', 'application/json');
         res.statusCode = 200;
         return res.end(JSON.stringify(result));

@@ -39,6 +39,7 @@ import {
   sendStrixInput 
 } from '../utils/strixApi';
 import { checkUserPermission } from '../utils/auth';
+import { saveScanToSupabase } from '../utils/supabaseClient';
 
 export default function ScanHud({ 
   isScanning, 
@@ -91,6 +92,7 @@ export default function ScanHud({
   const userScrolledUpRef = useRef(false);
   const pollIntervalRef = useRef(null);
   const elapsedTimerRef = useRef(null);
+  const autoSavedScansRef = useRef(new Set());
 
   const updateScannerState = (updates) => {
     if (setScannerState) {
@@ -580,6 +582,13 @@ export default function ScanHud({
           onSaveNewScan(newScan, true);
         }
 
+        if (!autoSavedScansRef.current.has(actualScanId)) {
+          autoSavedScansRef.current.add(actualScanId);
+          saveScanToSupabase(newScan)
+            .then(() => appendLog(`[SUPABASE AUTO-SAVE] Scan results immediately persisted to Supabase vapt_scans!`))
+            .catch(e => console.warn('Supabase auto-save error:', e));
+        }
+
         setFetchMessage({ type: 'success', text: `Successfully loaded all 7 files & ingested ${vulns.length} findings from ${resolvedFolder}!` });
         appendLog(`[SUCCESS] Ingested all 7 files with ${vulns.length} findings and aggregated costs from ${resolvedFolder}`);
         refreshLocalFolders();
@@ -742,6 +751,13 @@ export default function ScanHud({
           onSaveNewScan(newScan, true);
         }
 
+        if (!autoSavedScansRef.current.has(actualScanId)) {
+          autoSavedScansRef.current.add(actualScanId);
+          saveScanToSupabase(newScan)
+            .then(() => appendLog(`[SUPABASE AUTO-SAVE] Scan results immediately persisted to Supabase vapt_scans!`))
+            .catch(e => console.warn('Supabase auto-save error:', e));
+        }
+
         setIsScanning(false);
         setScanFinished(true);
         setFetchMessage({ 
@@ -864,6 +880,13 @@ export default function ScanHud({
 
         if (onSaveNewScan) {
           onSaveNewScan(newScan, true);
+        }
+
+        if (!autoSavedScansRef.current.has(actualScanId)) {
+          autoSavedScansRef.current.add(actualScanId);
+          saveScanToSupabase(newScan)
+            .then(() => appendLog(`[SUPABASE AUTO-SAVE] Scan results immediately persisted to Supabase vapt_scans!`))
+            .catch(e => console.warn('Supabase auto-save error:', e));
         }
 
         setIsScanning(false);
@@ -1501,6 +1524,13 @@ export default function ScanHud({
               onSaveNewScan(newScan, true);
             }
 
+            if (!autoSavedScansRef.current.has(effectiveFolderName)) {
+              autoSavedScansRef.current.add(effectiveFolderName);
+              saveScanToSupabase(newScan)
+                .then(() => appendLog(`[SUPABASE AUTO-SAVE] Scan results immediately persisted to Supabase vapt_scans!`))
+                .catch(e => console.warn('Supabase auto-save error:', e));
+            }
+
             setIsScanning(false);
             setScanFinished(true);
             refreshLocalFolders();
@@ -1849,6 +1879,13 @@ export default function ScanHud({
             // Save new scan to history and set as activeScan immediately, then navigate to dashboard overview!
             if (onSaveNewScan) {
               onSaveNewScan(newScan, true);
+            }
+
+            if (!autoSavedScansRef.current.has(actualScanId)) {
+              autoSavedScansRef.current.add(actualScanId);
+              saveScanToSupabase(newScan)
+                .then(() => appendLog(`[SUPABASE AUTO-SAVE] Scan results immediately persisted to Supabase vapt_scans!`))
+                .catch(e => console.warn('Supabase auto-save error:', e));
             }
           }
         } catch (pollErr) {

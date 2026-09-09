@@ -213,6 +213,29 @@ export function formatScanForSupabase(scan) {
 }
 
 /**
+ * Save a single structured scan record to Supabase vapt_scans table
+ */
+export async function saveScanToSupabase(scan) {
+  if (!scan) return null;
+  try {
+    const formatted = formatScanForSupabase(scan);
+    if (!formatted) return null;
+
+    const { data, error } = await supabase
+      .from('vapt_scans')
+      .upsert([formatted], { onConflict: 'id' });
+
+    if (error) {
+      console.warn('[Supabase Scan Save Error]', error.message);
+    }
+    return data;
+  } catch (err) {
+    console.warn('[Supabase Scan Save Note]', err.message);
+    return null;
+  }
+}
+
+/**
  * Format a database record from Supabase back to dashboard scan object
  */
 export function formatScanFromSupabase(row) {
