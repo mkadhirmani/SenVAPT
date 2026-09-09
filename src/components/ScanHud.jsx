@@ -1371,6 +1371,16 @@ export default function ScanHud({
         if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
         let pollAttempts = 0;
         let baselineRunId = null;
+        if (localFolders && Array.isArray(localFolders)) {
+          const cleanSlug = cleanDomain.toLowerCase().replace(/[^a-z0-9]/g, '');
+          const existing = localFolders.find(f => {
+            const fn = (typeof f === 'string' ? f : (f.name || f.folderName || '')).toLowerCase().replace(/[^a-z0-9]/g, '');
+            return fn.includes(cleanSlug) && cleanSlug.length > 3;
+          });
+          if (existing) {
+            baselineRunId = typeof existing === 'string' ? existing : (existing.name || existing.folderName);
+          }
+        }
 
         pollIntervalRef.current = setInterval(async () => {
           pollAttempts++;
@@ -1388,7 +1398,7 @@ export default function ScanHud({
             // Capture the baseline run ID (from previous scan) on the first poll
             if (results?.baselineRunId && !baselineRunId) {
               baselineRunId = results.baselineRunId;
-              appendLog(`[SERVER MONITOR] Connected to Strix agent. Live monitoring /root/${cleanDomain}-scan/scan.log...`);
+              appendLog(`[SERVER MONITOR] Connected to Strix agent. Baseline scan ID: ${baselineRunId}`);
             }
 
             // Stream real-time live logs from the remote server's scan.log
@@ -1402,23 +1412,31 @@ export default function ScanHud({
               });
             }
 
-            // Check if scan log explicitly reached completion
-            const checkLogCompletion = (logList) => {
-              if (!logList || !logList.length) return false;
-              const completionRegex = /(penetration test completed|scan completed|scan finished|all tasks completed|vapt assessment completed|strix process session closed|strix process completed|execution finished|summary written to|findings exported to|vapt completed|\[complete\]|output folder path|report generated successfully|final summary|strix view)/i;
-              const recentLogs = logList.slice(-60);
-              return recentLogs.some(l => completionRegex.test(l));
-            };
+            // Stream real-time telemetry if available
+            if (results?.tokens) {
+              setScanStats(prev => ({
+                ...prev,
+                tokens: results.tokens,
+                totalTokens: results.tokens,
+                cost: results.cost || prev.cost
+              }));
+            }
 
-            const logIndicatesCompletion = checkLogCompletion(results?.liveLogLines) || (results?.strixLog && /(penetration test completed|scan completed|strix view)/i.test(results.strixLog));
+            // Strict Freshness and Completion Check
+            // Polling MUST continue while in progress, scanning, or if fresh scan has not finished
+            const isFreshFinished = results && 
+                                    results.scanFinished === true && 
+                                    results.freshFound === true && 
+                                    !results.inProgress && 
+                                    !results.isScanning &&
+                                    (!baselineRunId || results.folderName !== baselineRunId);
 
-            // If the server scan is still running and log has NOT indicated completion, continue polling
-            const isStillRunning = results && (results.inProgress === true || results.isScanning === true) && !results.scanFinished && !logIndicatesCompletion;
-            if (isStillRunning) {
+            if (!isFreshFinished) {
               if (pollAttempts % 3 === 0) {
-                const elapsedMin = Math.floor(pollAttempts * 7 / 60);
-                const elapsedSec = (pollAttempts * 7) % 60;
-                appendLog(`[LIVE AUDIT] Strix AI testing ${cleanDomain}... (Elapsed: ${elapsedMin > 0 ? `${elapsedMin}m ` : ''}${elapsedSec}s)`);
+                const elapsedMin = Math.floor((Date.now() - startTime) / 60000);
+                const elapsedSec = Math.floor(((Date.now() - startTime) % 60000) / 1000);
+                const statusMsg = results?.message || `Strix autonomous audit actively testing ${cleanDomain}...`;
+                appendLog(`[LIVE AUDIT] ${statusMsg} (Elapsed: ${elapsedMin > 0 ? `${elapsedMin}m ` : ''}${elapsedSec}s)`);
               }
               return;
             }
@@ -1431,8 +1449,8 @@ export default function ScanHud({
             appendLog(`[INGEST] Ingested ${results.vulnerabilities.length} verified security vulnerabilities from current audit!`);
             appendLog(`[REPORT READY] Fresh Penetration Test Report generated.`);
 
-            // Auto-download scan ZIP archive to User laptop Downloads folder
-            if (results?.zipBase64) {
+            // Auto-download scan ZIP archive to User laptop Downloads folder ONLY when fresh finished
+            if (results?.zipBase64 && isFreshFinished) {
               try {
                 const byteCharacters = atob(results.zipBase64);
                 const byteNumbers = new Array(byteCharacters.length);
@@ -1449,7 +1467,7 @@ export default function ScanHud({
                 a.click();
                 document.body.removeChild(a);
                 URL.revokeObjectURL(blobUrl);
-                appendLog(`[USER DOWNLOADS] Saved ${cleanDomain}-scan ZIP directly to your laptop Downloads.`);
+                appendLog(`[USER DOWNLOADS] Saved fresh ${cleanDomain}-scan ZIP directly to your laptop Downloads.`);
               } catch (dlErr) {
                 console.warn('Auto download zip note:', dlErr);
               }
@@ -1666,14 +1684,7 @@ export default function ScanHud({
             setOutputFolderPath(statusData.outputFolderPath);
           }
 
-          const checkLogCompletion = (logList) => {
-            if (!logList || !logList.length) return false;
-            const completionRegex = /(penetration test completed|scan completed|scan finished|all tasks completed|vapt assessment completed|strix process session closed|strix process completed|execution finished|summary written to|findings exported to|vapt completed|\[complete\]|output folder path|report generated successfully|final summary|strix view)/i;
-            const recentLogs = logList.slice(-60);
-            return recentLogs.some(l => completionRegex.test(l));
-          };
-
-          const isScanDone = statusData.status === 'completed' || statusData.status === 'finished' || checkLogCompletion(statusData.logs);
+          const isScanDone = (statusData.status === 'completed' || statusData.status === 'finished') && !statusData.error;
 
           if (isScanDone) {
             if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
