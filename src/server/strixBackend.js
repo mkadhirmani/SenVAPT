@@ -1725,6 +1725,10 @@ export async function fetchN8nScanResultsProxy(payload) {
 
         return {
           success: true,
+          inProgress: false,
+          isScanning: false,
+          scanFinished: true,
+          freshFound: true,
           zipPath: null,
           zipSize: buffer.length,
           zipSizeFormatted: `${(buffer.length / 1024).toFixed(1)} KB`,
@@ -1832,7 +1836,9 @@ export async function fetchN8nScanResultsProxy(payload) {
     return {
       success: true,
       inProgress: false,
+      isScanning: false,
       scanFinished: true,
+      freshFound: true,
       zipPath: zipPath,
       zipBase64: isZip ? buffer.toString('base64') : undefined,
       zipSize: buffer.length,
@@ -1842,6 +1848,8 @@ export async function fetchN8nScanResultsProxy(payload) {
       outputFolderPath: resolvedResult.outputFullPath || bestExtractDir,
       liveLogLines: resolvedResult.liveLogLines || [],
       strixLog: resolvedResult.strixLog || '',
+      tokens: parsed.tokens || resolvedResult.tokens || 0,
+      cost: parsed.cost || resolvedResult.cost || 0,
       ...parsed
     };
   } catch (err) {
@@ -1893,6 +1901,21 @@ export async function uploadScanZipProxy(payload) {
   const finalFolderName = (resolved.folderName && !resolved.folderName.endsWith('.zip'))
     ? resolved.folderName
     : path.basename(bestDir);
+
+  // Auto-persist uploaded ZIP scan to Supabase vapt_scans table
+  try {
+    const supaScanRecord = {
+      id: finalFolderName,
+      folderName: finalFolderName,
+      outputFolderPath: resultantFolderPath,
+      companyName: parsed.companyName,
+      targetUrl: parsed.targetUrl,
+      ...parsed
+    };
+    autoPersistScanToSupabase(supaScanRecord).catch(err => {
+      console.warn('[SUPABASE UPLOAD ZIP AUTO-SAVE NOTE]', err.message);
+    });
+  } catch (_) {}
 
   return {
     success: true,

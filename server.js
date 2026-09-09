@@ -23,7 +23,8 @@ import {
   getGlobalServerConfig,
   getSanitizedServerConfig,
   saveGlobalServerConfig,
-  checkAndSyncScanCompletion
+  checkAndSyncScanCompletion,
+  autoPersistScanToSupabase
 } from './src/server/strixBackend.js';
 import { 
   supabase, 
@@ -579,6 +580,21 @@ const server = http.createServer(async (req, res) => {
       res.setHeader('Content-Type', 'application/json');
       res.statusCode = 200;
       return res.end(JSON.stringify({ success: true, message: 'Supabase configuration connected successfully', url: cleanUrl }));
+    } catch (err) {
+      res.setHeader('Content-Type', 'application/json');
+      res.statusCode = 500;
+      return res.end(JSON.stringify({ success: false, error: err.message }));
+    }
+  }
+
+  // 1.7 Supabase Scan Persistence Proxy (Ensures reliable saving to vapt_scans from all client contexts)
+  if (pathname === '/api/supabase/save-scan' && req.method === 'POST') {
+    try {
+      const payload = await parseJsonBody(req);
+      const result = await autoPersistScanToSupabase(payload);
+      res.setHeader('Content-Type', 'application/json');
+      res.statusCode = 200;
+      return res.end(JSON.stringify({ success: true, result }));
     } catch (err) {
       res.setHeader('Content-Type', 'application/json');
       res.statusCode = 500;

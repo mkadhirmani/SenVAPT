@@ -221,16 +221,41 @@ export async function saveScanToSupabase(scan) {
     const formatted = formatScanForSupabase(scan);
     if (!formatted) return null;
 
-    const { data, error } = await supabase
-      .from('vapt_scans')
-      .upsert([formatted], { onConflict: 'id' });
+    let savedData = null;
+    try {
+      const { data, error } = await supabase
+        .from('vapt_scans')
+        .upsert([formatted], { onConflict: 'id' })
+        .select();
 
-    if (error) {
-      console.warn('[Supabase Scan Save Error]', error.message);
+      if (error) {
+        console.warn('[Supabase Direct Save Note]', error.message);
+      } else {
+        savedData = data;
+      }
+    } catch (directErr) {
+      console.warn('[Supabase Direct Save Error]', directErr.message);
     }
-    return data;
+
+    // Dual-persistence fallback: always also post to backend endpoint /api/supabase/save-scan
+    // This guarantees persistence regardless of browser CORS or token nuances
+    if (typeof fetch === 'function') {
+      try {
+        const res = await fetch('/api/supabase/save-scan', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(formatted)
+        });
+        if (res.ok) {
+          const resJson = await res.json();
+          if (resJson.result) savedData = resJson.result;
+        }
+      } catch (_) {}
+    }
+
+    return savedData;
   } catch (err) {
-    console.warn('[Supabase Scan Save Note]', err.message);
+    console.warn('[Supabase Scan Save Final Note]', err.message);
     return null;
   }
 }

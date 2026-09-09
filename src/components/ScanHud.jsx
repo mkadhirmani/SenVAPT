@@ -1242,6 +1242,13 @@ export default function ScanHud({
         onSaveNewScan(newScan, true);
       }
 
+      if (!autoSavedScansRef.current.has(folderName)) {
+        autoSavedScansRef.current.add(folderName);
+      }
+      saveScanToSupabase(newScan)
+        .then(() => appendLog(`[SUPABASE vapt_scans] Successfully updated uploaded folder "${folderName}" to Supabase vapt_scans table!`))
+        .catch(e => console.warn('Supabase folder auto-save error:', e));
+
       setIsScanning(false);
       setScanFinished(true);
       setFetchMessage({
@@ -1422,16 +1429,13 @@ export default function ScanHud({
               }));
             }
 
-            // Strict Freshness and Completion Check
-            // Polling MUST continue while in progress, scanning, or if fresh scan has not finished
-            const isFreshFinished = results && 
-                                    results.scanFinished === true && 
-                                    results.freshFound === true && 
-                                    !results.inProgress && 
-                                    !results.isScanning &&
-                                    (!baselineRunId || results.folderName !== baselineRunId);
+            // Scan completion check: polling continues only while scan is actively executing on the server
+            const isStillRunning = !results || 
+                                   results.inProgress === true || 
+                                   results.isScanning === true || 
+                                   !results.scanFinished;
 
-            if (!isFreshFinished) {
+            if (isStillRunning) {
               if (pollAttempts % 3 === 0) {
                 const elapsedMin = Math.floor((Date.now() - startTime) / 60000);
                 const elapsedSec = Math.floor(((Date.now() - startTime) % 60000) / 1000);
@@ -1450,7 +1454,7 @@ export default function ScanHud({
             appendLog(`[REPORT READY] Fresh Penetration Test Report generated.`);
 
             // Auto-download scan ZIP archive to User laptop Downloads folder ONLY when fresh finished
-            if (results?.zipBase64 && isFreshFinished) {
+            if (results?.zipBase64) {
               try {
                 const byteCharacters = atob(results.zipBase64);
                 const byteNumbers = new Array(byteCharacters.length);

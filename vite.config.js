@@ -21,7 +21,8 @@ import {
   getGlobalServerConfig,
   getSanitizedServerConfig,
   saveGlobalServerConfig,
-  checkAndSyncScanCompletion
+  checkAndSyncScanCompletion,
+  autoPersistScanToSupabase
 } from './src/server/strixBackend.js';
 import { 
   supabase, 
@@ -542,6 +543,29 @@ function strixBackendPlugin() {
             res.setHeader('Content-Type', 'application/json');
             res.statusCode = 200;
             res.end(JSON.stringify({ success: true, message: 'Supabase connected', url: cleanUrl }));
+          } catch (e) {
+            res.setHeader('Content-Type', 'application/json');
+            res.statusCode = 500;
+            res.end(JSON.stringify({ success: false, error: e.message }));
+          }
+        });
+      });
+
+      // 3.66 Supabase Scan Persistence Proxy Middleware
+      server.middlewares.use('/api/supabase/save-scan', async (req, res) => {
+        if (req.method !== 'POST') {
+          res.statusCode = 405;
+          return res.end(JSON.stringify({ success: false, error: 'Method Not Allowed' }));
+        }
+        let body = '';
+        req.on('data', chunk => { body += chunk; });
+        req.on('end', async () => {
+          try {
+            const payload = JSON.parse(body || '{}');
+            const result = await autoPersistScanToSupabase(payload);
+            res.setHeader('Content-Type', 'application/json');
+            res.statusCode = 200;
+            res.end(JSON.stringify({ success: true, result }));
           } catch (e) {
             res.setHeader('Content-Type', 'application/json');
             res.statusCode = 500;
