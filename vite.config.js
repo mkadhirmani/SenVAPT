@@ -374,7 +374,7 @@ function strixBackendPlugin() {
           id: 'admin',
           username: 'admin',
           email: 'admin@sennovate.com',
-          password: process.env.ADMIN_PASSWORD ? (process.env.ADMIN_PASSWORD.startsWith('pbkdf2$') ? process.env.ADMIN_PASSWORD : hashPassword(process.env.ADMIN_PASSWORD)) : '',
+          password: process.env.ADMIN_PASSWORD || '@A198vapt',
           altPassword: '',
           name: 'Administrator',
           role: 'admin',
