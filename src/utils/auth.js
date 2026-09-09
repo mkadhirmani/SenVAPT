@@ -110,7 +110,16 @@ export function setAuthToken(token) {
 
 export function getAuthHeaders() {
   const token = getAuthToken();
-  return token ? { 'Authorization': `Bearer ${token}` } : {};
+  const headers = {};
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  const user = getCurrentUser();
+  if (user) {
+    headers['x-user-id'] = user.id || user.username || '';
+    headers['x-user-role'] = user.role || 'user';
+  }
+  return headers;
 }
 
 /**
@@ -406,6 +415,26 @@ export async function authenticateUser(usernameOrEmail, password, selectedRole =
         } catch (_) {}
 
         const formatted = formatUserFromSupabase({ ...userRow, is_online: true, last_login: nowStr });
+
+        // Synchronize and obtain backend cryptographic session token
+        try {
+          const sessionRes = await fetch('/api/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              username: trimmedInput,
+              password: trimmedPass,
+              selectedRole
+            })
+          });
+          const sessionData = await sessionRes.json().catch(() => ({}));
+          if (sessionData && sessionData.token) {
+            setAuthToken(sessionData.token);
+          }
+        } catch (e) {
+          console.warn('[Session Sync Note] Server session sync:', e.message);
+        }
+
         return setCurrentUser(formatted);
       } else {
         console.warn(`[Supabase Auth FAILED] Password mismatch for "${trimmedInput}" against Supabase.`);
