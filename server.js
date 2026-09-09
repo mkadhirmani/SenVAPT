@@ -131,10 +131,51 @@ function getGlobalLlmConfig() {
   return null;
 }
 
+function getSanitizedLlmConfig() {
+  const conf = getGlobalLlmConfig();
+  if (!conf) return null;
+  const sanitized = { ...conf };
+  const hasApiKey = Boolean(sanitized.apiKey && sanitized.apiKey.length > 0);
+  sanitized.apiKey = '';
+  return {
+    ...sanitized,
+    hasApiKey
+  };
+}
+
 function saveGlobalLlmConfig(conf) {
   try {
     fs.writeFileSync(LLM_CONFIG_FILE, JSON.stringify(conf, null, 2), 'utf-8');
   } catch (e) {}
+}
+
+/**
+ * Cryptographic Password Hashing & Verification (PBKDF2-SHA512 with 100,000 iterations & random salt)
+ */
+function hashPassword(password) {
+  if (!password) return '';
+  const salt = crypto.randomBytes(16).toString('hex');
+  const hash = crypto.pbkdf2Sync(password, salt, 100000, 64, 'sha512').toString('hex');
+  return `pbkdf2$${salt}$${hash}`;
+}
+
+function verifyPassword(password, stored) {
+  if (!password || !stored) return false;
+  if (typeof stored !== 'string') return false;
+  if (stored.startsWith('pbkdf2$')) {
+    const parts = stored.split('$');
+    if (parts.length === 3) {
+      const salt = parts[1];
+      const targetHash = parts[2];
+      try {
+        const computedHash = crypto.pbkdf2Sync(password, salt, 100000, 64, 'sha512').toString('hex');
+        return crypto.timingSafeEqual(Buffer.from(computedHash, 'hex'), Buffer.from(targetHash, 'hex'));
+      } catch (_) {
+        return false;
+      }
+    }
+  }
+  return (password === stored) || (password.toLowerCase() === stored.toLowerCase());
 }
 
 // Global Users Store Helper (Credentials loaded dynamically from Supabase and store)
@@ -143,7 +184,7 @@ const getDefaultUsersSeed = () => [
     id: 'admin',
     username: 'admin',
     email: 'admin@sennovate.com',
-    password: process.env.ADMIN_PASSWORD || '',
+    password: process.env.ADMIN_PASSWORD ? (process.env.ADMIN_PASSWORD.startsWith('pbkdf2$') ? process.env.ADMIN_PASSWORD : hashPassword(process.env.ADMIN_PASSWORD)) : '',
     altPassword: '',
     name: 'Administrator',
     role: 'admin',
@@ -169,7 +210,7 @@ const getDefaultUsersSeed = () => [
     id: 'user',
     username: 'user',
     email: 'user@sennovate.com',
-    password: process.env.USER_PASSWORD || '',
+    password: process.env.USER_PASSWORD ? (process.env.USER_PASSWORD.startsWith('pbkdf2$') ? process.env.USER_PASSWORD : hashPassword(process.env.USER_PASSWORD)) : '',
     altPassword: '',
     name: 'User',
     role: 'user',
@@ -196,7 +237,7 @@ const getDefaultUsersSeed = () => [
     id: 'sales123',
     username: 'sales123',
     email: 'sales@sennovate.com',
-    password: process.env.SALES_PASSWORD || '',
+    password: process.env.SALES_PASSWORD ? (process.env.SALES_PASSWORD.startsWith('pbkdf2$') ? process.env.SALES_PASSWORD : hashPassword(process.env.SALES_PASSWORD)) : '',
     altPassword: '',
     name: 'Sales Team',
     role: 'sales',
@@ -228,20 +269,34 @@ function getGlobalUsersStoreRaw() {
       const data = JSON.parse(fs.readFileSync(USERS_STORE_FILE, 'utf-8'));
       const list = Array.isArray(data) ? data : (Array.isArray(data?.users) ? data.users : []);
       if (list.length > 0) {
+        let changed = false;
         const merged = defaults.map(defUser => {
           const match = list.find(u => u.id === defUser.id || u.username?.toLowerCase() === defUser.username?.toLowerCase());
           if (!match) return defUser;
+          let pass = match.password || defUser.password || '';
+          if (pass && !pass.startsWith('pbkdf2$')) {
+            pass = hashPassword(pass);
+            changed = true;
+          }
           return {
             ...defUser,
             ...match,
-            password: defUser.password || match.password || '',
-            altPassword: match.altPassword || ''
+            password: pass,
+            altPassword: ''
           };
         });
         for (const u of list) {
           if (!merged.some(m => m.id === u.id || m.username?.toLowerCase() === u.username?.toLowerCase())) {
-            merged.push(u);
+            let pass = u.password || '';
+            if (pass && !pass.startsWith('pbkdf2$')) {
+              pass = hashPassword(pass);
+              changed = true;
+            }
+            merged.push({ ...u, password: pass });
           }
+        }
+        if (changed) {
+          try { fs.writeFileSync(USERS_STORE_FILE, JSON.stringify(merged, null, 2), 'utf-8'); } catch (_) {}
         }
         return merged;
       }
@@ -268,9 +323,13 @@ function saveGlobalUsersStore(users) {
     const existingRaw = getGlobalUsersStoreRaw();
     const merged = users.map(u => {
       const match = existingRaw.find(e => e.id === u.id || e.username === u.username);
+      let pass = u.password || match?.password || '';
+      if (pass && !pass.startsWith('pbkdf2$')) {
+        pass = hashPassword(pass);
+      }
       return {
         ...u,
-        password: u.password || match?.password || process.env.USER_PASSWORD || ''
+        password: pass
       };
     });
     fs.writeFileSync(USERS_STORE_FILE, JSON.stringify(merged, null, 2), 'utf-8');
@@ -354,47 +413,33 @@ function getAuthenticatedSession(req) {
     ? authHeader.slice(7).trim() 
     : (req.headers['x-auth-token'] || req.headers['X-Auth-Token'] || '');
   
-  if (token) {
-    const session = activeSessions.get(token);
-    if (session) {
-      if (session.expiresAt && Date.now() > session.expiresAt) {
-        activeSessions.delete(token);
-        return null;
-      }
-      return session;
-    }
-
-    // Attempt stateless token recovery if token encodes user identity
-    try {
-      const decoded = JSON.parse(Buffer.from(token, 'base64').toString('utf-8'));
-      if (decoded && (decoded.id || decoded.username)) {
-        const restored = {
-          token,
-          user: decoded,
-          role: decoded.role || 'user',
-          expiresAt: Date.now() + 24 * 60 * 60 * 1000
-        };
-        activeSessions.set(token, restored);
-        return restored;
-      }
-    } catch (_) {}
+  if (!token) {
+    return null;
   }
 
-  // Resilient session recovery: if client sends verified user identity headers
-  const userIdHeader = (req.headers['x-user-id'] || req.headers['X-User-Id'] || '').toString().trim();
-  const userRoleHeader = (req.headers['x-user-role'] || req.headers['X-User-Role'] || 'user').toString().trim();
-  if (userIdHeader) {
-    const restoredSession = {
-      token: token || `session-${userIdHeader}`,
-      user: { id: userIdHeader, username: userIdHeader, role: userRoleHeader },
-      role: userRoleHeader,
-      expiresAt: Date.now() + 24 * 60 * 60 * 1000
-    };
-    if (token) {
-      activeSessions.set(token, restoredSession);
+  const session = activeSessions.get(token);
+  if (session) {
+    if (session.expiresAt && Date.now() > session.expiresAt) {
+      activeSessions.delete(token);
+      return null;
     }
-    return restoredSession;
+    return session;
   }
+
+  // Attempt stateless token recovery if token encodes user identity
+  try {
+    const decoded = JSON.parse(Buffer.from(token, 'base64').toString('utf-8'));
+    if (decoded && (decoded.id || decoded.username)) {
+      const restored = {
+        token,
+        user: decoded,
+        role: decoded.role || 'user',
+        expiresAt: Date.now() + 24 * 60 * 60 * 1000
+      };
+      activeSessions.set(token, restored);
+      return restored;
+    }
+  } catch (_) {}
 
   return null;
 }
@@ -540,16 +585,28 @@ const server = http.createServer(async (req, res) => {
     return res.end(JSON.stringify({ status: 'ok', uptime: process.uptime(), timestamp: new Date().toISOString() }));
   }
 
-  // 1.5 Supabase Configuration (Public Anon Key & URL for client bootstrapping)
+  // 1.5 Supabase Configuration (Protected - Requires Active Authenticated Session)
   if (pathname === '/api/supabase/config') {
+    const session = getAuthenticatedSession(req);
+    if (!session) {
+      res.setHeader('Content-Type', 'application/json');
+      res.statusCode = 401;
+      return res.end(JSON.stringify({ success: false, error: 'Unauthorized: Active authenticated session required.' }));
+    }
     res.setHeader('Content-Type', 'application/json');
     res.statusCode = 200;
     const { url, key } = getActiveSupabaseConfig();
     return res.end(JSON.stringify({ success: true, url, key }));
   }
 
-  // 1.6 Supabase Runtime Config Initializer (Enables one-click cloud setup without hardcoded credentials)
+  // 1.6 Supabase Runtime Config Initializer (Admin Only)
   if (pathname === '/api/supabase/init-config' && req.method === 'POST') {
+    const session = getAuthenticatedSession(req);
+    if (!session || session.role !== 'admin') {
+      res.setHeader('Content-Type', 'application/json');
+      res.statusCode = 403;
+      return res.end(JSON.stringify({ success: false, error: 'Access Denied: Administrator privilege required.' }));
+    }
     try {
       const { url, key } = await parseJsonBody(req);
       const cleanUrl = (url || '').trim();
@@ -587,8 +644,14 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
-  // 1.7 Supabase Scan Persistence Proxy (Ensures reliable saving to vapt_scans from all client contexts)
+  // 1.7 Supabase Scan Persistence Proxy (Requires Authenticated Session)
   if (pathname === '/api/supabase/save-scan' && req.method === 'POST') {
+    const session = getAuthenticatedSession(req);
+    if (!session) {
+      res.setHeader('Content-Type', 'application/json');
+      res.statusCode = 401;
+      return res.end(JSON.stringify({ success: false, error: 'Unauthorized: Active authenticated session required.' }));
+    }
     try {
       const payload = await parseJsonBody(req);
       const result = await autoPersistScanToSupabase(payload);
@@ -645,16 +708,20 @@ const server = http.createServer(async (req, res) => {
           userFoundInDb = true;
           const row = supaUsers[0];
           console.log(`[AUTH SUPABASE] User record found for "${row.username}" in Supabase vapt_users table. Checking password...`);
-          const valid = (row.password === trimmedPass) || 
-                        (row.password && row.password.toLowerCase() === trimmedPass.toLowerCase()) ||
-                        (row.alt_password && (row.alt_password === trimmedPass || row.alt_password.toLowerCase() === trimmedPass.toLowerCase())) ||
-                        (row.altPassword && (row.altPassword === trimmedPass || row.altPassword.toLowerCase() === trimmedPass.toLowerCase()));
+          const valid = verifyPassword(trimmedPass, row.password) ||
+                        verifyPassword(trimmedPass, row.alt_password) ||
+                        verifyPassword(trimmedPass, row.altPassword);
           if (valid) {
             console.log(`[AUTH SUCCESS] Password verified for "${row.username}" against Supabase vapt_users table.`);
             matched = formatUserFromSupabase(row);
             const nowStr = new Date().toISOString().replace('T', ' ').slice(0, 19);
             try {
-              await supabase.from('vapt_users').update({ is_online: true, last_login: nowStr }).eq('id', row.id);
+              const supaUpdate = { is_online: true, last_login: nowStr };
+              // If password was stored plain in Supabase, automatically hash it
+              if (row.password && !row.password.startsWith('pbkdf2$')) {
+                supaUpdate.password = hashPassword(trimmedPass);
+              }
+              await supabase.from('vapt_users').update(supaUpdate).eq('id', row.id);
             } catch (_) {}
           } else {
             supabaseMismatch = true;
@@ -667,7 +734,7 @@ const server = http.createServer(async (req, res) => {
         console.warn('[AUTH ERROR] Supabase check error:', err.message);
       }
 
-      // 2. Dynamic fallback to local store if Supabase is offline
+      // 2. Dynamic fallback to local store if Supabase is offline or not found
       if (!matched && !userFoundInDb) {
         const rawUsers = getGlobalUsersStoreRaw();
         matched = rawUsers.find(u => {
@@ -675,8 +742,14 @@ const server = http.createServer(async (req, res) => {
           const uEmail = (u.email || '').toLowerCase();
           const matchesUsername = (uName === trimmedInput || uEmail === trimmedInput);
           if (!matchesUsername) return false;
-          return u.password === trimmedPass || (u.password && u.password.toLowerCase() === trimmedPass.toLowerCase());
+          return verifyPassword(trimmedPass, u.password) || verifyPassword(trimmedPass, u.altPassword);
         });
+        if (matched) {
+          matched = { ...matched };
+          delete matched.password;
+          delete matched.altPassword;
+          delete matched.passwordHash;
+        }
       }
 
       if (!matched) {
@@ -810,13 +883,13 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
-  // 5. Strix Config Routes (Protected & Redacted)
+  // 5. Strix Config Routes (Admin Only & Redacted)
   if (pathname === '/api/strix/get-config') {
     const session = getAuthenticatedSession(req);
-    if (!session) {
+    if (!session || session.role !== 'admin') {
       res.setHeader('Content-Type', 'application/json');
-      res.statusCode = 401;
-      return res.end(JSON.stringify({ success: false, error: 'Unauthorized: Valid session required.' }));
+      res.statusCode = 403;
+      return res.end(JSON.stringify({ success: false, error: 'Access Denied: Administrator privilege required.' }));
     }
     res.setHeader('Content-Type', 'application/json');
     res.statusCode = 200;
@@ -843,17 +916,17 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
-  // 6. LLM Config Routes (Protected)
+  // 6. LLM Config Routes (Admin Only)
   if (pathname === '/api/llm/get-config') {
     const session = getAuthenticatedSession(req);
-    if (!session) {
+    if (!session || session.role !== 'admin') {
       res.setHeader('Content-Type', 'application/json');
-      res.statusCode = 401;
-      return res.end(JSON.stringify({ success: false, error: 'Unauthorized: Valid session required.' }));
+      res.statusCode = 403;
+      return res.end(JSON.stringify({ success: false, error: 'Access Denied: Administrator privilege required.' }));
     }
     res.setHeader('Content-Type', 'application/json');
     res.statusCode = 200;
-    return res.end(JSON.stringify({ success: true, config: getGlobalLlmConfig() }));
+    return res.end(JSON.stringify({ success: true, config: getSanitizedLlmConfig() }));
   }
 
   if (pathname === '/api/llm/save-config') {
@@ -868,7 +941,7 @@ const server = http.createServer(async (req, res) => {
       saveGlobalLlmConfig(conf);
       res.setHeader('Content-Type', 'application/json');
       res.statusCode = 200;
-      return res.end(JSON.stringify({ success: true, config: conf }));
+      return res.end(JSON.stringify({ success: true, config: getSanitizedLlmConfig() }));
     } catch (e) {
       res.setHeader('Content-Type', 'application/json');
       res.statusCode = 400;
@@ -887,6 +960,104 @@ const server = http.createServer(async (req, res) => {
     res.setHeader('Content-Type', 'application/json');
     res.statusCode = 200;
     return res.end(JSON.stringify({ success: true, users: getSanitizedUsersStore() }));
+  }
+
+  if (pathname === '/api/users/create-user' && req.method === 'POST') {
+    const session = getAuthenticatedSession(req);
+    if (!session || session.role !== 'admin') {
+      res.setHeader('Content-Type', 'application/json');
+      res.statusCode = 403;
+      return res.end(JSON.stringify({ success: false, error: 'Access Denied: Administrator privilege required.' }));
+    }
+    try {
+      const userData = await parseJsonBody(req);
+      const cleanUsername = (userData.username || '').toLowerCase().trim();
+      if (!cleanUsername) {
+        res.setHeader('Content-Type', 'application/json');
+        res.statusCode = 400;
+        return res.end(JSON.stringify({ success: false, error: 'Username is required.' }));
+      }
+      if (!userData.password || !userData.password.trim()) {
+        res.setHeader('Content-Type', 'application/json');
+        res.statusCode = 400;
+        return res.end(JSON.stringify({ success: false, error: 'Password is required.' }));
+      }
+      const existing = getGlobalUsersStoreRaw();
+      if (existing.some(u => u.username?.toLowerCase() === cleanUsername)) {
+        res.setHeader('Content-Type', 'application/json');
+        res.statusCode = 400;
+        return res.end(JSON.stringify({ success: false, error: `User "${cleanUsername}" already exists.` }));
+      }
+      const newUser = {
+        id: `user-${Date.now()}`,
+        username: cleanUsername,
+        email: userData.email || `${cleanUsername}@sennovate.com`,
+        password: hashPassword(userData.password.trim()),
+        name: userData.name || userData.username,
+        role: userData.role || 'user',
+        title: userData.title || (userData.role === 'admin' ? 'Administrator' : 'Security Analyst'),
+        avatar: userData.avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${cleanUsername}`,
+        createdAt: new Date().toISOString().replace('T', ' ').slice(0, 19),
+        lastLogin: 'Never',
+        isOnline: false,
+        scansCount: 0,
+        permissions: userData.permissions || {
+          run_scans: true,
+          view_findings: true,
+          attack_graph: true,
+          ai_assistant: true,
+          export_reports: true,
+          view_tokens: false,
+          view_terminal: false,
+          manage_settings: false,
+          manage_users: false,
+          load_custom_folder: false
+        }
+      };
+      existing.push(newUser);
+      fs.writeFileSync(USERS_STORE_FILE, JSON.stringify(existing, null, 2), 'utf-8');
+      try {
+        const payload = formatUserForSupabase(newUser);
+        supabase.from('vapt_users').upsert([payload], { onConflict: 'username' }).then(() => {}, () => {});
+      } catch (_) {}
+      res.setHeader('Content-Type', 'application/json');
+      res.statusCode = 200;
+      return res.end(JSON.stringify({ success: true, users: getSanitizedUsersStore() }));
+    } catch (e) {
+      res.setHeader('Content-Type', 'application/json');
+      res.statusCode = 400;
+      return res.end(JSON.stringify({ success: false, error: e.message }));
+    }
+  }
+
+  if (pathname === '/api/users/delete-user' && req.method === 'POST') {
+    const session = getAuthenticatedSession(req);
+    if (!session || session.role !== 'admin') {
+      res.setHeader('Content-Type', 'application/json');
+      res.statusCode = 403;
+      return res.end(JSON.stringify({ success: false, error: 'Access Denied: Administrator privilege required.' }));
+    }
+    try {
+      const { userId } = await parseJsonBody(req);
+      if (!userId || userId === 'admin') {
+        res.setHeader('Content-Type', 'application/json');
+        res.statusCode = 400;
+        return res.end(JSON.stringify({ success: false, error: 'Cannot delete primary root administrator account.' }));
+      }
+      const existing = getGlobalUsersStoreRaw();
+      const filtered = existing.filter(u => u.id !== userId && u.username !== userId);
+      fs.writeFileSync(USERS_STORE_FILE, JSON.stringify(filtered, null, 2), 'utf-8');
+      try {
+        supabase.from('vapt_users').delete().or(`id.eq.${userId},username.eq.${userId}`).then(() => {}, () => {});
+      } catch (_) {}
+      res.setHeader('Content-Type', 'application/json');
+      res.statusCode = 200;
+      return res.end(JSON.stringify({ success: true, users: getSanitizedUsersStore() }));
+    } catch (e) {
+      res.setHeader('Content-Type', 'application/json');
+      res.statusCode = 400;
+      return res.end(JSON.stringify({ success: false, error: e.message }));
+    }
   }
 
   if (pathname === '/api/users/save-users') {
@@ -918,7 +1089,7 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
-  // 8. Full System Backup & Restore Routes (Admin Only & Passwords Redacted)
+  // 8. Full System Backup & Restore Routes (Admin Only & Passwords/Secrets Redacted)
   if (pathname === '/api/system/export-backup') {
     const session = getAuthenticatedSession(req);
     if (!session || session.role !== 'admin') {
@@ -930,7 +1101,7 @@ const server = http.createServer(async (req, res) => {
       version: '1.0.0',
       exportedAt: new Date().toISOString(),
       serverConfig: getSanitizedServerConfig(),
-      llmConfig: getGlobalLlmConfig(),
+      llmConfig: getSanitizedLlmConfig(),
       users: getSanitizedUsersStore(),
       scans: getServerScanHistory()
     };
@@ -974,6 +1145,11 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (pathname === '/api/strix/test-ssh') {
+      if (session.role !== 'admin') {
+        res.setHeader('Content-Type', 'application/json');
+        res.statusCode = 403;
+        return res.end(JSON.stringify({ success: false, error: 'Access Denied: Administrator privilege required.' }));
+      }
       try {
         const config = await parseJsonBody(req);
         const result = await testSshConnection(config);
@@ -1164,11 +1340,16 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (pathname === '/api/strix/test-n8n-fetch') {
+      if (session.role !== 'admin') {
+        res.setHeader('Content-Type', 'application/json');
+        res.statusCode = 403;
+        return res.end(JSON.stringify({ success: false, error: 'Access Denied: Administrator privilege required.' }));
+      }
       try {
         const payload = await parseJsonBody(req);
         const result = await testN8nFetchWebhookProxy(payload);
         res.setHeader('Content-Type', 'application/json');
-        res.statusCode = 200;
+        res.statusCode = result.status || (result.success !== false ? 200 : 400);
         return res.end(JSON.stringify(result));
       } catch (err) {
         res.setHeader('Content-Type', 'application/json');

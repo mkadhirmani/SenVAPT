@@ -1,9 +1,100 @@
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
+import dns from 'dns';
 import { execSync, execFileSync } from 'child_process';
 import { Client } from 'ssh2';
 import { supabase, formatScanForSupabase } from '../utils/supabaseClient.js';
+
+/**
+ * Helper to determine if an IP address belongs to private/loopback/link-local/metadata ranges (SSRF Protection)
+ */
+export function isPrivateIp(ip) {
+  if (!ip || typeof ip !== 'string') return true;
+  const trimmed = ip.trim();
+  if (trimmed.includes('.')) {
+    const parts = trimmed.split('.').map(Number);
+    if (parts.length !== 4 || parts.some(p => isNaN(p) || p < 0 || p > 255)) return true;
+    if (parts[0] === 0) return true; // 0.0.0.0/8
+    if (parts[0] === 10) return true; // 10.0.0.0/8
+    if (parts[0] === 127) return true; // 127.0.0.0/8
+    if (parts[0] === 169 && parts[1] === 254) return true; // 169.254.0.0/16 (Link-local / cloud metadata)
+    if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) return true; // 172.16.0.0/12
+    if (parts[0] === 192 && parts[1] === 168) return true; // 192.168.0.0/16
+    if (parts[0] === 100 && parts[1] >= 64 && parts[1] <= 127) return true; // 100.64.0.0/10
+    if (parts[0] === 192 && parts[1] === 0 && (parts[2] === 0 || parts[2] === 2)) return true;
+    if (parts[0] === 198 && parts[1] === 51 && parts[2] === 100) return true;
+    if (parts[0] === 203 && parts[1] === 0 && parts[2] === 113) return true;
+    if (parts[0] >= 224) return true; // Multicast / reserved
+    return false;
+  }
+  const lower = trimmed.toLowerCase();
+  if (lower === '::1' || lower === '::' || lower.startsWith('fe80:') || lower.startsWith('fc') || lower.startsWith('fd') || lower.includes('::ffff:')) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Synchronous URL format and dangerous hostname/IP validation
+ */
+export function validateWebhookUrlSync(urlStr) {
+  if (!urlStr || typeof urlStr !== 'string') {
+    return { valid: false, error: 'Webhook URL must be a non-empty string.' };
+  }
+  const trimmed = urlStr.trim();
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+      return { valid: false, error: 'Protocol must be https (or http for authorized endpoints).' };
+    }
+    const hostname = parsed.hostname.toLowerCase();
+    if (
+      hostname === 'localhost' ||
+      hostname.endsWith('.localhost') ||
+      hostname.endsWith('.local') ||
+      hostname.endsWith('.internal') ||
+      hostname.endsWith('.arpa') ||
+      hostname.includes('metadata') ||
+      hostname.includes('169.254') ||
+      hostname.includes('instance-data')
+    ) {
+      return { valid: false, error: 'Targeting internal/cloud metadata hostnames is forbidden (SSRF protection).' };
+    }
+    if (/^(\d{1,3}\.){3}\d{1,3}$/.test(hostname) || hostname.includes(':')) {
+      if (isPrivateIp(hostname)) {
+        return { valid: false, error: 'Targeting private, loopback, or link-local IP addresses is forbidden (SSRF protection).' };
+      }
+    }
+    return { valid: true };
+  } catch (e) {
+    return { valid: false, error: 'Invalid URL format.' };
+  }
+}
+
+/**
+ * Strict Asynchronous SSRF Target Validator for Webhooks
+ * Verifies URL syntax and performs DNS resolution to prevent DNS rebinding attacks.
+ */
+export async function isSafeWebhookUrl(urlStr) {
+  const syncCheck = validateWebhookUrlSync(urlStr);
+  if (!syncCheck.valid) return false;
+
+  try {
+    const parsed = new URL(urlStr.trim());
+    const hostname = parsed.hostname.toLowerCase();
+    if (!(/^(\d{1,3}\.){3}\d{1,3}$/.test(hostname) || hostname.includes(':'))) {
+      const records = await dns.promises.lookup(hostname, { all: true });
+      if (!records || records.length === 0) return false;
+      for (const rec of records) {
+        if (isPrivateIp(rec.address)) return false;
+      }
+    }
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
 
 /**
  * Automatically persist completed structured scan record into Supabase vapt_scans table immediately
@@ -79,14 +170,17 @@ export function getSanitizedServerConfig() {
   const hasPrivateKey = Boolean(cfg.privateKey && cfg.privateKey.length > 0);
   const hasN8nCredential = Boolean(cfg.n8nCredential && cfg.n8nCredential.length > 0);
   const hasN8nPassword = Boolean(cfg.n8nPassword && cfg.n8nPassword.length > 0);
+  const hasN8nToken = Boolean(cfg.n8nToken && cfg.n8nToken.length > 0);
   const hasOpenrouterApiKey = Boolean(cfg.openrouterApiKey && cfg.openrouterApiKey.length > 0);
   const hasLlmApiKey = Boolean(cfg.llmApiKey && cfg.llmApiKey.length > 0);
 
-  // Redact all sensitive credentials from the API response
+  // Redact all sensitive credentials and secrets from the API response
   cfg.password = '';
+  cfg.sshPassword = '';
   cfg.privateKey = '';
   cfg.n8nCredential = '';
   cfg.n8nPassword = '';
+  cfg.n8nToken = '';
   cfg.openrouterApiKey = '';
   cfg.llmApiKey = '';
 
@@ -96,6 +190,7 @@ export function getSanitizedServerConfig() {
     hasPrivateKey,
     hasN8nCredential,
     hasN8nPassword,
+    hasN8nToken,
     hasOpenrouterApiKey,
     hasLlmApiKey
   };
@@ -103,6 +198,21 @@ export function getSanitizedServerConfig() {
 
 export function saveGlobalServerConfig(newConfig) {
   if (!newConfig) return globalStrixConfig;
+
+  // SSRF Protection: validate webhook URLs before saving
+  if (newConfig.n8nWebhookUrl) {
+    const check = validateWebhookUrlSync(newConfig.n8nWebhookUrl);
+    if (!check.valid) {
+      throw new Error(`SSRF Protection: n8n Webhook URL is invalid. ${check.error}`);
+    }
+  }
+  if (newConfig.n8nFetchWebhookUrl) {
+    const check = validateWebhookUrlSync(newConfig.n8nFetchWebhookUrl);
+    if (!check.valid) {
+      throw new Error(`SSRF Protection: n8n Fetch Webhook URL is invalid. ${check.error}`);
+    }
+  }
+
   const merged = { ...globalStrixConfig };
 
   for (const [key, value] of Object.entries(newConfig)) {
@@ -1034,6 +1144,12 @@ export async function triggerN8nScanProxy(payload) {
     throw new Error('No n8n Webhook URL configured. Please enter the Webhook URL in Settings.');
   }
 
+  // SSRF Protection: validate destination URL
+  const isSafe = await isSafeWebhookUrl(effectiveUrl);
+  if (!isSafe) {
+    throw new Error('SSRF Protection: The specified n8n Webhook URL is not permitted. Access to internal/private infrastructure and cloud metadata is strictly forbidden.');
+  }
+
   let cleanDomain = (domain || payload.domainName || payload.target || payload.targetUrl || payload.url || '').trim();
   cleanDomain = cleanDomain.replace(/^https?:\/\//i, '').replace(/^www\./i, '').split('/')[0].split('?')[0].split('#')[0].split(':')[0].trim().toLowerCase();
 
@@ -1588,6 +1704,12 @@ export async function fetchN8nScanResultsProxy(payload) {
     throw new Error('No n8n Fetch Webhook URL configured. Please check Settings.');
   }
 
+  // SSRF Protection: validate destination URL
+  const isSafe = await isSafeWebhookUrl(effectiveUrl);
+  if (!isSafe) {
+    throw new Error('SSRF Protection: The specified n8n Fetch Webhook URL is not permitted. Access to internal/private infrastructure and cloud metadata is strictly forbidden.');
+  }
+
   const norm = normalizeQueryAndDomain(filePath || folderPath || queryPath || domain || 'sennovate.com');
 
   const headers = {
@@ -1934,6 +2056,17 @@ export async function uploadScanZipProxy(payload) {
 export async function testN8nFetchWebhookProxy(payload) {
   const { webhookUrl, domain, filePath, path: targetPath, authType, username, password, token, credential } = payload;
   const effectiveUrl = webhookUrl || globalStrixConfig.n8nFetchWebhookUrl || 'https://n8n-route-soc-pub-vms.apps.corp.sennovate.com/webhook/1bc30fe0-e31f-4cdb-91fd-d15d4f20ede3';
+
+  // SSRF Protection: validate destination URL
+  const isSafe = await isSafeWebhookUrl(effectiveUrl);
+  if (!isSafe) {
+    return {
+      success: false,
+      status: 400,
+      target: domain || 'webhook',
+      message: 'SSRF Protection: The specified webhook endpoint is not permitted. Access to internal/private infrastructure and cloud metadata is strictly forbidden.'
+    };
+  }
 
   const norm = normalizeQueryAndDomain(filePath || targetPath || domain || 'sennovate.com');
 

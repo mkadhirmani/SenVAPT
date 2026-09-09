@@ -7,9 +7,9 @@ if (typeof process !== 'undefined' && typeof window === 'undefined') {
   }
 }
 
-// Default cloud database endpoints (securely encoded to avoid plain text exposure in repository)
-const DEFAULT_SUPA_URL = (typeof atob === 'function') ? atob('aHR0cHM6Ly94Z2JwbndldHdhd25paGZtbmdtcS5zdXBhYmFzZS5jbw==') : '';
-const DEFAULT_SUPA_KEY = (typeof atob === 'function') ? atob('c2JfcHVibGlzaGFibGVfbzVsZGZIRDV5X2hvRnlwX2dTYXM0UV9CY0hQbGlGSQ==') : '';
+// Default cloud database endpoints (empty by default - bootstrapped dynamically via authenticated session)
+const DEFAULT_SUPA_URL = '';
+const DEFAULT_SUPA_KEY = '';
 
 // Function to resolve current active Supabase URL and Anon Key dynamically
 export function getActiveSupabaseConfig() {
@@ -41,8 +41,16 @@ export function getActiveSupabaseConfig() {
 
 export async function initSupabaseBrowserConfig() {
   if (typeof window === 'undefined') return;
+  const token = (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('sennovate_auth_token')) ||
+                (typeof localStorage !== 'undefined' && localStorage.getItem('sennovate_auth_token'));
+  if (!token) return; // Do not attempt unauthenticated fetch
+
   try {
-    const res = await fetch('/api/supabase/config');
+    const res = await fetch('/api/supabase/config', {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
     if (res.ok) {
       const data = await res.json();
       if (data && data.url && data.key) {
@@ -332,6 +340,7 @@ export function formatScanFromSupabase(row) {
 
 /**
  * Format a user record for Supabase storage (vapt_users table)
+ * Plaintext passwords are NEVER stored in Supabase (managed securely by auth server).
  */
 export function formatUserForSupabase(user) {
   if (!user) return null;
@@ -339,7 +348,7 @@ export function formatUserForSupabase(user) {
     id: user.id || `user-${Date.now()}`,
     username: (user.username || '').toLowerCase().trim(),
     email: user.email || `${(user.username || '').toLowerCase().trim()}@sennovate.com`,
-    password: user.password || '',
+    password: '[MANAGED_BY_AUTH_SERVER]',
     name: user.name || user.username || 'User',
     role: user.role || 'user',
     title: user.title || (user.role === 'admin' ? 'Administrator' : 'Security Analyst'),
@@ -354,6 +363,7 @@ export function formatUserForSupabase(user) {
 
 /**
  * Format a database record from Supabase back to dashboard user object
+ * Passwords are strictly excluded from client objects.
  */
 export function formatUserFromSupabase(row) {
   if (!row) return null;
@@ -361,7 +371,6 @@ export function formatUserFromSupabase(row) {
     id: row.id,
     username: row.username,
     email: row.email,
-    password: row.password || '',
     name: row.name || row.username || 'User',
     role: row.role || 'user',
     title: row.title || (row.role === 'admin' ? 'Administrator' : 'Security Analyst'),

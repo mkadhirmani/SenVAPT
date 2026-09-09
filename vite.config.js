@@ -88,46 +88,20 @@ function strixBackendPlugin() {
     const authHeader = req.headers['authorization'] || req.headers['Authorization'] || '';
     const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : (req.headers['x-auth-token'] || req.headers['X-Auth-Token'] || '');
     
-    if (token) {
-      const session = activeSessions.get(token);
-      if (session) {
-        if (session.expiresAt && Date.now() > session.expiresAt) {
-          activeSessions.delete(token);
-          return null;
-        }
-        return session;
-      }
-
-      try {
-        const decoded = JSON.parse(Buffer.from(token, 'base64').toString('utf-8'));
-        if (decoded && (decoded.id || decoded.role || decoded.username)) {
-          const restoredSession = {
-            token,
-            user: decoded,
-            role: decoded.role || (decoded.id === 'admin' ? 'admin' : 'user'),
-            expiresAt: Date.now() + 24 * 60 * 60 * 1000
-          };
-          activeSessions.set(token, restoredSession);
-          return restoredSession;
-        }
-      } catch (_) {}
-
-      const genericSession = {
-        token,
-        user: { id: 'admin', username: 'admin', role: 'admin' },
-        role: 'admin',
-        expiresAt: Date.now() + 24 * 60 * 60 * 1000
-      };
-      activeSessions.set(token, genericSession);
-      return genericSession;
+    if (!token) {
+      return null;
     }
 
-    return {
-      token: 'local-session-token',
-      user: { id: 'admin', username: 'admin', role: 'admin' },
-      role: 'admin',
-      expiresAt: Date.now() + 24 * 60 * 60 * 1000
-    };
+    const session = activeSessions.get(token);
+    if (session) {
+      if (session.expiresAt && Date.now() > session.expiresAt) {
+        activeSessions.delete(token);
+        return null;
+      }
+      return session;
+    }
+
+    return null;
   };
 
   return {
@@ -249,13 +223,13 @@ function strixBackendPlugin() {
         });
       });
 
-      // 2. Global Strix Config Get & Save Routes (Authenticated & Redacted)
+      // 2. Global Strix Config Get & Save Routes (Admin Only & Redacted)
       server.middlewares.use('/api/strix/get-config', (req, res) => {
         const session = getAuthenticatedSession(req);
-        if (!session) {
+        if (!session || session.role !== 'admin') {
           res.setHeader('Content-Type', 'application/json');
-          res.statusCode = 401;
-          return res.end(JSON.stringify({ success: false, error: 'Unauthorized: Valid session required.' }));
+          res.statusCode = 403;
+          return res.end(JSON.stringify({ success: false, error: 'Access Denied: Administrator privilege required.' }));
         }
         res.setHeader('Access-Control-Allow-Origin', '*');
         res.setHeader('Content-Type', 'application/json');
@@ -300,6 +274,18 @@ function strixBackendPlugin() {
         return null;
       };
 
+      const getSanitizedLlmConfig = () => {
+        const conf = getGlobalLlmConfig();
+        if (!conf) return null;
+        const sanitized = { ...conf };
+        const hasApiKey = Boolean(sanitized.apiKey && sanitized.apiKey.length > 0);
+        sanitized.apiKey = '';
+        return {
+          ...sanitized,
+          hasApiKey
+        };
+      };
+
       const saveGlobalLlmConfig = (conf) => {
         try {
           fs.writeFileSync(LLM_CONFIG_FILE, JSON.stringify(conf, null, 2), 'utf-8');
@@ -308,15 +294,15 @@ function strixBackendPlugin() {
 
       server.middlewares.use('/api/llm/get-config', (req, res) => {
         const session = getAuthenticatedSession(req);
-        if (!session) {
+        if (!session || session.role !== 'admin') {
           res.setHeader('Content-Type', 'application/json');
-          res.statusCode = 401;
-          return res.end(JSON.stringify({ success: false, error: 'Unauthorized' }));
+          res.statusCode = 403;
+          return res.end(JSON.stringify({ success: false, error: 'Access Denied: Administrator privilege required.' }));
         }
         res.setHeader('Access-Control-Allow-Origin', '*');
         res.setHeader('Content-Type', 'application/json');
         res.statusCode = 200;
-        res.end(JSON.stringify({ success: true, config: getGlobalLlmConfig() }));
+        res.end(JSON.stringify({ success: true, config: getSanitizedLlmConfig() }));
       });
 
       server.middlewares.use('/api/llm/save-config', (req, res) => {
@@ -335,7 +321,7 @@ function strixBackendPlugin() {
             res.setHeader('Access-Control-Allow-Origin', '*');
             res.setHeader('Content-Type', 'application/json');
             res.statusCode = 200;
-            res.end(JSON.stringify({ success: true, config: conf }));
+            res.end(JSON.stringify({ success: true, config: getSanitizedLlmConfig() }));
           } catch (e) {
             res.setHeader('Content-Type', 'application/json');
             res.statusCode = 400;
@@ -346,6 +332,32 @@ function strixBackendPlugin() {
 
       // 3.5 Global Users Store & Authentication (Persisted in .users_store.json)
       const USERS_STORE_FILE = path.resolve(process.cwd(), '.users_store.json');
+
+      function hashPassword(password) {
+        if (!password) return '';
+        const salt = crypto.randomBytes(16).toString('hex');
+        const hash = crypto.pbkdf2Sync(password, salt, 100000, 64, 'sha512').toString('hex');
+        return `pbkdf2$${salt}$${hash}`;
+      }
+
+      function verifyPassword(password, stored) {
+        if (!password || !stored) return false;
+        if (typeof stored !== 'string') return false;
+        if (stored.startsWith('pbkdf2$')) {
+          const parts = stored.split('$');
+          if (parts.length === 3) {
+            const salt = parts[1];
+            const targetHash = parts[2];
+            try {
+              const computedHash = crypto.pbkdf2Sync(password, salt, 100000, 64, 'sha512').toString('hex');
+              return crypto.timingSafeEqual(Buffer.from(computedHash, 'hex'), Buffer.from(targetHash, 'hex'));
+            } catch (_) {
+              return false;
+            }
+          }
+        }
+        return (password === stored) || (password.toLowerCase() === stored.toLowerCase());
+      }
 
       function constantTimeCompare(a, b) {
         if (typeof a !== 'string' || typeof b !== 'string' || !a || !b) return false;
@@ -362,7 +374,7 @@ function strixBackendPlugin() {
           id: 'admin',
           username: 'admin',
           email: 'admin@sennovate.com',
-          password: process.env.ADMIN_PASSWORD || '',
+          password: process.env.ADMIN_PASSWORD ? (process.env.ADMIN_PASSWORD.startsWith('pbkdf2$') ? process.env.ADMIN_PASSWORD : hashPassword(process.env.ADMIN_PASSWORD)) : '',
           altPassword: '',
           name: 'Administrator',
           role: 'admin',
@@ -388,7 +400,7 @@ function strixBackendPlugin() {
           id: 'user',
           username: 'user',
           email: 'user@sennovate.com',
-          password: process.env.USER_PASSWORD || '',
+          password: process.env.USER_PASSWORD ? (process.env.USER_PASSWORD.startsWith('pbkdf2$') ? process.env.USER_PASSWORD : hashPassword(process.env.USER_PASSWORD)) : '',
           altPassword: '',
           name: 'User',
           role: 'user',
@@ -415,7 +427,7 @@ function strixBackendPlugin() {
           id: 'sales123',
           username: 'sales123',
           email: 'sales@sennovate.com',
-          password: process.env.SALES_PASSWORD || '',
+          password: process.env.SALES_PASSWORD ? (process.env.SALES_PASSWORD.startsWith('pbkdf2$') ? process.env.SALES_PASSWORD : hashPassword(process.env.SALES_PASSWORD)) : '',
           altPassword: '',
           name: 'Sales Team',
           role: 'sales',
@@ -447,20 +459,34 @@ function strixBackendPlugin() {
             const data = JSON.parse(fs.readFileSync(USERS_STORE_FILE, 'utf-8'));
             const list = Array.isArray(data) ? data : (Array.isArray(data?.users) ? data.users : []);
             if (list.length > 0) {
+              let changed = false;
               const merged = defaults.map(defUser => {
                 const match = list.find(u => u.id === defUser.id || u.username?.toLowerCase() === defUser.username?.toLowerCase());
                 if (!match) return defUser;
+                let pass = match.password || defUser.password || '';
+                if (pass && !pass.startsWith('pbkdf2$')) {
+                  pass = hashPassword(pass);
+                  changed = true;
+                }
                 return {
                   ...defUser,
                   ...match,
-                  password: defUser.password || match.password || '',
-                  altPassword: match.altPassword || ''
+                  password: pass,
+                  altPassword: ''
                 };
               });
               for (const u of list) {
                 if (!merged.some(m => m.id === u.id || m.username?.toLowerCase() === u.username?.toLowerCase())) {
-                  merged.push(u);
+                  let pass = u.password || '';
+                  if (pass && !pass.startsWith('pbkdf2$')) {
+                    pass = hashPassword(pass);
+                    changed = true;
+                  }
+                  merged.push({ ...u, password: pass });
                 }
+              }
+              if (changed) {
+                try { fs.writeFileSync(USERS_STORE_FILE, JSON.stringify(merged, null, 2), 'utf-8'); } catch (_) {}
               }
               return merged;
             }
@@ -487,25 +513,41 @@ function strixBackendPlugin() {
           const existingRaw = getGlobalUsersRaw();
           const merged = users.map(u => {
             const match = existingRaw.find(e => e.id === u.id || e.username === u.username);
+            let pass = u.password || match?.password || '';
+            if (pass && !pass.startsWith('pbkdf2$')) {
+              pass = hashPassword(pass);
+            }
             return {
               ...u,
-              password: u.password || match?.password || process.env.USER_PASSWORD || ''
+              password: pass
             };
           });
           fs.writeFileSync(USERS_STORE_FILE, JSON.stringify(merged, null, 2), 'utf-8');
         } catch (e) {}
       };
 
-      // 3.6 Supabase Configuration (Public Anon Key & URL for client bootstrapping)
+      // 3.6 Supabase Configuration (Protected - Requires Active Authenticated Session)
       server.middlewares.use('/api/supabase/config', (req, res) => {
+        const session = getAuthenticatedSession(req);
+        if (!session) {
+          res.setHeader('Content-Type', 'application/json');
+          res.statusCode = 401;
+          return res.end(JSON.stringify({ success: false, error: 'Unauthorized: Active session required.' }));
+        }
         res.setHeader('Content-Type', 'application/json');
         res.statusCode = 200;
         const { url, key } = getActiveSupabaseConfig();
         res.end(JSON.stringify({ success: true, url, key }));
       });
 
-      // 3.65 Supabase Runtime Config Initializer
+      // 3.65 Supabase Runtime Config Initializer (Admin Only)
       server.middlewares.use('/api/supabase/init-config', (req, res) => {
+        const session = getAuthenticatedSession(req);
+        if (!session || session.role !== 'admin') {
+          res.setHeader('Content-Type', 'application/json');
+          res.statusCode = 403;
+          return res.end(JSON.stringify({ success: false, error: 'Access Denied: Administrator privilege required.' }));
+        }
         if (req.method !== 'POST') {
           res.statusCode = 405;
           return res.end(JSON.stringify({ success: false, error: 'Method Not Allowed' }));
@@ -551,8 +593,14 @@ function strixBackendPlugin() {
         });
       });
 
-      // 3.66 Supabase Scan Persistence Proxy Middleware
+      // 3.66 Supabase Scan Persistence Proxy Middleware (Authenticated)
       server.middlewares.use('/api/supabase/save-scan', async (req, res) => {
+        const session = getAuthenticatedSession(req);
+        if (!session) {
+          res.setHeader('Content-Type', 'application/json');
+          res.statusCode = 401;
+          return res.end(JSON.stringify({ success: false, error: 'Unauthorized: Active authenticated session required.' }));
+        }
         if (req.method !== 'POST') {
           res.statusCode = 405;
           return res.end(JSON.stringify({ success: false, error: 'Method Not Allowed' }));
@@ -573,6 +621,33 @@ function strixBackendPlugin() {
           }
         });
       });
+
+      // Failed login attempts tracker for rate-limiting brute force attacks
+      const failedLoginAttempts = new Map();
+      const getRateLimitKey = (req, username) => {
+        const ip = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown';
+        return `${ip}:${username}`;
+      };
+      const isLoginRateLimited = (key) => {
+        const record = failedLoginAttempts.get(key);
+        if (!record) return false;
+        if (Date.now() > record.lockedUntil) {
+          failedLoginAttempts.delete(key);
+          return false;
+        }
+        return record.attempts >= 5;
+      };
+      const recordFailedLogin = (key) => {
+        const record = failedLoginAttempts.get(key) || { attempts: 0, lockedUntil: 0 };
+        record.attempts += 1;
+        if (record.attempts >= 5) {
+          record.lockedUntil = Date.now() + 15 * 60 * 1000;
+        }
+        failedLoginAttempts.set(key, record);
+      };
+      const clearFailedLogin = (key) => {
+        failedLoginAttempts.delete(key);
+      };
 
       // Authenticate User Login & Issue Cryptographic Session Token
       server.middlewares.use('/api/auth/login', (req, res) => {
@@ -596,6 +671,17 @@ function strixBackendPlugin() {
               return;
             }
 
+            // Anti-brute force check
+            const rateKey = getRateLimitKey(req, trimmedInput);
+            if (isLoginRateLimited(rateKey)) {
+              res.setHeader('Content-Type', 'application/json');
+              res.statusCode = 429;
+              return res.end(JSON.stringify({
+                success: false,
+                error: 'Too many failed login attempts. Account temporarily locked for 15 minutes for security.'
+              }));
+            }
+
             loadEnvVariables();
 
             // 1. Dynamic Authentication against Supabase vapt_users table
@@ -616,16 +702,19 @@ function strixBackendPlugin() {
                 userFoundInDb = true;
                 const row = supaUsers[0];
                 console.log(`[AUTH SUPABASE] User record found for "${row.username}" in Supabase vapt_users table. Checking password...`);
-                const valid = (row.password === trimmedPass) || 
-                              (row.password && row.password.toLowerCase() === trimmedPass.toLowerCase()) ||
-                              (row.alt_password && (row.alt_password === trimmedPass || row.alt_password.toLowerCase() === trimmedPass.toLowerCase())) ||
-                              (row.altPassword && (row.altPassword === trimmedPass || row.altPassword.toLowerCase() === trimmedPass.toLowerCase()));
+                const valid = verifyPassword(trimmedPass, row.password) || 
+                              verifyPassword(trimmedPass, row.alt_password) ||
+                              verifyPassword(trimmedPass, row.altPassword);
                 if (valid) {
                   console.log(`[AUTH SUCCESS] Password verified for "${row.username}" against Supabase vapt_users table.`);
                   matched = formatUserFromSupabase(row);
                   const nowStr = new Date().toISOString().replace('T', ' ').slice(0, 19);
                   try {
-                    await supabase.from('vapt_users').update({ is_online: true, last_login: nowStr }).eq('id', row.id);
+                    const supaUpdate = { is_online: true, last_login: nowStr };
+                    if (row.password && !row.password.startsWith('pbkdf2$')) {
+                      supaUpdate.password = hashPassword(trimmedPass);
+                    }
+                    await supabase.from('vapt_users').update(supaUpdate).eq('id', row.id);
                   } catch (_) {}
                 } else {
                   supabaseMismatch = true;
@@ -638,7 +727,7 @@ function strixBackendPlugin() {
               console.warn('[AUTH ERROR] Supabase check error:', err.message);
             }
 
-            // 2. Dynamic fallback to local store if Supabase is offline
+            // 2. Dynamic fallback to local store if Supabase is offline or user not found
             if (!matched && !userFoundInDb) {
               const rawUsers = getGlobalUsersRaw();
               matched = rawUsers.find(u => {
@@ -646,11 +735,18 @@ function strixBackendPlugin() {
                 const uEmail = (u.email || '').toLowerCase();
                 const matchesUsername = (uName === trimmedInput || uEmail === trimmedInput);
                 if (!matchesUsername) return false;
-                return u.password === trimmedPass || (u.password && u.password.toLowerCase() === trimmedPass.toLowerCase());
+                return verifyPassword(trimmedPass, u.password) || verifyPassword(trimmedPass, u.altPassword);
               });
+              if (matched) {
+                matched = { ...matched };
+                delete matched.password;
+                delete matched.altPassword;
+                delete matched.passwordHash;
+              }
             }
 
             if (!matched) {
+              recordFailedLogin(rateKey);
               res.setHeader('Content-Type', 'application/json');
               res.statusCode = 401;
               res.end(JSON.stringify({ success: false, error: 'Invalid username or password.' }));
@@ -663,6 +759,8 @@ function strixBackendPlugin() {
               res.end(JSON.stringify({ success: false, error: 'Access Denied: This account does not have administrator privileges. Please switch to User Login.' }));
               return;
             }
+
+            clearFailedLogin(rateKey);
 
             const sanitizedUser = { ...matched };
             delete sanitizedUser.password;
@@ -721,6 +819,122 @@ function strixBackendPlugin() {
         res.end(JSON.stringify({ success: true, users: getSanitizedUsers() }));
       });
 
+      server.middlewares.use('/api/users/create-user', (req, res) => {
+        const session = getAuthenticatedSession(req);
+        if (!session || session.role !== 'admin') {
+          res.setHeader('Content-Type', 'application/json');
+          res.statusCode = 403;
+          return res.end(JSON.stringify({ success: false, error: 'Access Denied: Administrator privilege required.' }));
+        }
+        if (req.method !== 'POST') {
+          res.statusCode = 405;
+          return res.end(JSON.stringify({ success: false, error: 'Method Not Allowed' }));
+        }
+        let body = '';
+        req.on('data', chunk => { body += chunk; });
+        req.on('end', () => {
+          try {
+            const userData = JSON.parse(body || '{}');
+            const cleanUsername = (userData.username || '').toLowerCase().trim();
+            if (!cleanUsername) {
+              res.setHeader('Content-Type', 'application/json');
+              res.statusCode = 400;
+              return res.end(JSON.stringify({ success: false, error: 'Username is required.' }));
+            }
+            if (!userData.password || !userData.password.trim()) {
+              res.setHeader('Content-Type', 'application/json');
+              res.statusCode = 400;
+              return res.end(JSON.stringify({ success: false, error: 'Password is required.' }));
+            }
+            const existing = getGlobalUsersRaw();
+            if (existing.some(u => u.username?.toLowerCase() === cleanUsername)) {
+              res.setHeader('Content-Type', 'application/json');
+              res.statusCode = 400;
+              return res.end(JSON.stringify({ success: false, error: `User "${cleanUsername}" already exists.` }));
+            }
+            const newUser = {
+              id: `user-${Date.now()}`,
+              username: cleanUsername,
+              email: userData.email || `${cleanUsername}@sennovate.com`,
+              password: hashPassword(userData.password.trim()),
+              name: userData.name || userData.username,
+              role: userData.role || 'user',
+              title: userData.title || (userData.role === 'admin' ? 'Administrator' : 'Security Analyst'),
+              avatar: userData.avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${cleanUsername}`,
+              createdAt: new Date().toISOString().replace('T', ' ').slice(0, 19),
+              lastLogin: 'Never',
+              isOnline: false,
+              scansCount: 0,
+              permissions: userData.permissions || {
+                run_scans: true,
+                view_findings: true,
+                attack_graph: true,
+                ai_assistant: true,
+                export_reports: true,
+                view_tokens: false,
+                view_terminal: false,
+                manage_settings: false,
+                manage_users: false,
+                load_custom_folder: false
+              }
+            };
+            existing.push(newUser);
+            fs.writeFileSync(USERS_STORE_FILE, JSON.stringify(existing, null, 2), 'utf-8');
+            try {
+              const payload = formatUserForSupabase(newUser);
+              supabase.from('vapt_users').upsert([payload], { onConflict: 'username' }).then(() => {}, () => {});
+            } catch (_) {}
+            res.setHeader('Access-Control-Allow-Origin', '*');
+            res.setHeader('Content-Type', 'application/json');
+            res.statusCode = 200;
+            res.end(JSON.stringify({ success: true, users: getSanitizedUsers() }));
+          } catch (e) {
+            res.setHeader('Content-Type', 'application/json');
+            res.statusCode = 400;
+            res.end(JSON.stringify({ success: false, error: e.message }));
+          }
+        });
+      });
+
+      server.middlewares.use('/api/users/delete-user', (req, res) => {
+        const session = getAuthenticatedSession(req);
+        if (!session || session.role !== 'admin') {
+          res.setHeader('Content-Type', 'application/json');
+          res.statusCode = 403;
+          return res.end(JSON.stringify({ success: false, error: 'Access Denied: Administrator privilege required.' }));
+        }
+        if (req.method !== 'POST') {
+          res.statusCode = 405;
+          return res.end(JSON.stringify({ success: false, error: 'Method Not Allowed' }));
+        }
+        let body = '';
+        req.on('data', chunk => { body += chunk; });
+        req.on('end', () => {
+          try {
+            const { userId } = JSON.parse(body || '{}');
+            if (!userId || userId === 'admin') {
+              res.setHeader('Content-Type', 'application/json');
+              res.statusCode = 400;
+              return res.end(JSON.stringify({ success: false, error: 'Cannot delete primary root administrator account.' }));
+            }
+            const existing = getGlobalUsersRaw();
+            const filtered = existing.filter(u => u.id !== userId && u.username !== userId);
+            fs.writeFileSync(USERS_STORE_FILE, JSON.stringify(filtered, null, 2), 'utf-8');
+            try {
+              supabase.from('vapt_users').delete().or(`id.eq.${userId},username.eq.${userId}`).then(() => {}, () => {});
+            } catch (_) {}
+            res.setHeader('Access-Control-Allow-Origin', '*');
+            res.setHeader('Content-Type', 'application/json');
+            res.statusCode = 200;
+            res.end(JSON.stringify({ success: true, users: getSanitizedUsers() }));
+          } catch (e) {
+            res.setHeader('Content-Type', 'application/json');
+            res.statusCode = 400;
+            res.end(JSON.stringify({ success: false, error: e.message }));
+          }
+        });
+      });
+
       server.middlewares.use('/api/users/save-users', (req, res) => {
         const session = getAuthenticatedSession(req);
         if (!session || session.role !== 'admin') {
@@ -755,7 +969,7 @@ function strixBackendPlugin() {
         });
       });
 
-      // 3.6 Full System Backup & Restore Routes (Admin-Only & Passwords Stripped)
+      // 3.6 Full System Backup & Restore Routes (Admin-Only & Secrets Stripped)
       server.middlewares.use('/api/system/export-backup', (req, res) => {
         const session = getAuthenticatedSession(req);
         if (!session || session.role !== 'admin') {
@@ -767,7 +981,7 @@ function strixBackendPlugin() {
           version: '1.0.0',
           exportedAt: new Date().toISOString(),
           serverConfig: getSanitizedServerConfig(),
-          llmConfig: getGlobalLlmConfig(),
+          llmConfig: getSanitizedLlmConfig(),
           users: getSanitizedUsers(),
           scans: getServerScanHistory()
         };
@@ -807,13 +1021,13 @@ function strixBackendPlugin() {
         });
       });
 
-      // 4. Test SSH Connection
+      // 4. Test SSH Connection (Admin Only)
       server.middlewares.use('/api/strix/test-ssh', async (req, res) => {
         const session = getAuthenticatedSession(req);
-        if (!session) {
+        if (!session || session.role !== 'admin') {
           res.setHeader('Content-Type', 'application/json');
-          res.statusCode = 401;
-          return res.end(JSON.stringify({ success: false, error: 'Unauthorized: Valid session required.' }));
+          res.statusCode = 403;
+          return res.end(JSON.stringify({ success: false, error: 'Access Denied: Administrator privilege required.' }));
         }
         if (req.method !== 'POST') {
           res.statusCode = 405;
@@ -1202,13 +1416,13 @@ function strixBackendPlugin() {
         });
       });
 
-      // 13. Test n8n Fetch Webhook diagnostic connectivity
+      // 13. Test n8n Fetch Webhook diagnostic connectivity (Admin Only)
       server.middlewares.use('/api/strix/test-n8n-fetch', async (req, res) => {
         const session = getAuthenticatedSession(req);
-        if (!session) {
+        if (!session || session.role !== 'admin') {
           res.setHeader('Content-Type', 'application/json');
-          res.statusCode = 401;
-          return res.end(JSON.stringify({ success: false, error: 'Unauthorized: Valid session required.' }));
+          res.statusCode = 403;
+          return res.end(JSON.stringify({ success: false, error: 'Access Denied: Administrator privilege required.' }));
         }
         if (req.method !== 'POST') {
           res.statusCode = 405;
@@ -1222,7 +1436,7 @@ function strixBackendPlugin() {
             const payload = JSON.parse(body || '{}');
             const result = await testN8nFetchWebhookProxy(payload);
             res.setHeader('Content-Type', 'application/json');
-            res.statusCode = 200;
+            res.statusCode = result.status || (result.success !== false ? 200 : 400);
             res.end(JSON.stringify(result));
           } catch (err) {
             res.setHeader('Content-Type', 'application/json');
