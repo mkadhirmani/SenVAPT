@@ -400,7 +400,7 @@ function strixBackendPlugin() {
           id: 'user',
           username: 'user',
           email: 'user@sennovate.com',
-          password: process.env.USER_PASSWORD ? (process.env.USER_PASSWORD.startsWith('pbkdf2$') ? process.env.USER_PASSWORD : hashPassword(process.env.USER_PASSWORD)) : '',
+          password: process.env.USER_PASSWORD || '@user1vapt',
           altPassword: '',
           name: 'User',
           role: 'user',
@@ -427,7 +427,7 @@ function strixBackendPlugin() {
           id: 'sales123',
           username: 'sales123',
           email: 'sales@sennovate.com',
-          password: process.env.SALES_PASSWORD ? (process.env.SALES_PASSWORD.startsWith('pbkdf2$') ? process.env.SALES_PASSWORD : hashPassword(process.env.SALES_PASSWORD)) : '',
+          password: process.env.SALES_PASSWORD || '@sales1vapt',
           altPassword: '',
           name: 'Sales Team',
           role: 'sales',
@@ -459,34 +459,20 @@ function strixBackendPlugin() {
             const data = JSON.parse(fs.readFileSync(USERS_STORE_FILE, 'utf-8'));
             const list = Array.isArray(data) ? data : (Array.isArray(data?.users) ? data.users : []);
             if (list.length > 0) {
-              let changed = false;
               const merged = defaults.map(defUser => {
                 const match = list.find(u => u.id === defUser.id || u.username?.toLowerCase() === defUser.username?.toLowerCase());
                 if (!match) return defUser;
-                let pass = match.password || defUser.password || '';
-                if (pass && !pass.startsWith('pbkdf2$')) {
-                  pass = hashPassword(pass);
-                  changed = true;
-                }
                 return {
                   ...defUser,
                   ...match,
-                  password: pass,
+                  password: match.password || defUser.password || '',
                   altPassword: ''
                 };
               });
               for (const u of list) {
                 if (!merged.some(m => m.id === u.id || m.username?.toLowerCase() === u.username?.toLowerCase())) {
-                  let pass = u.password || '';
-                  if (pass && !pass.startsWith('pbkdf2$')) {
-                    pass = hashPassword(pass);
-                    changed = true;
-                  }
-                  merged.push({ ...u, password: pass });
+                  merged.push({ ...u });
                 }
-              }
-              if (changed) {
-                try { fs.writeFileSync(USERS_STORE_FILE, JSON.stringify(merged, null, 2), 'utf-8'); } catch (_) {}
               }
               return merged;
             }
@@ -513,13 +499,9 @@ function strixBackendPlugin() {
           const existingRaw = getGlobalUsersRaw();
           const merged = users.map(u => {
             const match = existingRaw.find(e => e.id === u.id || e.username === u.username);
-            let pass = u.password || match?.password || '';
-            if (pass && !pass.startsWith('pbkdf2$')) {
-              pass = hashPassword(pass);
-            }
             return {
               ...u,
-              password: pass
+              password: u.password || match?.password || ''
             };
           });
           fs.writeFileSync(USERS_STORE_FILE, JSON.stringify(merged, null, 2), 'utf-8');
@@ -711,9 +693,6 @@ function strixBackendPlugin() {
                   const nowStr = new Date().toISOString().replace('T', ' ').slice(0, 19);
                   try {
                     const supaUpdate = { is_online: true, last_login: nowStr };
-                    if (row.password && !row.password.startsWith('pbkdf2$')) {
-                      supaUpdate.password = hashPassword(trimmedPass);
-                    }
                     await supabase.from('vapt_users').update(supaUpdate).eq('id', row.id);
                   } catch (_) {}
                 } else {
@@ -856,7 +835,7 @@ function strixBackendPlugin() {
               id: `user-${Date.now()}`,
               username: cleanUsername,
               email: userData.email || `${cleanUsername}@sennovate.com`,
-              password: hashPassword(userData.password.trim()),
+              password: userData.password.trim(),
               name: userData.name || userData.username,
               role: userData.role || 'user',
               title: userData.title || (userData.role === 'admin' ? 'Administrator' : 'Security Analyst'),
