@@ -20,6 +20,23 @@ export async function exportReportToPdf(elementId = 'vapt-pdf-report-root', file
     const originalScrollY = window.scrollY;
     window.scrollTo(0, 0);
 
+    // Ensure all web fonts and images are loaded before rasterization
+    if (document.fonts && document.fonts.ready) {
+      await document.fonts.ready;
+    }
+
+    // Ensure all report images are completely loaded
+    const images = Array.from(root.querySelectorAll('img'));
+    await Promise.all(
+      images.map(img => {
+        if (img.complete) return Promise.resolve();
+        return new Promise(resolve => {
+          img.onload = resolve;
+          img.onerror = resolve;
+        });
+      })
+    );
+
     const pdf = new jsPDF({
       orientation: 'portrait',
       unit: 'mm',
