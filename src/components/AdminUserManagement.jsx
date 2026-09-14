@@ -57,6 +57,22 @@ export default function AdminUserManagement({
   const [isAddUserOpen, setIsAddUserOpen] = useState(false);
   const [showNewUserPassword, setShowNewUserPassword] = useState(true);
   const [statusMessage, setStatusMessage] = useState(null);
+  const [isRefreshingUsers, setIsRefreshingUsers] = useState(false);
+
+  const handleRefreshUsers = async () => {
+    setIsRefreshingUsers(true);
+    try {
+      const res = await fetchGlobalUsersList();
+      if (Array.isArray(res) && res.length > 0) {
+        setUsers(res);
+        showFeedback(`Refreshed ${res.length} users from Supabase!`);
+      }
+    } catch (e) {
+      showFeedback('Failed to refresh users list');
+    } finally {
+      setIsRefreshingUsers(false);
+    }
+  };
 
   React.useEffect(() => {
     fetchGlobalUsersList().then(res => {
@@ -66,14 +82,14 @@ export default function AdminUserManagement({
     }).catch(() => {});
 
     const handleUpdate = (e) => {
-      if (e?.detail && Array.isArray(e.detail)) {
+      if (e?.detail && Array.isArray(e.detail) && e.detail.length > 0) {
         setUsers(e.detail);
       } else {
         setUsers(getUsersList());
       }
     };
     const handleStorage = (e) => {
-      if (e.key === 'sennovate_users_list') {
+      if (e.key === 'sennovate_vapt_users' || e.key === 'sennovate_users_list') {
         setUsers(getUsersList());
       }
     };
@@ -271,6 +287,20 @@ export default function AdminUserManagement({
               }}
             />
           </label>
+
+          <button
+            onClick={handleRefreshUsers}
+            disabled={isRefreshingUsers}
+            className={`flex items-center justify-center gap-1.5 px-3.5 h-10 rounded-xl border text-xs font-mono font-bold transition-all cursor-pointer ${
+              theme === 'dark' 
+                ? 'bg-[#001127] hover:bg-[#002B66] text-slate-300 border-[#002B66]' 
+                : 'bg-slate-100 hover:bg-slate-200 text-slate-800 border-slate-300'
+            }`}
+            title="Sync user list with live Supabase database"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 text-[#006FE3] ${isRefreshingUsers ? 'animate-spin' : ''}`} />
+            <span className="font-heading">{isRefreshingUsers ? 'Syncing...' : 'Sync Users'}</span>
+          </button>
 
           <button
             onClick={() => setIsAddUserOpen(true)}

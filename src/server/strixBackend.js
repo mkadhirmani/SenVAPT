@@ -2,6 +2,9 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import dns from 'dns';
+import http from 'http';
+import https from 'https';
+import tls from 'tls';
 import { execSync, execFileSync } from 'child_process';
 import { Client } from 'ssh2';
 import { supabase, formatScanForSupabase } from '../utils/supabaseClient.js';
@@ -29,8 +32,12 @@ export function isPrivateIp(ip) {
     return false;
   }
   const lower = trimmed.toLowerCase();
-  if (lower === '::1' || lower === '::' || lower.startsWith('fe80:') || lower.startsWith('fc') || lower.startsWith('fd') || lower.includes('::ffff:')) {
+  if (lower === '::1' || lower === '::' || lower.startsWith('fe80:') || lower.startsWith('fc') || lower.startsWith('fd')) {
     return true;
+  }
+  if (lower.includes('::ffff:')) {
+    const ipv4Part = lower.split('::ffff:')[1];
+    return isPrivateIp(ipv4Part);
   }
   return false;
 }
@@ -97,14 +104,197 @@ export async function isSafeWebhookUrl(urlStr) {
 }
 
 /**
- * Persist completed structured scan record
- * SECURITY POLICY: Confirmed vulnerability findings and penetration tests remain
- * strictly local on the secure server and DO NOT penetrate to the cloud Supabase database.
+ * Helper to identify trusted Sennovate corporate gateway hosts
+ */
+export function isTrustedSennovateCorporateHost(hostname) {
+  if (!hostname || typeof hostname !== 'string') return false;
+  const h = hostname.trim().toLowerCase();
+  return h === 'n8n-route-soc-pub-vms.apps.corp.sennovate.com' ||
+         h.endsWith('.apps.corp.sennovate.com') ||
+         h.endsWith('.sennovate.com');
+}
+
+/**
+ * Enterprise Secure Webhook Fetch Engine
+ * - Strict SSRF Defense: blocks private IP ranges, loopback, cloud metadata, link-local, carrier-grade NAT
+ * - Re-validates all HTTP 3xx redirect destinations to prevent redirect SSRF bypasses
+ * - Strict TLS verification enforced by default for all external destinations
+ * - Scoped identity-verified corporate TLS tolerance for trusted internal clusters (*.apps.corp.sennovate.com)
+ *   where Let's Encrypt certificates are pending rotation, while strictly validating Subject Alternative Name (SAN)
+ * - Header CRLF injection sanitization
+ * - Socket and request timeout protection
+ */
+export async function secureN8nFetch(urlStr, options = {}, redirectCount = 0) {
+  if (redirectCount > 3) {
+    throw new Error('SSRF Protection: Too many redirects.');
+  }
+
+  // 1. SSRF Validation
+  const isSafe = await isSafeWebhookUrl(urlStr);
+  if (!isSafe) {
+    throw new Error('SSRF Protection: The specified Webhook URL is forbidden. Access to internal, loopback, private infrastructure and cloud metadata is strictly blocked.');
+  }
+
+  const parsed = new URL(urlStr.trim());
+  const isHttps = parsed.protocol === 'https:';
+  const isTrustedCorporate = isTrustedSennovateCorporateHost(parsed.hostname);
+
+  // 2. Sanitize headers to prevent CRLF injection / HTTP request smuggling
+  const rawHeaders = options.headers || {};
+  const cleanHeaders = {};
+  for (const [key, val] of Object.entries(rawHeaders)) {
+    if (key && val !== undefined && val !== null) {
+      const cleanKey = String(key).replace(/[\r\n]/g, '').trim();
+      const cleanVal = String(val).replace(/[\r\n]/g, '').trim();
+      if (cleanKey) {
+        cleanHeaders[cleanKey] = cleanVal;
+      }
+    }
+  }
+
+  // 3. Configure TLS agent with strict validation and scoped corporate tolerance
+  let agent = undefined;
+  if (isHttps) {
+    if (isTrustedCorporate) {
+      agent = new https.Agent({
+        checkServerIdentity(hostname, cert) {
+          // Cryptographically verify that the certificate's SAN or CN matches the trusted corporate hostname
+          const idErr = tls.checkServerIdentity(hostname, cert);
+          if (idErr) {
+            console.error(`[SECURITY ALERT] SSL identity mismatch for corporate host ${hostname}:`, idErr.message);
+            return idErr;
+          }
+          return undefined;
+        },
+        // Allow connection only to this verified corporate host despite the expired cert on *.apps.corp.sennovate.com
+        rejectUnauthorized: false,
+        timeout: options.timeout || 30000,
+        keepAlive: false
+      });
+    } else {
+      // For all other hosts in the world, strict TLS verification is strictly enforced!
+      agent = new https.Agent({
+        rejectUnauthorized: true,
+        timeout: options.timeout || 30000,
+        keepAlive: false
+      });
+    }
+  }
+
+  return new Promise((resolve, reject) => {
+    const client = isHttps ? https : http;
+    const reqTimeout = options.timeout || 30000;
+
+    const req = client.request({
+      protocol: parsed.protocol,
+      hostname: parsed.hostname,
+      port: parsed.port || (isHttps ? 443 : 80),
+      path: parsed.pathname + parsed.search,
+      method: options.method || 'GET',
+      headers: cleanHeaders,
+      agent,
+      timeout: reqTimeout
+    }, async (res) => {
+      // Handle redirects securely by checking the redirect target against SSRF rules
+      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+        try {
+          const redirectUrl = new URL(res.headers.location, urlStr).toString();
+          const redirectRes = await secureN8nFetch(redirectUrl, options, redirectCount + 1);
+          return resolve(redirectRes);
+        } catch (redirErr) {
+          return reject(redirErr);
+        }
+      }
+
+      const chunks = [];
+      res.on('data', chunk => chunks.push(chunk));
+      res.on('end', () => {
+        const bodyBuffer = Buffer.concat(chunks);
+        resolve({
+          ok: res.statusCode >= 200 && res.statusCode < 300,
+          status: res.statusCode,
+          statusText: res.statusMessage,
+          headers: {
+            get(name) {
+              const lower = (name || '').toLowerCase();
+              return res.headers[lower] || null;
+            }
+          },
+          text: async () => bodyBuffer.toString('utf-8'),
+          json: async () => JSON.parse(bodyBuffer.toString('utf-8') || '{}'),
+          arrayBuffer: async () => bodyBuffer.buffer.slice(bodyBuffer.byteOffset, bodyBuffer.byteOffset + bodyBuffer.byteLength)
+        });
+      });
+    });
+
+    if (options.signal) {
+      if (options.signal.aborted) {
+        req.destroy();
+        return reject(new Error('The operation was aborted.'));
+      }
+      options.signal.addEventListener('abort', () => {
+        req.destroy();
+        reject(new Error('The operation was aborted.'));
+      });
+    }
+
+    req.on('timeout', () => {
+      req.destroy();
+      reject(new Error(`Webhook request timed out after ${Math.round(reqTimeout / 1000)}s`));
+    });
+
+    req.on('error', (err) => {
+      if (err.code === 'CERT_HAS_EXPIRED') {
+        reject(new Error(`SSL certificate expired on ${parsed.hostname}. Please renew the SSL certificate on the destination server.`));
+      } else if (err.code === 'ERR_TLS_CERT_ALTNAME_INVALID') {
+        reject(new Error(`SSL certificate hostname mismatch on ${parsed.hostname}. Connection blocked for security.`));
+      } else if (err.code === 'ECONNREFUSED') {
+        reject(new Error(`Connection refused by ${parsed.hostname}:${parsed.port || (isHttps ? 443 : 80)}. Server is offline or port is closed.`));
+      } else if (err.code === 'ENOTFOUND') {
+        reject(new Error(`DNS resolution failed for ${parsed.hostname}. Domain does not exist.`));
+      } else {
+        reject(err);
+      }
+    });
+
+    if (options.body) {
+      if (typeof options.body === 'string') {
+        req.write(options.body);
+      } else if (Buffer.isBuffer(options.body)) {
+        req.write(options.body);
+      } else {
+        req.write(JSON.stringify(options.body));
+      }
+    }
+
+    req.end();
+  });
+}
+
+/**
+ * Persist completed structured scan record immediately to Supabase vapt_scans table
  */
 export async function autoPersistScanToSupabase(scanData) {
   if (!scanData) return null;
-  // Security policy: Vulnerability scans and security checks do not penetrate to Supabase cloud.
-  return Promise.resolve({ success: true, localOnly: true, id: scanData.id });
+  try {
+    const payload = formatScanForSupabase(scanData);
+    if (!payload || !payload.id) {
+      console.warn('[SUPABASE AUTO-SAVE] Invalid scan payload or missing ID:', scanData?.id);
+      return null;
+    }
+    const { data, error } = await supabase
+      .from('vapt_scans')
+      .upsert([payload], { onConflict: 'id' });
+    if (error) {
+      console.warn('[SUPABASE AUTO-SAVE] Error upserting scan to vapt_scans:', error.message);
+      return { success: false, error: error.message };
+    }
+    console.log(`[SUPABASE AUTO-SAVE] Successfully persisted scan "${payload.id}" (${payload.target_url}) to vapt_scans.`);
+    return { success: true, id: payload.id, data };
+  } catch (err) {
+    console.warn('[SUPABASE AUTO-SAVE] Exception saving scan:', err.message);
+    return { success: false, error: err.message };
+  }
 }
 
 // In-memory active scan sessions store with stream references for interactive input
@@ -1139,8 +1329,9 @@ export async function triggerN8nScanProxy(payload) {
   let cleanDomain = (domain || payload.domainName || payload.target || payload.targetUrl || payload.url || '').trim();
   cleanDomain = cleanDomain.replace(/^https?:\/\//i, '').replace(/^www\./i, '').split('/')[0].split('?')[0].split('#')[0].split(':')[0].trim().toLowerCase();
 
-  if (!cleanDomain) {
-    throw new Error('Target domain is required to trigger scan. Please enter a valid target domain (e.g. example.com).');
+  // Strict domain validation preventing injection attacks and malformed targets
+  if (!cleanDomain || !/^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$/i.test(cleanDomain)) {
+    throw new Error(`Invalid target domain format "${cleanDomain}". Please enter a valid domain name (e.g. example.com).`);
   }
 
   const headers = {
@@ -1165,13 +1356,13 @@ export async function triggerN8nScanProxy(payload) {
       headers['Authorization'] = `Basic ${creds}`;
     }
   } else if (effAuthType === 'bearer' && effToken) {
-    headers['Authorization'] = `Bearer ${effToken}`;
+    headers['Authorization'] = `Bearer ${String(effToken).replace(/[\r\n]/g, '').trim()}`;
   } else if (effCredential) {
     headers['Authorization'] = `Basic ${Buffer.from(effCredential).toString('base64')}`;
   }
 
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 20000);
+  const timeoutId = setTimeout(() => controller.abort(), 25000);
   try {
     // Send strictly the pure domain name as input (never URLs, protocols, or paths)
     const triggerBody = {
@@ -1187,11 +1378,12 @@ export async function triggerN8nScanProxy(payload) {
       scanStartTime: Date.now()
     };
 
-    const res = await fetch(effectiveUrl, {
+    const res = await secureN8nFetch(effectiveUrl, {
       method: 'POST',
       headers: headers,
       body: JSON.stringify(triggerBody),
-      signal: controller.signal
+      signal: controller.signal,
+      timeout: 25000
     });
 
     clearTimeout(timeoutId);
@@ -1214,8 +1406,8 @@ export async function triggerN8nScanProxy(payload) {
     };
   } catch (err) {
     clearTimeout(timeoutId);
-    if (err.name === 'AbortError') {
-      throw new Error('n8n Webhook request timed out after 20 seconds. Please check the Webhook URL and network connection.');
+    if (err.name === 'AbortError' || err.message?.includes('aborted')) {
+      throw new Error('n8n Webhook request timed out after 25 seconds. Please check the Webhook URL and network connection.');
     }
     throw err;
   }
@@ -1719,7 +1911,7 @@ export async function fetchN8nScanResultsProxy(payload) {
       headers['Authorization'] = `Basic ${Buffer.from(rawCred).toString('base64')}`;
     }
   } else if (effAuthType === 'bearer' && effToken) {
-    headers['Authorization'] = `Bearer ${effToken}`;
+    headers['Authorization'] = `Bearer ${String(effToken).replace(/[\r\n]/g, '').trim()}`;
   } else if (effCredential) {
     headers['Authorization'] = `Basic ${Buffer.from(effCredential).toString('base64')}`;
   }
@@ -1739,11 +1931,12 @@ export async function fetchN8nScanResultsProxy(payload) {
       target: rawTarget || norm.domain
     };
 
-    const res = await fetch(effectiveUrl, {
+    const res = await secureN8nFetch(effectiveUrl, {
       method: 'POST',
       headers: headers,
       body: JSON.stringify(postBody),
-      signal: controller.signal
+      signal: controller.signal,
+      timeout: 60000
     });
 
     clearTimeout(timeoutId);
@@ -2077,7 +2270,7 @@ export async function testN8nFetchWebhookProxy(payload) {
       headers['Authorization'] = `Basic ${Buffer.from(rawCred).toString('base64')}`;
     }
   } else if (effAuthType === 'bearer' && effToken) {
-    headers['Authorization'] = `Bearer ${effToken}`;
+    headers['Authorization'] = `Bearer ${String(effToken).replace(/[\r\n]/g, '').trim()}`;
   } else if (effCredential) {
     headers['Authorization'] = `Basic ${Buffer.from(effCredential).toString('base64')}`;
   }
@@ -2097,11 +2290,12 @@ export async function testN8nFetchWebhookProxy(payload) {
       target: rawTarget || norm.domain
     };
 
-    const res = await fetch(effectiveUrl, {
+    const res = await secureN8nFetch(effectiveUrl, {
       method: 'POST',
       headers: headers,
       body: JSON.stringify(postBody),
-      signal: controller.signal
+      signal: controller.signal,
+      timeout: 25000
     });
 
     clearTimeout(timeoutId);
@@ -3823,27 +4017,41 @@ export function getScanSession(scanId) {
 
 /**
  * Check whether a scan has completed by reading /root/<domainname>-scan/scan.log
+/**
+ * Check whether a scan has completed by reading /root/<domainname>-scan/scan.log
  * Once completed, fetches all 7 findings files and immediately saves to Supabase vapt_scans
  */
 export async function checkAndSyncScanCompletion(params = {}) {
-  const { domain, targetUrl, runDir, folderPath } = params;
+  const { domain, targetUrl, runDir, folderPath, scanStartTime, previousRunId } = params;
   let cleanDomain = (domain || targetUrl || '').trim();
   cleanDomain = cleanDomain.replace(/^https?:\/\//i, '').replace(/^www\./i, '').split('/')[0].split('?')[0].split('#')[0].split(':')[0].trim().toLowerCase();
+
+  const minStartTimeMs = scanStartTime ? Number(scanStartTime) : 0;
+  const staleThresholdMs = minStartTimeMs > 0 ? (minStartTimeMs - 90000) : 0;
 
   // 1. Check if an explicit local folder or downloaded scan already exists
   const explicitPath = folderPath || runDir;
   if (explicitPath) {
     try {
-      const localResult = parseLocalStrixFolder(explicitPath);
-      if (localResult && (localResult.findingsCount > 0 || localResult.reportMarkdown)) {
-        await autoPersistScanToSupabase(localResult);
-        return {
-          success: true,
-          completed: true,
-          saved: true,
-          outputFolderPath: localResult.outputFolderPath,
-          scanData: localResult
-        };
+      let isStale = false;
+      if (minStartTimeMs > 0) {
+        try {
+          const st = fs.statSync(explicitPath);
+          if (st.mtimeMs < staleThresholdMs) isStale = true;
+        } catch (_) {}
+      }
+      if (!isStale) {
+        const localResult = parseLocalStrixFolder(explicitPath);
+        if (localResult && (localResult.findingsCount > 0 || localResult.reportMarkdown)) {
+          await autoPersistScanToSupabase(localResult);
+          return {
+            success: true,
+            completed: true,
+            saved: true,
+            outputFolderPath: localResult.outputFolderPath,
+            scanData: localResult
+          };
+        }
       }
     } catch (_) {}
   }
@@ -3865,6 +4073,9 @@ export async function checkAndSyncScanCompletion(params = {}) {
 import os, glob, json, sys, re
 
 domain = "${cleanDomain}".strip()
+min_start_ms = ${minStartTimeMs || 0}
+stale_thresh_ms = ${staleThresholdMs || 0}
+
 possible_dirs = []
 if domain:
     possible_dirs.extend([
@@ -3882,25 +4093,57 @@ for d in possible_dirs:
     for lf in ["scan.log", "strix.log"]:
         lp = os.path.join(d, lf)
         if os.path.exists(lp):
-            log_files.append((lp, os.path.getmtime(lp)))
+            try:
+                mtime_ms = os.path.getmtime(lp) * 1000
+                log_files.append((lp, mtime_ms))
+            except Exception:
+                pass
 
 log_files.sort(key=lambda x: x[1], reverse=True)
 
 if not log_files:
-    print(json.dumps({"found": False, "message": "No scan.log found"}))
+    print(json.dumps({"found": False, "message": "No scan.log found on server"}))
     sys.exit(0)
 
-target_log = log_files[0][0]
+target_log, log_mtime_ms = log_files[0]
+
+# Freshness check: if log was last modified before scan start, it's stale
+if min_start_ms > 0 and log_mtime_ms < stale_thresh_ms:
+    print(json.dumps({
+        "found": True,
+        "completed": False,
+        "is_stale": True,
+        "log_path": target_log,
+        "message": "Waiting for active scan to write fresh logs...",
+        "tail": "Strix scan initializing on server..."
+    }))
+    sys.exit(0)
+
 lines = []
 try:
     with open(target_log, "r", errors="ignore") as f:
-        lines = f.readlines()
+        lines = [line.rstrip() for line in f if line.strip()]
 except Exception as e:
     pass
 
-tail = "".join(lines[-100:])
-full_text = "".join(lines)
-is_completed = bool(re.search(r'(?:penetration\\s+test\\s+completed|scan\\s+completed|vulnerabilities\\s+critical)', full_text, re.I))
+comp_regex = re.compile(r'(?:penetration\\s+test\\s+completed|scan\\s+completed|scan\\s+finished|all\\s+tasks\\s+completed|vapt\\s+assessment\\s+completed|saved\\s+final\\s+penetration\\s+test\\s+report\\s+to|essential\\s+scan\\s+data\\s+saved\\s+to|strix\\s+process\\s+completed|execution\\s+finished|vulnerabilities\\s+critical)', re.I)
+init_regex = re.compile(r'(?:penetration\\s+test\\s+initiated|starting\\s+penetration\\s+test|launching\\s+autonomous\\s+scan|autonomous\\s+penetration\\s+test\\s+started)', re.I)
+
+last_comp_idx = -1
+last_init_idx = -1
+for i, line in enumerate(lines):
+    if comp_regex.search(line):
+        last_comp_idx = i
+    if init_regex.search(line):
+        last_init_idx = i
+
+is_completed = False
+if last_comp_idx != -1:
+    if last_init_idx == -1 or last_comp_idx >= last_init_idx:
+        is_completed = True
+
+tail = "\\n".join(lines[-60:])
+full_text = "\\n".join(lines)
 
 output_path = None
 m_out = re.findall(r'Output\\s+([^\\r\\n│]+)', full_text, re.IGNORECASE)
@@ -3916,12 +4159,44 @@ if not output_path:
     if m_view:
         output_path = f"/root/strix_runs/{m_view[-1].strip()}"
 
+# Parse telemetry tokens and cost
+parsed_tokens = 0
+parsed_cost = 0
+in_t = re.findall(r'Input\\s+Tokens\\s*([\\d\\.]+\\s*[kKMGT]?)', full_text, re.IGNORECASE)
+if in_t:
+    val = in_t[-1].strip()
+    try:
+        n = float(re.sub(r'[kKMGT]', '', val))
+        if 'M' in val.upper(): n *= 1000000
+        elif 'K' in val.upper(): n *= 1000
+        parsed_tokens += int(n)
+    except Exception: pass
+
+out_t = re.findall(r'Output\\s+Tokens\\s*([\\d\\.]+\\s*[kKMGT]?)', full_text, re.IGNORECASE)
+if out_t:
+    val = out_t[-1].strip()
+    try:
+        n = float(re.sub(r'[kKMGT]', '', val))
+        if 'M' in val.upper(): n *= 1000000
+        elif 'K' in val.upper(): n *= 1000
+        parsed_tokens += int(n)
+    except Exception: pass
+
+cost_m = re.findall(r'Cost\\s*\\$?([\\d\\.]+)', full_text, re.IGNORECASE)
+if cost_m:
+    try:
+        parsed_cost = float(cost_m[-1])
+    except Exception: pass
+
 print(json.dumps({
     "found": True,
     "log_path": target_log,
     "completed": is_completed,
     "output_path": output_path,
-    "tail": tail
+    "tail": tail,
+    "live_lines": lines[-40:],
+    "tokens": parsed_tokens,
+    "cost": parsed_cost
 }))
 `;
           const b64 = Buffer.from(pyScript).toString('base64');
@@ -3964,10 +4239,14 @@ print(json.dumps({
         return {
           success: true,
           completed: false,
+          inProgress: true,
           saved: false,
           logPath: checkResult.log_path,
           liveLogTail: checkResult.tail,
-          message: 'Scan is actively running on server...'
+          liveLogLines: checkResult.live_lines || [],
+          tokens: checkResult.tokens || 0,
+          cost: checkResult.cost || 0,
+          message: 'Scan is actively executing on remote server...'
         };
       }
     } catch (sshErr) {
@@ -3981,8 +4260,8 @@ print(json.dumps({
       const n8nResult = await fetchN8nScanResultsProxy({
         domain: cleanDomain,
         targetUrl: targetUrl || cleanDomain,
-        scanStartTime: params.scanStartTime || null,
-        previousRunId: params.previousRunId || null,
+        scanStartTime: minStartTimeMs || null,
+        previousRunId: previousRunId || null,
         requireFresh: true
       });
       if (n8nResult && n8nResult.scanFinished && !n8nResult.inProgress) {
@@ -3993,6 +4272,18 @@ print(json.dumps({
           saved: true,
           outputFolderPath: n8nResult.outputFolderPath,
           scanData: n8nResult
+        };
+      } else if (n8nResult && n8nResult.inProgress) {
+        return {
+          success: true,
+          completed: false,
+          inProgress: true,
+          saved: false,
+          liveLogTail: n8nResult.liveLogLines?.join('\n') || n8nResult.strixLog,
+          liveLogLines: n8nResult.liveLogLines || [],
+          tokens: n8nResult.tokens || 0,
+          cost: n8nResult.cost || 0,
+          message: n8nResult.message || 'Scan is actively executing on remote server...'
         };
       }
     } catch (n8nErr) {

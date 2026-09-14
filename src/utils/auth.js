@@ -211,7 +211,7 @@ export function getUsersList() {
     if (raw) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        list = parsed.filter(u => u && u.username !== 'user1' && u.username !== 'user2');
+        list = parsed.filter(u => u && u.username);
       }
     }
 
@@ -583,6 +583,15 @@ export async function createNewUser(userData) {
   } catch (err) {
     console.warn('Supabase direct user upsert note:', err.message);
   }
+
+  // 4. Fetch the full authoritative user list from Supabase/server to guarantee
+  // that all previous users and the newly created user are present together.
+  try {
+    const freshUsers = await fetchGlobalUsersList();
+    if (Array.isArray(freshUsers) && freshUsers.length > 0) {
+      updatedUsers = freshUsers;
+    }
+  } catch (_) {}
 
   try { window.dispatchEvent(new CustomEvent('sennovate_users_updated', { detail: updatedUsers })); } catch (_) {}
   return updatedUsers;

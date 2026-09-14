@@ -486,3 +486,24 @@ export async function uploadScanZipApi(file) {
     reader.readAsDataURL(file);
   });
 }
+
+/**
+ * Check whether a scan has completed by reading /root/<domainname>-scan/scan.log
+ * and streaming real-time status and output directory
+ */
+export async function checkScanLogStatus(params = {}) {
+  const res = await fetch('/api/strix/check-scan-log', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...getAuthHeaders()
+    },
+    body: JSON.stringify(params)
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || 'Failed to check scan log on server');
+  }
+  return data;
+}
+

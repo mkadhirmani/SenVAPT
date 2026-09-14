@@ -87,6 +87,60 @@ if (typeof globalThis.WebSocket === 'undefined' && typeof window === 'undefined'
   globalThis.WebSocket = UniversalWebSocketFallback;
 }
 
+// Reliable HTTPS fetch adapter for Node.js environments to prevent IPv6/undici connect timeouts
+function getNodeHttpsFetch() {
+  if (typeof window !== 'undefined' || typeof process === 'undefined' || !process.versions?.node) {
+    return null;
+  }
+  try {
+    const getReq = new Function('return typeof require !== "undefined" ? require : null');
+    const reqFn = getReq();
+    if (!reqFn) return null;
+    const https = reqFn('node:https');
+    return function (url, options = {}) {
+      return new Promise((resolve, reject) => {
+        const parsed = new URL(url);
+        const rawHeaders = options.headers || {};
+        const headers = (rawHeaders && typeof rawHeaders.entries === 'function')
+          ? Object.fromEntries(rawHeaders.entries())
+          : { ...rawHeaders };
+        const req = https.request({
+          protocol: parsed.protocol,
+          hostname: parsed.hostname,
+          port: parsed.port || 443,
+          path: parsed.pathname + parsed.search,
+          method: options.method || 'GET',
+          headers: headers,
+          timeout: 10000
+        }, (res) => {
+          const chunks = [];
+          res.on('data', chunk => chunks.push(chunk));
+          res.on('end', () => {
+            const bodyBuffer = Buffer.concat(chunks);
+            const response = {
+              ok: res.statusCode >= 200 && res.statusCode < 300,
+              status: res.statusCode,
+              statusText: res.statusMessage,
+              headers: new Headers(res.headers),
+              json: async () => JSON.parse(bodyBuffer.toString('utf-8') || '{}'),
+              text: async () => bodyBuffer.toString('utf-8')
+            };
+            resolve(response);
+          });
+        });
+        req.on('timeout', () => { req.destroy(); reject(new Error('HTTPS request timed out')); });
+        req.on('error', reject);
+        if (options.body) {
+          req.write(typeof options.body === 'string' ? options.body : JSON.stringify(options.body));
+        }
+        req.end();
+      });
+    };
+  } catch (_) {
+    return null;
+  }
+}
+
 // Dynamic Client Instance Manager
 let _activeClient = null;
 let _cachedUrl = '';
@@ -100,7 +154,7 @@ export function getSupabaseClient() {
   if (!_activeClient || _cachedUrl !== effectiveUrl || _cachedKey !== effectiveKey) {
     _cachedUrl = effectiveUrl;
     _cachedKey = effectiveKey;
-    _activeClient = createClient(effectiveUrl, effectiveKey, {
+    const clientOptions = {
       auth: {
         persistSession: true,
         autoRefreshToken: true,
@@ -111,7 +165,12 @@ export function getSupabaseClient() {
           eventsPerSecond: 10
         }
       }
-    });
+    };
+    const nodeFetch = getNodeHttpsFetch();
+    if (nodeFetch) {
+      clientOptions.global = { fetch: nodeFetch };
+    }
+    _activeClient = createClient(effectiveUrl, effectiveKey, clientOptions);
   }
   return _activeClient;
 }
@@ -221,15 +280,45 @@ export function formatScanForSupabase(scan) {
 }
 
 /**
- * Save a single structured scan record to Supabase
- * SECURITY POLICY: Confirmed vulnerability findings and penetration tests remain
- * strictly local on the secure server and DO NOT penetrate to the cloud Supabase database.
+ * Save a single structured scan record immediately to Supabase vapt_scans table
  */
 export async function saveScanToSupabase(scan) {
   if (!scan) return null;
-  // Security policy: Vulnerability scans and security checks do not penetrate to Supabase cloud.
-  // Results are retained strictly within local memory and local server storage.
-  return Promise.resolve({ success: true, localOnly: true, id: scan.id });
+  try {
+    const payload = formatScanForSupabase(scan);
+    if (!payload || !payload.id) return null;
+
+    // 1. Direct Supabase Upsert
+    const { data, error } = await supabase
+      .from('vapt_scans')
+      .upsert([payload], { onConflict: 'id' });
+
+    if (error) {
+      console.warn('[SUPABASE vapt_scans] Direct upsert note:', error.message);
+    } else {
+      console.log(`[SUPABASE vapt_scans] Successfully persisted scan "${payload.id}" to Supabase.`);
+    }
+
+    // 2. Also notify backend server proxy if running in browser to sync server-side cache
+    if (typeof window !== 'undefined' && typeof fetch === 'function') {
+      try {
+        const token = sessionStorage.getItem('sennovate_auth_token') || localStorage.getItem('sennovate_auth_token');
+        fetch('/api/supabase/save-scan', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+          },
+          body: JSON.stringify(payload)
+        }).catch(() => {});
+      } catch (_) {}
+    }
+
+    return { success: !error, id: payload.id, data, error: error?.message };
+  } catch (err) {
+    console.warn('[SUPABASE vapt_scans] Exception saving scan:', err.message);
+    return { success: false, error: err.message };
+  }
 }
 
 /**

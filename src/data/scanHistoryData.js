@@ -377,23 +377,50 @@ export function getStoredScanHistory() {
 }
 
 /**
- * Save a single structured scan record to Supabase
- * SECURITY POLICY: Confirmed vulnerability findings and penetration tests remain
- * strictly local on the secure server and DO NOT penetrate to the cloud Supabase database.
+/**
+ * Save a single structured scan record to Supabase vapt_scans table
  */
 export async function saveScanToSupabase(scan) {
   if (!scan) return null;
-  // Security policy: Vulnerability scans and security checks do not penetrate to Supabase cloud.
-  // Results are retained strictly within local memory and local server storage.
-  return Promise.resolve({ success: true, localOnly: true, id: scan.id });
+  try {
+    const payload = formatScanForSupabase(scan);
+    if (!payload || !payload.id) return null;
+    const { data, error } = await supabase
+      .from('vapt_scans')
+      .upsert([payload], { onConflict: 'id' });
+    if (error) {
+      console.warn('[SUPABASE vapt_scans] Error saving scan:', error.message);
+      return { success: false, error: error.message };
+    }
+    return { success: true, id: payload.id, data };
+  } catch (err) {
+    console.warn('[SUPABASE vapt_scans] Exception saving scan:', err.message);
+    return { success: false, error: err.message };
+  }
 }
 
 /**
  * Fetch all structured scans directly from Supabase vapt_scans table
  */
 export async function fetchScansFromSupabase() {
-  // Scans do not penetrate to Supabase; return empty array
-  return [];
+  try {
+    const { data, error } = await supabase
+      .from('vapt_scans')
+      .select('*')
+      .order('timestamp', { ascending: false });
+
+    if (error) {
+      console.warn('[SUPABASE vapt_scans] Error fetching scans:', error.message);
+      return [];
+    }
+    if (Array.isArray(data) && data.length > 0) {
+      return data.map(row => formatScanFromSupabase(row)).filter(Boolean);
+    }
+    return [];
+  } catch (err) {
+    console.warn('[SUPABASE vapt_scans] Exception fetching scans:', err.message);
+    return [];
+  }
 }
 
 /**
@@ -406,8 +433,12 @@ export function saveScanHistory(historyList) {
     console.error('Error saving scan history to localStorage:', e);
   }
 
-  // Security policy: Scan results and vulnerability checks do not penetrate to Supabase.
-  // They are cached locally and on the server.
+  // Dual-persist: sync all scans to Supabase vapt_scans table
+  if (Array.isArray(historyList)) {
+    historyList.forEach(s => {
+      saveScanToSupabase(s).catch(() => {});
+    });
+  }
 
   // 2. Persist to backend server (.scans_cache.json) as backup
   try {
@@ -485,12 +516,24 @@ export async function syncScanHistoryWithServer() {
 }
 
 /**
- * Seed all existing scans from local or server store into Supabase
- * SECURITY POLICY: Confirmed vulnerability findings and penetration tests remain
- * strictly local on the secure server and DO NOT penetrate to the cloud Supabase database.
+ * Seed all existing scans from local or server store into Supabase vapt_scans table
  */
 export async function seedAllScansToSupabase(scansList = null) {
-  // Security policy: Scans and vulnerabilities do not penetrate to Supabase.
-  return Promise.resolve({ success: true, localOnly: true });
+  const scans = scansList || getStoredScanHistory();
+  if (!Array.isArray(scans) || scans.length === 0) return { success: true, count: 0 };
+  const payloads = scans.map(s => formatScanForSupabase(s)).filter(Boolean);
+  if (payloads.length === 0) return { success: true, count: 0 };
+  try {
+    const { data, error } = await supabase
+      .from('vapt_scans')
+      .upsert(payloads, { onConflict: 'id' });
+    if (error) {
+      console.warn('[SUPABASE SEED] Error seeding scans:', error.message);
+      return { success: false, error: error.message };
+    }
+    return { success: true, count: payloads.length };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
 }
 

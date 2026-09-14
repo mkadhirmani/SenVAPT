@@ -378,12 +378,46 @@ function constantTimeCompare(a, b) {
   return false;
 }
 
+const SESSION_SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex');
+
+function signSessionToken(payload) {
+  const data = Buffer.from(JSON.stringify(payload)).toString('base64url');
+  const sig = crypto.createHmac('sha256', SESSION_SECRET).update(data).digest('base64url');
+  return `${data}.${sig}`;
+}
+
+function verifySessionToken(token) {
+  if (!token || typeof token !== 'string' || !token.includes('.')) return null;
+  const parts = token.split('.');
+  if (parts.length !== 2) return null;
+  const [data, sig] = parts;
+  if (!data || !sig) return null;
+  const expectedSig = crypto.createHmac('sha256', SESSION_SECRET).update(data).digest('base64url');
+  try {
+    const bufA = Buffer.from(sig);
+    const bufB = Buffer.from(expectedSig);
+    if (bufA.length === bufB.length && crypto.timingSafeEqual(bufA, bufB)) {
+      const decoded = JSON.parse(Buffer.from(data, 'base64url').toString('utf-8'));
+      if (decoded && decoded.exp && Date.now() > decoded.exp) return null;
+      return decoded;
+    }
+  } catch (_) {}
+  return null;
+}
+
 function createSession(user) {
-  const token = crypto.randomBytes(32).toString('hex');
+  const token = signSessionToken({
+    id: user.id || user.username,
+    username: user.username,
+    role: user.role || 'user',
+    permissions: user.permissions || {},
+    exp: Date.now() + 24 * 60 * 60 * 1000 // 24 hours
+  });
   const session = {
     token,
     user,
     role: user.role || 'user',
+    permissions: user.permissions || {},
     createdAt: Date.now(),
     expiresAt: Date.now() + 24 * 60 * 60 * 1000 // 24 hours
   };
@@ -401,6 +435,7 @@ function getAuthenticatedSession(req) {
     return null;
   }
 
+  // 1. Check in-memory active sessions
   const session = activeSessions.get(token);
   if (session) {
     if (session.expiresAt && Date.now() > session.expiresAt) {
@@ -410,31 +445,18 @@ function getAuthenticatedSession(req) {
     return session;
   }
 
-  // Attempt stateless token recovery if token encodes user identity
-  try {
-    const decoded = JSON.parse(Buffer.from(token, 'base64').toString('utf-8'));
-    if (decoded && (decoded.id || decoded.username)) {
-      const restored = {
-        token,
-        user: decoded,
-        role: decoded.role || 'user',
-        expiresAt: Date.now() + 24 * 60 * 60 * 1000
-      };
-      activeSessions.set(token, restored);
-      return restored;
-    }
-  } catch (_) {}
-
-  // Fallback: check admin role headers to maintain admin privileges across server restarts
-  const userRole = req.headers['x-user-role'] || req.headers['X-User-Role'];
-  const userId = req.headers['x-user-id'] || req.headers['X-User-Id'];
-  if (userRole === 'admin' || (token && token.startsWith('token-admin'))) {
-    return {
-      token: token || 'token-admin',
-      user: { id: userId || 'admin', username: userId || 'admin', role: 'admin' },
-      role: 'admin',
-      permissions: { manage_users: true }
+  // 2. Stateless token recovery with cryptographic HMAC verification
+  const verified = verifySessionToken(token);
+  if (verified) {
+    const restored = {
+      token,
+      user: verified,
+      role: verified.role || 'user',
+      permissions: verified.permissions || {},
+      expiresAt: verified.exp
     };
+    activeSessions.set(token, restored);
+    return restored;
   }
 
   return null;
@@ -937,6 +959,23 @@ const server = http.createServer(async (req, res) => {
 
       if (!supaErr && Array.isArray(supaUsers) && supaUsers.length > 0) {
         const users = supaUsers.map(formatUserFromSupabase);
+        try {
+          fs.writeFileSync(USERS_STORE_FILE, JSON.stringify(supaUsers.map(u => ({
+            id: u.id,
+            username: u.username,
+            email: u.email,
+            password: u.password,
+            name: u.name,
+            role: u.role,
+            title: u.title,
+            avatar: u.avatar,
+            createdAt: u.created_at,
+            lastLogin: u.last_login || 'Never',
+            isOnline: Boolean(u.is_online),
+            scansCount: u.scans_count || 0,
+            permissions: u.permissions || {}
+          })), null, 2), 'utf-8');
+        } catch (_) {}
         res.setHeader('Content-Type', 'application/json');
         res.statusCode = 200;
         return res.end(JSON.stringify({ success: true, users }));
@@ -968,8 +1007,18 @@ const server = http.createServer(async (req, res) => {
         res.statusCode = 400;
         return res.end(JSON.stringify({ success: false, error: 'Password is required.' }));
       }
+
+      let supaList = [];
+      try {
+        const { data: supaUsers } = await supabase.from('vapt_users').select('*');
+        if (Array.isArray(supaUsers) && supaUsers.length > 0) {
+          supaList = supaUsers;
+        }
+      } catch (_) {}
+
       const existing = getGlobalUsersStoreRaw();
-      if (existing.some(u => u.username?.toLowerCase() === cleanUsername)) {
+      const allKnown = supaList.length > 0 ? supaList : existing;
+      if (allKnown.some(u => u.username?.toLowerCase() === cleanUsername)) {
         res.setHeader('Content-Type', 'application/json');
         res.statusCode = 400;
         return res.end(JSON.stringify({ success: false, error: `User "${cleanUsername}" already exists.` }));
@@ -1002,10 +1051,36 @@ const server = http.createServer(async (req, res) => {
       };
       existing.push(newUser);
       fs.writeFileSync(USERS_STORE_FILE, JSON.stringify(existing, null, 2), 'utf-8');
+
       try {
         const payload = formatUserForSupabase(newUser);
-        supabase.from('vapt_users').upsert([payload], { onConflict: 'username' }).then(() => {}, () => {});
+        await supabase.from('vapt_users').upsert([payload], { onConflict: 'username' });
+        const { data: refreshedSupa } = await supabase.from('vapt_users').select('*').order('created_at', { ascending: true });
+        if (Array.isArray(refreshedSupa) && refreshedSupa.length > 0) {
+          const refreshedUsers = refreshedSupa.map(formatUserFromSupabase);
+          try {
+            fs.writeFileSync(USERS_STORE_FILE, JSON.stringify(refreshedSupa.map(u => ({
+              id: u.id,
+              username: u.username,
+              email: u.email,
+              password: u.password,
+              name: u.name,
+              role: u.role,
+              title: u.title,
+              avatar: u.avatar,
+              createdAt: u.created_at,
+              lastLogin: u.last_login || 'Never',
+              isOnline: Boolean(u.is_online),
+              scansCount: u.scans_count || 0,
+              permissions: u.permissions || {}
+            })), null, 2), 'utf-8');
+          } catch (_) {}
+          res.setHeader('Content-Type', 'application/json');
+          res.statusCode = 200;
+          return res.end(JSON.stringify({ success: true, users: refreshedUsers }));
+        }
       } catch (_) {}
+
       res.setHeader('Content-Type', 'application/json');
       res.statusCode = 200;
       return res.end(JSON.stringify({ success: true, users: getSanitizedUsersStore() }));
@@ -1038,6 +1113,30 @@ const server = http.createServer(async (req, res) => {
           supabase.from('vapt_users').delete().eq('username', userId),
           supabase.from('vapt_users').delete().eq('id', userId)
         ]);
+        const { data: refreshedSupa } = await supabase.from('vapt_users').select('*').order('created_at', { ascending: true });
+        if (Array.isArray(refreshedSupa) && refreshedSupa.length > 0) {
+          const refreshedUsers = refreshedSupa.map(formatUserFromSupabase);
+          try {
+            fs.writeFileSync(USERS_STORE_FILE, JSON.stringify(refreshedSupa.map(u => ({
+              id: u.id,
+              username: u.username,
+              email: u.email,
+              password: u.password,
+              name: u.name,
+              role: u.role,
+              title: u.title,
+              avatar: u.avatar,
+              createdAt: u.created_at,
+              lastLogin: u.last_login || 'Never',
+              isOnline: Boolean(u.is_online),
+              scansCount: u.scans_count || 0,
+              permissions: u.permissions || {}
+            })), null, 2), 'utf-8');
+          } catch (_) {}
+          res.setHeader('Content-Type', 'application/json');
+          res.statusCode = 200;
+          return res.end(JSON.stringify({ success: true, users: refreshedUsers }));
+        }
       } catch (_) {}
       res.setHeader('Content-Type', 'application/json');
       res.statusCode = 200;
