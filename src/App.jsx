@@ -15,21 +15,21 @@ import StrixConnectionModal from './components/StrixConnectionModal';
 import LoginScreen from './components/LoginScreen';
 import AdminUserManagement from './components/AdminUserManagement';
 import { SCAN_METADATA, VULNERABILITIES } from './data/scanData';
-import { 
-  getStoredScanHistory, 
-  saveScanHistory, 
+import {
+  getStoredScanHistory,
+  saveScanHistory,
   saveScanToSupabase,
   syncScanHistoryWithServer,
-  INITIAL_SCAN_HISTORY, 
-  SAMPLE_ALPHA_VULNERABILITIES, 
+  INITIAL_SCAN_HISTORY,
+  SAMPLE_ALPHA_VULNERABILITIES,
   SAMPLE_BETA_VULNERABILITIES,
   SAMPLE_ALPHA_ATTACK_CHAIN,
-  SAMPLE_BETA_ATTACK_CHAIN 
+  SAMPLE_BETA_ATTACK_CHAIN
 } from './data/scanHistoryData';
-import { 
-  getCurrentUser, 
-  setCurrentUser, 
-  logoutUser, 
+import {
+  getCurrentUser,
+  setCurrentUser,
+  logoutUser,
   checkUserPermission,
   fetchGlobalUsersList,
   verifySessionWithServer
@@ -46,7 +46,7 @@ function playNotificationChime() {
     if (!AudioCtx) return;
     const ctx = new AudioCtx();
     const now = ctx.currentTime;
-    
+
     // Tone 1: 587.33 Hz (D5)
     const osc1 = ctx.createOscillator();
     const gain1 = ctx.createGain();
@@ -70,7 +70,7 @@ function playNotificationChime() {
     gain2.connect(ctx.destination);
     osc2.start(now + 0.12);
     osc2.stop(now + 0.45);
-  } catch (_) {}
+  } catch (_) { }
 }
 
 function sendDesktopNotification(title, body) {
@@ -92,7 +92,7 @@ function sendDesktopNotification(title, body) {
         });
       }
     }
-  } catch (_) {}
+  } catch (_) { }
 }
 
 export default function App() {
@@ -121,10 +121,10 @@ export default function App() {
       const createdBy = (s.createdBy || '').toLowerCase().trim();
       const scannedBy = (s.scannedBy || '').toLowerCase().trim();
       return (createdBy && (createdBy === myUsername || createdBy === myId)) ||
-             (scannedBy && (scannedBy === myUsername || scannedBy === myId));
+        (scannedBy && (scannedBy === myUsername || scannedBy === myId));
     });
   }, [scanHistory, currentUser]);
-  
+
   // Default to the last active scan ID or the most recent scan in visible history
   const [activeScanId, setActiveScanId] = useState('');
 
@@ -153,7 +153,7 @@ export default function App() {
         const parsed = JSON.parse(saved);
         if (parsed && typeof parsed === 'object') return parsed;
       }
-    } catch (e) {}
+    } catch (e) { }
 
     return {
       targetUrl: '',
@@ -177,7 +177,7 @@ export default function App() {
   useEffect(() => {
     try {
       sessionStorage.setItem('sennovate_persistent_scanner_state', JSON.stringify(scannerState));
-    } catch (e) {}
+    } catch (e) { }
   }, [scannerState]);
 
   // Active view tab state: Default to 'admin' portal for Admin users, 'overview' for Standard users
@@ -265,7 +265,7 @@ export default function App() {
                   return prev.map(s => s.id === incoming.id ? { ...s, ...incoming } : s);
                 }
                 const updated = [incoming, ...prev];
-                try { localStorage.setItem('sennovate_scan_history', JSON.stringify(updated)); } catch (_) {}
+                try { localStorage.setItem('sennovate_scan_history', JSON.stringify(updated)); } catch (_) { }
                 return updated;
               });
               playNotificationChime();
@@ -274,7 +274,7 @@ export default function App() {
               const updated = formatScanFromSupabase(payload.new);
               setScanHistory(prev => {
                 const next = prev.map(s => s.id === updated.id ? { ...s, ...updated } : s);
-                try { localStorage.setItem('sennovate_scan_history', JSON.stringify(next)); } catch (_) {}
+                try { localStorage.setItem('sennovate_scan_history', JSON.stringify(next)); } catch (_) { }
                 return next;
               });
             } else if (payload.eventType === 'DELETE') {
@@ -282,7 +282,7 @@ export default function App() {
               if (deletedId) {
                 setScanHistory(prev => {
                   const next = prev.filter(s => s.id !== deletedId);
-                  try { localStorage.setItem('sennovate_scan_history', JSON.stringify(next)); } catch (_) {}
+                  try { localStorage.setItem('sennovate_scan_history', JSON.stringify(next)); } catch (_) { }
                   return next;
                 });
               }
@@ -326,7 +326,7 @@ export default function App() {
       try {
         supabase.removeChannel(scansChannel);
         supabase.removeChannel(usersChannel);
-      } catch (_) {}
+      } catch (_) { }
     };
   }, []);
 
@@ -365,7 +365,7 @@ export default function App() {
     setActiveScanId(enrichedScan.id);
     localStorage.setItem('sennovate_last_active_scan_id', enrichedScan.id);
     initializeKnowledgeBase(resolvedVulns, enrichedScan.metadata || {});
-    
+
     // Update scanner default values to match the selected scan
     const folder = enrichedScan.outputFolderPath || enrichedScan.metadata?.remoteRunDir || '';
 
@@ -467,7 +467,7 @@ export default function App() {
     const updated = [enrichedScan, ...scanHistory.filter(s => s.id !== enrichedScan.id)];
     setScanHistory(updated);
     saveScanHistory(updated);
-    saveScanToSupabase(enrichedScan).catch(() => {});
+    saveScanToSupabase(enrichedScan).catch(() => { });
     setActiveScanId(enrichedScan.id);
     localStorage.setItem('sennovate_last_active_scan_id', enrichedScan.id);
     initializeKnowledgeBase(resolvedVulns, enrichedScan.metadata);
@@ -516,7 +516,7 @@ export default function App() {
   // Handle User Login & Logout
   const handleLoginSuccess = async (user) => {
     setAuthUser(user);
-    
+
     // Sync latest persistent configurations and scans from server on login
     let history = getStoredScanHistory();
     try {
@@ -530,19 +530,19 @@ export default function App() {
         history = serverScans;
         setScanHistory(serverScans);
       }
-    } catch (_) {}
+    } catch (_) { }
 
     const myUsername = (user.username || '').toLowerCase().trim();
     const myId = (user.id || '').toLowerCase().trim();
     const userScans = user.role === 'admin'
       ? history
       : (history || []).filter(s => {
-          if (!s) return false;
-          const createdBy = (s.createdBy || '').toLowerCase().trim();
-          const scannedBy = (s.scannedBy || '').toLowerCase().trim();
-          return (createdBy && (createdBy === myUsername || createdBy === myId)) ||
-                 (scannedBy && (scannedBy === myUsername || scannedBy === myId));
-        });
+        if (!s) return false;
+        const createdBy = (s.createdBy || '').toLowerCase().trim();
+        const scannedBy = (s.scannedBy || '').toLowerCase().trim();
+        return (createdBy && (createdBy === myUsername || createdBy === myId)) ||
+          (scannedBy && (scannedBy === myUsername || scannedBy === myId));
+      });
 
     if (userScans && userScans.length > 0) {
       setActiveScanId(userScans[0].id);
@@ -555,7 +555,7 @@ export default function App() {
     if (user.role !== 'admin') {
       try {
         sessionStorage.removeItem('sennovate_persistent_scanner_state');
-      } catch (_) {}
+      } catch (_) { }
       setScannerState({
         targetUrl: '',
         companyName: '',
@@ -587,7 +587,7 @@ export default function App() {
     try {
       sessionStorage.removeItem('sennovate_persistent_scanner_state');
       localStorage.removeItem('sennovate_last_active_scan_id');
-    } catch (_) {}
+    } catch (_) { }
     setActiveScanId('');
     setScannerState({
       targetUrl: '',
@@ -610,7 +610,7 @@ export default function App() {
   // Handle syncing all remote runs from the server
   const handleSyncAllServerScans = (runs) => {
     if (!runs || runs.length === 0) return;
-    
+
     setScanHistory(prevHistory => {
       const runMap = new Map();
       for (const r of runs) {
@@ -777,7 +777,7 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen flex bg-slate-50 text-slate-900 transition-colors duration-200">
+    <div className="min-h-screen flex bg-transparent text-[#001B41] transition-colors duration-200">
       {/* Sidebar Navigation */}
       <Sidebar
         activeTab={activeTab}
@@ -859,7 +859,7 @@ export default function App() {
               activeScan={activeScan}
               activeScanId={activeScanId}
               scanHistory={visibleScanHistory}
-              onScanCompleted={() => {}}
+              onScanCompleted={() => { }}
               onViewFindings={() => {
                 if (activeScanId) {
                   const match = visibleScanHistory.find(s => s.id === activeScanId);
@@ -977,11 +977,10 @@ export default function App() {
       {/* Real-Time Scan Completion Intimation Toast Banner */}
       {scanToast && (
         <div className="fixed bottom-6 right-6 z-50 max-w-md animate-in slide-in-from-bottom-5 duration-300">
-          <div className={`p-4 rounded-2xl border shadow-2xl backdrop-blur-xl flex items-start gap-3.5 ${
-            theme === 'dark'
+          <div className={`p-4 rounded-2xl border shadow-2xl backdrop-blur-xl flex items-start gap-3.5 ${theme === 'dark'
               ? 'bg-[#0E172B]/95 border-emerald-500/40 text-slate-100 shadow-emerald-950/50'
               : 'bg-white/95 border-emerald-500 text-slate-900 shadow-emerald-200/50'
-          }`}>
+            }`}>
             <div className="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-500 flex items-center justify-center flex-shrink-0 border border-emerald-500/30">
               <CheckCircle2 className="w-5 h-5 animate-pulse" />
             </div>
@@ -992,7 +991,7 @@ export default function App() {
                   <Bell className="w-3.5 h-3.5" />
                   <span>Scan Audit Completed &bull; {scanToast.timestamp}</span>
                 </div>
-                <button 
+                <button
                   onClick={() => setScanToast(null)}
                   className="text-slate-400 hover:text-slate-200 text-sm p-1 leading-none"
                 >

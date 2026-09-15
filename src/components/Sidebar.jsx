@@ -72,44 +72,52 @@ export default function Sidebar({
 
   return (
     <aside className={`w-64 border-r flex flex-col justify-between flex-shrink-0 min-h-screen select-none transition-colors duration-200 ${
-      theme === 'dark' ? 'bg-[#001B41] border-[#0A3778]' : 'bg-white border-slate-200 shadow-sm'
+      theme === 'dark' ? 'bg-[#001B41] border-[#0A3778]' : 'bg-white border-slate-200/90 shadow-[2px_0_12px_-2px_rgba(0,27,65,0.03)]'
     }`}>
       {/* Top Brand Area */}
-      <div className={`p-5 border-b space-y-3 ${
-        theme === 'dark' ? 'border-[#0A3778]' : 'border-slate-200'
+      <div className={`p-5 border-b space-y-3.5 ${
+        theme === 'dark' ? 'border-[#0A3778]' : 'border-slate-100'
       }`}>
-        <div className="cursor-pointer flex flex-col items-start" onClick={() => setActiveTab('overview')}>
+        <div 
+          className="cursor-pointer flex flex-col items-start group" 
+          onClick={() => setActiveTab('overview')}
+        >
           <Logo theme={theme} size="md" />
-          <span className="text-[10px] font-heading font-medium tracking-wider text-[#006FE3] dark:text-[#4D9AEC] mt-1">
-            Enterprise Security. Without Compromise.
-          </span>
+          <div className="flex items-center gap-1.5 mt-1.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-[#006FE3] animate-pulse"></span>
+            <span className="text-[10px] font-heading font-bold uppercase tracking-wider text-[#006FE3] dark:text-[#4D9AEC]">
+              Autonomous VAPT Portal
+            </span>
+          </div>
         </div>
 
         {/* Dynamic Company & Target Status Pill (Only when target exists) */}
         {(companyName || targetUrl) && (
-          <div className={`p-2.5 rounded-xl border flex flex-col gap-1 text-[11px] font-mono transition-all ${
-            theme === 'dark' ? 'bg-[#001127]/80 border-[#0A3778]' : 'bg-[#E6F1FC] border-[#B3D4F7]'
+          <div className={`p-3 rounded-xl border flex flex-col gap-1.5 text-[11px] font-mono transition-all ${
+            theme === 'dark' 
+              ? 'bg-[#001127]/90 border-[#0A3778]' 
+              : 'bg-[#E6F1FC]/70 border-[#B3D4F7]/80 shadow-xs'
           }`}>
             <div className="flex items-center justify-between">
-              <span className={`font-bold truncate text-xs font-heading ${theme === 'dark' ? 'text-white' : 'text-[#001B41]'}`}>
+              <span className={`font-bold truncate text-xs font-heading tracking-tight ${theme === 'dark' ? 'text-white' : 'text-[#001B41]'}`}>
                 {companyName || 'Active Target'}
               </span>
               {riskLevel && riskLevel !== 'NONE' && (
-                <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded border ${
+                <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border uppercase tracking-wider ${
                   riskLevel === 'CRITICAL' 
-                    ? 'bg-rose-500/20 text-rose-500 border-rose-500/30'
+                    ? 'bg-rose-500/15 text-rose-600 dark:text-rose-400 border-rose-500/30'
                     : riskLevel === 'HIGH'
-                    ? 'bg-[#B9623C]/20 text-[#B9623C] border-[#B9623C]/30'
-                    : 'bg-[#299346]/20 text-[#299346] border-[#299346]/30'
+                    ? 'bg-[#B9623C]/15 text-[#B9623C] border-[#B9623C]/30'
+                    : 'bg-[#299346]/15 text-[#299346] border-[#299346]/30'
                 }`}>
                   {riskLevel}
                 </span>
               )}
             </div>
             {targetUrl && (
-              <div className="flex items-center gap-1.5 text-slate-400 truncate text-[10px] font-semibold">
-                <span className="w-1.5 h-1.5 rounded-full bg-[#299346] animate-pulse flex-shrink-0"></span>
-                <span className="truncate">{targetUrl.replace(/^https?:\/\//, '').replace(/\/$/, '')}</span>
+              <div className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400 truncate text-[10px] font-medium">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#299346] flex-shrink-0 animate-pulse"></span>
+                <span className="truncate font-mono">{targetUrl.replace(/^https?:\/\//, '').replace(/\/$/, '')}</span>
               </div>
             )}
           </div>
@@ -121,28 +129,28 @@ export default function Sidebar({
         {/* Admin Navigation Section (Admin Only) */}
         {isAdmin && (
           <div className="space-y-1">
-            <div className={`px-3 text-[10px] font-heading font-bold uppercase tracking-wider mb-1.5 text-[#4D9AEC] flex items-center justify-between`}>
+            <div className="px-3 text-[10px] font-heading font-bold uppercase tracking-wider mb-1.5 text-[#006FE3] dark:text-[#4D9AEC] flex items-center justify-between">
               <span>Administration</span>
-              <span className="text-[8px] px-1 py-0.2 rounded bg-[#006FE3]/20 text-[#4D9AEC] border border-[#006FE3]/30">ROOT</span>
+              <span className="text-[8px] font-mono px-1.5 py-0.2 rounded-full bg-[#006FE3]/15 text-[#006FE3] dark:text-[#4D9AEC] border border-[#006FE3]/30 font-bold">ROOT</span>
             </div>
             <button
               onClick={() => setActiveTab('admin')}
               className={`w-full h-10 flex items-center justify-between px-3 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
                 activeTab === 'admin'
-                  ? 'bg-[#006FE3] text-white shadow-md shadow-[#006FE3]/30 font-bold'
+                  ? 'bg-[#006FE3] text-white shadow-md shadow-[#006FE3]/25 font-bold'
                   : theme === 'dark'
                   ? 'text-slate-300 hover:text-white hover:bg-[#002863]'
-                  : 'text-slate-700 hover:text-[#001B41] hover:bg-[#E6F1FC]'
+                  : 'text-slate-700 hover:text-[#001B41] hover:bg-[#E6F1FC]/70'
               }`}
             >
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 min-w-0">
                 <Users className={`w-4 h-4 flex-shrink-0 ${activeTab === 'admin' ? 'text-white' : 'text-[#006FE3]'}`} />
                 <span className="truncate font-heading font-bold">Admin Portal</span>
               </div>
-              <span className={`px-1.5 py-0.5 rounded text-[9px] font-mono font-bold ${
+              <span className={`px-2 py-0.5 rounded-full text-[9px] font-mono font-bold flex-shrink-0 ${
                 activeTab === 'admin' 
                   ? 'bg-white/20 text-white' 
-                  : 'bg-[#006FE3]/20 text-[#006FE3] dark:text-[#80B7F1] border border-[#006FE3]/30'
+                  : 'bg-[#006FE3]/15 text-[#006FE3] dark:text-[#80B7F1] border border-[#006FE3]/25'
               }`}>
                 USERS
               </span>
@@ -153,7 +161,7 @@ export default function Sidebar({
         {/* Operations */}
         <div className="space-y-1">
           <div className={`px-3 text-[10px] font-heading font-bold uppercase tracking-wider mb-1.5 ${
-            theme === 'dark' ? 'text-[#808D9F]' : 'text-slate-500'
+            theme === 'dark' ? 'text-[#808D9F]' : 'text-slate-400'
           }`}>
             Operations
           </div>
@@ -166,15 +174,15 @@ export default function Sidebar({
                 onClick={() => setActiveTab(item.id)}
                 className={`w-full h-10 flex items-center justify-between px-3 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
                   isActive
-                    ? 'bg-[#006FE3] text-white shadow-md shadow-[#006FE3]/30 font-bold'
+                    ? 'bg-[#006FE3] text-white shadow-md shadow-[#006FE3]/25 font-bold'
                     : theme === 'dark'
                     ? 'text-slate-300 hover:text-white hover:bg-[#002863]'
-                    : 'text-slate-700 hover:text-[#001B41] hover:bg-[#E6F1FC]'
+                    : 'text-slate-700 hover:text-[#001B41] hover:bg-[#E6F1FC]/70'
                 }`}
               >
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 min-w-0">
                   <Icon className={`w-4 h-4 flex-shrink-0 ${isActive ? 'text-white' : theme === 'dark' ? 'text-[#80B7F1]' : 'text-[#006FE3]'}`} />
-                  <span className="truncate font-medium">{item.label}</span>
+                  <span className="truncate font-heading font-medium">{item.label}</span>
                 </div>
 
                 {item.count !== undefined && (
@@ -182,16 +190,16 @@ export default function Sidebar({
                     isActive 
                       ? 'bg-white/20 text-white' 
                       : item.id === 'history' 
-                      ? 'bg-[#006FE3]/20 text-[#006FE3] dark:text-[#80B7F1] border border-[#006FE3]/30'
-                      : 'bg-rose-500/20 text-rose-600 dark:text-rose-400 border border-rose-500/40'
+                      ? 'bg-[#006FE3]/15 text-[#006FE3] dark:text-[#80B7F1] border border-[#006FE3]/25'
+                      : 'bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30'
                   }`}>
                     {item.count}
                   </span>
                 )}
 
                 {item.badge && (
-                  <span className={`px-1.5 py-0.5 rounded text-[9px] font-mono font-bold animate-pulse flex-shrink-0 ${
-                    isActive ? 'bg-white/25 text-white' : 'bg-[#006FE3]/20 text-[#006FE3] dark:text-[#80B7F1]'
+                  <span className={`px-2 py-0.5 rounded-full text-[9px] font-mono font-bold animate-pulse flex-shrink-0 ${
+                    isActive ? 'bg-white/25 text-white' : 'bg-[#006FE3]/15 text-[#006FE3] dark:text-[#80B7F1] border border-[#006FE3]/25'
                   }`}>
                     {item.badge}
                   </span>
@@ -204,9 +212,9 @@ export default function Sidebar({
         {/* AI Assistant */}
         <div className="space-y-1">
           <div className={`px-3 text-[10px] font-heading font-bold uppercase tracking-wider mb-1.5 ${
-            theme === 'dark' ? 'text-[#808D9F]' : 'text-slate-500'
+            theme === 'dark' ? 'text-[#808D9F]' : 'text-slate-400'
           }`}>
-            AI Assistant {isAdmin ? '& Backend' : ''}
+            AI Assistant {isAdmin ? '& Infrastructure' : ''}
           </div>
           {aiNav.map((item) => {
             const Icon = item.icon;
@@ -217,24 +225,24 @@ export default function Sidebar({
                 onClick={() => setActiveTab(item.id)}
                 className={`w-full h-10 flex items-center justify-between px-3 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
                   isActive
-                    ? 'bg-[#006FE3] text-white shadow-md shadow-[#006FE3]/30 font-bold'
+                    ? 'bg-[#006FE3] text-white shadow-md shadow-[#006FE3]/25 font-bold'
                     : theme === 'dark'
                     ? 'text-slate-300 hover:text-white hover:bg-[#002863]'
-                    : 'text-slate-700 hover:text-[#001B41] hover:bg-[#E6F1FC]'
+                    : 'text-slate-700 hover:text-[#001B41] hover:bg-[#E6F1FC]/70'
                 }`}
               >
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 min-w-0">
                   <Icon className={`w-4 h-4 flex-shrink-0 ${isActive ? 'text-white' : theme === 'dark' ? 'text-[#80B7F1]' : 'text-[#006FE3]'}`} />
-                  <span className="truncate font-medium">{item.label}</span>
+                  <span className="truncate font-heading font-medium">{item.label}</span>
                 </div>
 
-                <span className={`flex items-center gap-1 text-[9px] font-mono font-bold px-1.5 py-0.5 rounded flex-shrink-0 ${
+                <span className={`flex items-center gap-1 text-[9px] font-mono font-bold px-2 py-0.5 rounded-full flex-shrink-0 ${
                   isActive 
                     ? 'bg-white/20 text-white' 
-                    : 'bg-[#3C2C86]/20 text-[#3C2C86] dark:text-[#80B7F1] border border-[#3C2C86]/30'
+                    : 'bg-[#3C2C86]/15 text-[#3C2C86] dark:text-[#80B7F1] border border-[#3C2C86]/25'
                 }`}>
                   <Sparkles className="w-2.5 h-2.5" />
-                  LLM
+                  RAG
                 </span>
               </button>
             );
@@ -244,12 +252,12 @@ export default function Sidebar({
           {(isAdmin || checkUserPermission(currentUser, 'manage_settings')) && (
             <button
               onClick={onOpenStrixSettings}
-              className={`w-full h-9 flex items-center gap-3 px-3 rounded-xl text-xs font-mono font-medium transition-all border cursor-pointer ${
+              className={`w-full h-9 flex items-center gap-2.5 px-3 rounded-xl text-xs font-mono font-medium transition-all border cursor-pointer ${
                 strixConfig.host
                   ? 'bg-[#299346]/10 border-[#299346]/30 text-[#299346] dark:text-emerald-400 hover:bg-[#299346]/20'
                   : theme === 'dark'
                   ? 'bg-[#001127]/60 hover:bg-[#002863] text-slate-300 border-[#0A3778] hover:border-[#006FE3]'
-                  : 'bg-slate-50 hover:bg-[#E6F1FC] text-[#001B41] border-slate-200'
+                  : 'bg-slate-50 hover:bg-[#E6F1FC]/80 text-[#001B41] border-slate-200'
               }`}
             >
               <Server className="w-3.5 h-3.5 text-[#006FE3] flex-shrink-0" />
@@ -263,10 +271,10 @@ export default function Sidebar({
           {(isAdmin || checkUserPermission(currentUser, 'manage_settings')) && (
             <button
               onClick={onOpenLlmSettings}
-              className={`w-full h-9 flex items-center gap-3 px-3 rounded-xl text-xs font-mono font-medium transition-all border cursor-pointer ${
+              className={`w-full h-9 flex items-center gap-2.5 px-3 rounded-xl text-xs font-mono font-medium transition-all border cursor-pointer ${
                 theme === 'dark'
                   ? 'bg-[#001127]/60 hover:bg-[#002863] text-slate-300 border-[#0A3778] hover:border-[#006FE3]'
-                  : 'bg-slate-50 hover:bg-[#E6F1FC] text-[#001B41] border-slate-200'
+                  : 'bg-slate-50 hover:bg-[#E6F1FC]/80 text-[#001B41] border-slate-200'
               }`}
             >
               <Key className="w-3.5 h-3.5 text-[#006FE3] flex-shrink-0" />
@@ -278,7 +286,7 @@ export default function Sidebar({
         {/* Deliverables */}
         <div className="space-y-1">
           <div className={`px-3 text-[10px] font-heading font-bold uppercase tracking-wider mb-1.5 ${
-            theme === 'dark' ? 'text-[#808D9F]' : 'text-slate-500'
+            theme === 'dark' ? 'text-[#808D9F]' : 'text-slate-400'
           }`}>
             Deliverables
           </div>
@@ -291,19 +299,19 @@ export default function Sidebar({
                 onClick={() => setActiveTab(item.id)}
                 className={`w-full h-10 flex items-center justify-between px-3 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
                   isActive
-                    ? 'bg-[#006FE3] text-white shadow-md shadow-[#006FE3]/30 font-bold'
+                    ? 'bg-[#006FE3] text-white shadow-md shadow-[#006FE3]/25 font-bold'
                     : theme === 'dark'
                     ? 'text-slate-300 hover:text-white hover:bg-[#002863]'
-                    : 'text-slate-700 hover:text-[#001B41] hover:bg-[#E6F1FC]'
+                    : 'text-slate-700 hover:text-[#001B41] hover:bg-[#E6F1FC]/70'
                 }`}
               >
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 min-w-0">
                   <Icon className={`w-4 h-4 flex-shrink-0 ${isActive ? 'text-white' : theme === 'dark' ? 'text-[#80B7F1]' : 'text-[#006FE3]'}`} />
-                  <span className="truncate font-medium">{item.label}</span>
+                  <span className="truncate font-heading font-medium">{item.label}</span>
                 </div>
 
                 <span className={`text-[10px] font-mono font-bold flex-shrink-0 ${
-                  isActive ? 'text-white' : theme === 'dark' ? 'text-[#808D9F]' : 'text-slate-500'
+                  isActive ? 'text-white' : theme === 'dark' ? 'text-[#808D9F]' : 'text-slate-400'
                 }`}>
                   PDF
                 </span>
@@ -317,10 +325,10 @@ export default function Sidebar({
           <div className="pt-1">
             <button
               onClick={onOpenDataLoader}
-              className={`w-full h-9 flex items-center gap-2 px-3 rounded-xl text-xs font-mono font-medium transition-all border cursor-pointer ${
+              className={`w-full h-9 flex items-center gap-2.5 px-3 rounded-xl text-xs font-mono font-medium transition-all border cursor-pointer ${
                 theme === 'dark'
                   ? 'bg-[#001127]/60 hover:bg-[#002863] text-slate-300 border-[#0A3778] hover:border-[#006FE3]'
-                  : 'bg-slate-50 hover:bg-[#E6F1FC] text-[#001B41] border-slate-200'
+                  : 'bg-slate-50 hover:bg-[#E6F1FC]/80 text-[#001B41] border-slate-200'
               }`}
             >
               <FolderOpen className="w-3.5 h-3.5 text-[#006FE3] flex-shrink-0" />
@@ -330,19 +338,19 @@ export default function Sidebar({
         )}
       </div>
 
-      {/* Bottom Area: User Pill, Theme Toggle & Export PDF */}
-      <div className={`p-4 border-t space-y-2.5 ${
-        theme === 'dark' ? 'bg-[#001127] border-[#0A3778]' : 'bg-[#F8FAFC] border-slate-200'
+      {/* Bottom Area: User Pill & Export PDF */}
+      <div className={`p-4 border-t space-y-3 ${
+        theme === 'dark' ? 'bg-[#001127] border-[#0A3778]' : 'bg-slate-50/70 border-slate-200'
       }`}>
         {/* User Identity Role Card */}
         {currentUser && (
           <div className={`p-2.5 rounded-xl border flex items-center justify-between transition-colors ${
-            theme === 'dark' ? 'bg-[#001E4B] border-[#0A3778]' : 'bg-white border-slate-200 shadow-sm'
+            theme === 'dark' ? 'bg-[#001E4B] border-[#0A3778]' : 'bg-white border-slate-200 shadow-xs'
           }`}>
             <div className="flex items-center gap-2.5 min-w-0">
-              <div className={`p-2 rounded-lg flex-shrink-0 ${
+              <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
                 isAdmin 
-                  ? 'bg-[#006FE3]/15 text-[#4D9AEC] border border-[#006FE3]/30' 
+                  ? 'bg-[#006FE3]/15 text-[#006FE3] border border-[#006FE3]/30' 
                   : currentUser?.role === 'sales'
                   ? 'bg-[#B9623C]/15 text-[#B9623C] border border-[#B9623C]/30'
                   : 'bg-[#299346]/15 text-[#299346] border border-[#299346]/30'
@@ -350,12 +358,12 @@ export default function Sidebar({
                 {isAdmin ? <Shield className="w-4 h-4" /> : <User className="w-4 h-4" />}
               </div>
               <div className="min-w-0">
-                <div className={`text-xs font-bold font-heading uppercase tracking-wider truncate max-w-[130px] ${theme === 'dark' ? 'text-white' : 'text-[#001B41]'}`}>
+                <div className={`text-xs font-bold font-heading uppercase tracking-wider truncate max-w-[125px] ${theme === 'dark' ? 'text-white' : 'text-[#001B41]'}`}>
                   {currentUser.username || (isAdmin ? 'Admin' : 'User')}
                 </div>
                 <div className="flex items-center gap-1.5">
                   <span className={`w-1.5 h-1.5 rounded-full ${currentUser?.role === 'sales' ? 'bg-[#B9623C]' : 'bg-[#299346]'}`}></span>
-                  <span className="text-[10px] font-mono text-slate-400">
+                  <span className="text-[10px] font-mono text-slate-500 dark:text-slate-400">
                     {isAdmin ? 'Administrator' : currentUser?.role === 'sales' ? 'Sales Team' : 'Standard User'}
                   </span>
                 </div>
@@ -364,15 +372,13 @@ export default function Sidebar({
 
             <button
               onClick={onLogout}
-              title="Logout"
-              className="p-2 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/15 border border-transparent hover:border-rose-500/30 transition-all flex-shrink-0 cursor-pointer"
+              title="Logout session"
+              className="p-2 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-500/10 border border-transparent hover:border-rose-500/20 transition-all flex-shrink-0 cursor-pointer"
             >
               <LogOut className="w-4 h-4" />
             </button>
           </div>
         )}
-
-
 
         {/* Export PDF Button */}
         <button
@@ -380,10 +386,10 @@ export default function Sidebar({
             setActiveTab('report');
             if (onExportPdf) onExportPdf();
           }}
-          className="w-full h-9 flex items-center justify-center gap-2 px-3 rounded-xl bg-[#006FE3] hover:bg-[#005bbd] text-white font-bold text-xs shadow-md shadow-[#006FE3]/30 transition-all font-heading cursor-pointer"
+          className="w-full h-10 flex items-center justify-center gap-2 px-3 rounded-xl bg-[#006FE3] hover:bg-[#005bbd] text-white font-bold text-xs shadow-md shadow-[#006FE3]/25 transition-all font-heading cursor-pointer active:scale-[0.98]"
         >
           <Download className="w-3.5 h-3.5 flex-shrink-0" />
-          <span>Export VAPT PDF</span>
+          <span>Export VAPT Deliverable</span>
         </button>
       </div>
     </aside>

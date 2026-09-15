@@ -428,29 +428,44 @@ export default function ScanDataLoader({ isOpen, onClose, onDataLoaded, currentT
   };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className={`relative w-full max-w-xl rounded-2xl border shadow-2xl p-6 space-y-5 ${
-        theme === 'dark' ? 'bg-[#0B1120] border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/70 backdrop-blur-md flex items-center justify-center p-4">
+      <div className={`relative w-full max-w-xl rounded-2xl border shadow-2xl p-6 sm:p-7 space-y-5 transition-all ${
+        theme === 'dark' 
+          ? 'bg-[#001B41] border-[#002B66] text-white' 
+          : 'bg-white border-slate-200 text-slate-900 shadow-card-premium'
       }`}>
-        <div className="flex items-center justify-between border-b pb-3 border-slate-800/80">
-          <div className="flex items-center gap-2">
-            <Database className="w-5 h-5 text-cyan-400" />
-            <h3 className="font-bold text-base">Load Strix Output Folder (7 Files)</h3>
+        <div className={`flex items-center justify-between border-b pb-3.5 ${
+          theme === 'dark' ? 'border-[#002B66]' : 'border-slate-100'
+        }`}>
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-[#006FE3]/15 text-[#006FE3] flex items-center justify-center border border-[#006FE3]/30">
+              <Database className="w-4 h-4 text-[#006FE3]" />
+            </div>
+            <h3 className={`font-extrabold text-base font-heading ${theme === 'dark' ? 'text-white' : 'text-[#001B41]'}`}>
+              Load Strix Output Folder (7 Files)
+            </h3>
           </div>
-          <button onClick={onClose} className="p-1 rounded-lg text-slate-400 hover:text-white">
+          <button 
+            onClick={onClose} 
+            className={`p-1.5 rounded-lg transition-colors ${
+              theme === 'dark' ? 'text-slate-400 hover:text-white hover:bg-[#002B66]' : 'text-slate-400 hover:text-slate-700 hover:bg-slate-100'
+            }`}
+          >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Quick Pick: Discovered Scan Folders */}
         {localFolders.length > 0 && (
-          <div className="p-3.5 rounded-xl bg-[#080E1C] border border-cyan-500/30 space-y-2 font-mono text-xs">
-            <div className="flex items-center justify-between text-[11px] text-cyan-400 font-bold">
+          <div className={`p-4 rounded-xl border space-y-2.5 font-mono text-xs ${
+            theme === 'dark' ? 'bg-[#001127] border-[#002B66]' : 'bg-slate-50 border-slate-200'
+          }`}>
+            <div className="flex items-center justify-between text-[11px] text-[#006FE3] font-bold font-heading">
               <span className="flex items-center gap-1.5 uppercase">
-                <Sparkles className="w-3.5 h-3.5" />
+                <Sparkles className="w-3.5 h-3.5 text-[#006FE3]" />
                 <span>Detected in ~/Downloads ({localFolders.length} Scans):</span>
               </span>
-              <span className="text-[10px] text-slate-400 font-normal">Click to load instantly</span>
+              <span className="text-[10px] text-slate-400 font-normal font-sans">Click to load instantly</span>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-36 overflow-y-auto">
               {localFolders.map(f => (
@@ -462,19 +477,25 @@ export default function ScanDataLoader({ isOpen, onClose, onDataLoaded, currentT
                     handleLoadByFolderName({ preventDefault: () => {} });
                   }}
                   disabled={loading}
-                  className="p-2.5 rounded-xl bg-[#040813] border border-slate-700/80 hover:border-cyan-400 text-left transition-all group cursor-pointer flex flex-col justify-between"
+                  className={`p-2.5 rounded-xl border text-left transition-all group cursor-pointer flex flex-col justify-between ${
+                    theme === 'dark' 
+                      ? 'bg-[#001B41] border-[#002B66] hover:border-[#006FE3]' 
+                      : 'bg-white border-slate-200 hover:border-[#006FE3] shadow-sm'
+                  }`}
                 >
                   <div className="flex items-center justify-between gap-1">
-                    <span className="font-bold text-slate-200 group-hover:text-cyan-300 truncate text-[11px]">
+                    <span className={`font-bold truncate text-[11px] group-hover:text-[#006FE3] transition-colors ${
+                      theme === 'dark' ? 'text-slate-200' : 'text-[#001B41]'
+                    }`}>
                       {f.folderName}
                     </span>
                     {f.findingsCount > 0 && (
-                      <span className="text-[9px] px-1.5 py-0.2 rounded bg-rose-500/20 text-rose-400 border border-rose-500/30 font-bold">
+                      <span className="text-[9px] px-1.5 py-0.2 rounded bg-[#DC2626]/10 text-[#DC2626] border border-[#DC2626]/30 font-bold">
                         {f.findingsCount} vulns
                       </span>
                     )}
                   </div>
-                  <div className="flex items-center justify-between text-[10px] text-slate-400 mt-1">
+                  <div className="flex items-center justify-between text-[10px] text-slate-400 mt-1 font-sans">
                     <span className="truncate">{f.companyName}</span>
                     <span>{f.formattedDate?.split(' ')[0]}</span>
                   </div>
@@ -485,13 +506,15 @@ export default function ScanDataLoader({ isOpen, onClose, onDataLoaded, currentT
         )}
 
         {/* Option 1: Load by Local Folder Name / Path */}
-        <form onSubmit={handleLoadByFolderName} className="space-y-2 p-4 rounded-xl bg-[#080E1C] border border-slate-800">
+        <form onSubmit={handleLoadByFolderName} className={`space-y-2.5 p-4 rounded-xl border ${
+          theme === 'dark' ? 'bg-[#001127] border-[#002B66]' : 'bg-slate-50 border-slate-200'
+        }`}>
           <div className="flex items-center justify-between">
-            <label className="text-xs font-mono font-bold text-cyan-400 flex items-center gap-1.5 uppercase">
-              <Folder className="w-3.5 h-3.5" />
+            <label className="text-xs font-mono font-bold text-[#006FE3] flex items-center gap-1.5 uppercase font-heading">
+              <Folder className="w-3.5 h-3.5 text-[#006FE3]" />
               <span>Option 1: Ingest by Folder Name / Path</span>
             </label>
-            <span className="text-[10px] text-slate-500 font-mono">Auto-detects ~/Downloads</span>
+            <span className="text-[10px] text-slate-400 font-mono">Auto-detects ~/Downloads</span>
           </div>
 
           <div className="flex items-center gap-2">
@@ -500,12 +523,16 @@ export default function ScanDataLoader({ isOpen, onClose, onDataLoaded, currentT
               value={folderInput}
               onChange={(e) => setFolderInput(e.target.value)}
               placeholder="e.g. strix-scan-output_88a1 or ~/Downloads/strix-scan-output_88a1"
-              className="flex-1 px-3 py-2 rounded-xl text-xs font-mono bg-[#040813] border border-slate-700 text-cyan-300 placeholder-slate-500 focus:outline-none focus:border-cyan-400"
+              className={`flex-1 px-3.5 py-2.5 rounded-xl text-xs font-mono focus:outline-none transition-all ${
+                theme === 'dark'
+                  ? 'bg-[#001B41] border border-[#002B66] text-cyan-300 placeholder-slate-500 focus:border-[#006FE3]'
+                  : 'bg-white border border-slate-200 text-slate-900 placeholder-slate-400 focus:border-[#006FE3]'
+              }`}
             />
             <button
               type="submit"
               disabled={loading || !folderInput.trim()}
-              className="px-4 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs font-sans transition-all disabled:opacity-50 flex items-center gap-1.5"
+              className="px-4 py-2.5 rounded-xl bg-[#006FE3] hover:bg-[#005bbd] text-white font-bold text-xs font-heading transition-all disabled:opacity-40 flex items-center gap-1.5 shadow-md shadow-[#006FE3]/25"
             >
               {loading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <ArrowRight className="w-3.5 h-3.5" />}
               <span>Load Folder</span>
@@ -517,10 +544,12 @@ export default function ScanDataLoader({ isOpen, onClose, onDataLoaded, currentT
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {/* Pick Directory from Browser */}
           <label className={`flex flex-col items-center justify-center p-5 rounded-xl border-2 border-dashed transition-all cursor-pointer ${
-            theme === 'dark' ? 'border-slate-700 bg-[#080E1C] hover:border-cyan-400' : 'border-slate-300 bg-slate-50 hover:border-slate-400'
+            theme === 'dark' 
+              ? 'border-[#002B66] bg-[#001127] hover:border-[#006FE3]' 
+              : 'border-slate-200 bg-slate-50 hover:border-[#006FE3] hover:bg-white'
           }`}>
-            <FolderOpen className="w-6 h-6 text-cyan-400 mb-1.5" />
-            <span className="text-xs font-bold text-slate-200 text-center">
+            <FolderOpen className="w-6 h-6 text-[#006FE3] mb-1.5" />
+            <span className={`text-xs font-bold text-center font-heading ${theme === 'dark' ? 'text-slate-200' : 'text-[#001B41]'}`}>
               Option 2: Select Scan Folder
             </span>
             <span className="text-[10px] text-slate-400 mt-0.5 text-center font-mono">
@@ -539,10 +568,12 @@ export default function ScanDataLoader({ isOpen, onClose, onDataLoaded, currentT
 
           {/* Upload Single File */}
           <label className={`flex flex-col items-center justify-center p-5 rounded-xl border-2 border-dashed transition-all cursor-pointer ${
-            theme === 'dark' ? 'border-slate-700 bg-[#080E1C] hover:border-cyan-400' : 'border-slate-300 bg-slate-50 hover:border-slate-400'
+            theme === 'dark' 
+              ? 'border-[#002B66] bg-[#001127] hover:border-[#006FE3]' 
+              : 'border-slate-200 bg-slate-50 hover:border-[#006FE3] hover:bg-white'
           }`}>
-            <Upload className="w-6 h-6 text-cyan-400 mb-1.5" />
-            <span className="text-xs font-bold text-slate-200 text-center">
+            <Upload className="w-6 h-6 text-[#006FE3] mb-1.5" />
+            <span className={`text-xs font-bold text-center font-heading ${theme === 'dark' ? 'text-slate-200' : 'text-[#001B41]'}`}>
               Option 3: Single JSON / SARIF
             </span>
             <span className="text-[10px] text-slate-400 mt-0.5 text-center font-mono">
@@ -559,15 +590,15 @@ export default function ScanDataLoader({ isOpen, onClose, onDataLoaded, currentT
         </div>
 
         {errorMessage && (
-          <div className="p-3 rounded-xl bg-rose-500/15 border border-rose-500/40 text-rose-300 text-xs font-mono flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4 text-rose-400 flex-shrink-0" />
+          <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-600 text-xs font-mono flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 text-rose-500 flex-shrink-0" />
             <span>{errorMessage}</span>
           </div>
         )}
 
         {successMessage && (
-          <div className="p-3 rounded-xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-xs font-mono flex items-center gap-2">
-            <Check className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+          <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 text-xs font-mono flex items-center gap-2">
+            <Check className="w-4 h-4 text-emerald-500 flex-shrink-0" />
             <span>{successMessage}</span>
           </div>
         )}

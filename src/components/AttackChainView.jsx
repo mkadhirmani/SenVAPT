@@ -14,7 +14,10 @@ import {
   Radio,
   ChevronRight,
   History,
-  AlertTriangle
+  AlertTriangle,
+  Copy,
+  Check,
+  Zap
 } from 'lucide-react';
 import { ATTACK_CHAIN, VULNERABILITIES } from '../data/scanData';
 
@@ -31,6 +34,7 @@ export default function AttackChainView({
 }) {
   const [activeStep, setActiveStep] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [copiedCode, setCopiedCode] = useState(false);
 
   const isSampleAlpha = activeScan?.id?.includes('alpha') || activeScan?.id?.includes('406f');
   const isSampleBeta = activeScan?.id?.includes('beta') || activeScan?.id?.includes('81f4');
@@ -158,9 +162,17 @@ export default function AttackChainView({
   const currentStepData = steps[safeActiveStep] || steps[0] || {};
   const linkedVuln = vulnerabilities.find(v => v.id === currentStepData.findingRef);
 
+  const handleCopyCode = (snippet) => {
+    if (!snippet) return;
+    navigator.clipboard.writeText(snippet);
+    setCopiedCode(true);
+    setTimeout(() => setCopiedCode(false), 2000);
+  };
+
   const handlePlaySimulation = () => {
     setIsPlaying(true);
     let step = 0;
+    setActiveStep(0);
     const interval = setInterval(() => {
       if (step < steps.length - 1) {
         step++;
@@ -176,16 +188,16 @@ export default function AttackChainView({
     return (
       <div className="space-y-6 max-w-7xl mx-auto pb-12">
         <div className={`p-12 rounded-2xl border text-center space-y-4 ${
-          theme === 'dark' ? 'bg-[#0B1120] border-slate-800' : 'bg-white border-slate-300 shadow-sm'
+          theme === 'dark' ? 'bg-[#001B41] border-[#002B66]' : 'bg-white border-slate-200 shadow-card-premium'
         }`}>
-          <div className="w-12 h-12 rounded-2xl bg-cyan-500/10 text-cyan-400 mx-auto flex items-center justify-center border border-cyan-500/20">
-            <GitBranch className="w-6 h-6" />
+          <div className="w-14 h-14 rounded-2xl bg-[#006FE3]/10 text-[#006FE3] mx-auto flex items-center justify-center border border-[#006FE3]/20 shadow-sm">
+            <GitBranch className="w-7 h-7" />
           </div>
-          <div className="space-y-1">
-            <h4 className={`text-base font-bold ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>
+          <div className="space-y-1.5">
+            <h4 className={`text-base font-extrabold font-heading ${theme === 'dark' ? 'text-white' : 'text-[#001B41]'}`}>
               No Attack Chain Available
             </h4>
-            <p className="text-xs text-slate-500 max-w-md mx-auto">
+            <p className="text-xs text-slate-500 max-w-md mx-auto leading-relaxed">
               No chained exploit paths exist for your account yet. Launch an automated security scan to generate an end-to-end attack simulation graph.
             </p>
           </div>
@@ -196,29 +208,30 @@ export default function AttackChainView({
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-12">
-      {/* Scan Session Switcher Banner */}
-      {/* Scan Session Switcher Banner */}
+      {/* Target Session Switcher */}
       {scanHistory.length > 0 && (
-        <div className={`p-4 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-4 text-xs font-mono transition-colors ${
-          theme === 'dark' ? 'bg-[#001B41] border-[#002B66] text-slate-300' : 'bg-white border-slate-200 text-slate-800 shadow-sm'
+        <div className={`p-4 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-4 text-xs font-mono transition-all ${
+          theme === 'dark' 
+            ? 'bg-[#001B41] border-[#002B66] text-slate-300' 
+            : 'bg-white border-slate-200/90 text-slate-800 shadow-card-premium'
         }`}>
           <div className="flex items-center gap-2.5 min-w-0">
             <span className="text-[#006FE3] font-bold uppercase tracking-wider flex items-center gap-1.5 font-heading">
               <History className="w-4 h-4 text-[#006FE3]" />
               Target Attack Graph:
             </span>
-            <span className={`font-bold truncate text-sm font-heading ${theme === 'dark' ? 'text-white' : 'text-[#001B41]'}`}>
+            <span className={`font-extrabold truncate text-sm font-heading ${theme === 'dark' ? 'text-white' : 'text-[#001B41]'}`}>
               {companyName}
             </span>
-            <span className="text-slate-400 hidden sm:inline">&bull;</span>
-            <span className="text-slate-400 truncate hidden sm:inline font-mono">
+            <span className="text-slate-300 hidden sm:inline">&bull;</span>
+            <span className="text-slate-500 truncate hidden sm:inline font-mono text-[11px]">
               {targetUrl}
             </span>
           </div>
 
           <div className="flex items-center gap-2 flex-shrink-0">
             <span className={`${theme === 'dark' ? 'text-slate-400' : 'text-slate-600'} text-[11px] font-bold font-sans`}>
-              Switch Scan Session:
+              Session:
             </span>
             <select
               value={activeScanId}
@@ -232,7 +245,7 @@ export default function AttackChainView({
               className={`px-3 py-1.5 rounded-xl font-mono text-xs focus:outline-none border transition-all ${
                 theme === 'dark'
                   ? 'bg-[#001127] border-[#002B66] text-white focus:border-[#006FE3]'
-                  : 'bg-slate-50 border-slate-300 text-slate-900 focus:border-[#006FE3]'
+                  : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-[#006FE3]'
               }`}
             >
               {scanHistory.map((scan) => {
@@ -250,31 +263,46 @@ export default function AttackChainView({
         </div>
       )}
 
-      {/* Header Panel */}
-      <div className={`p-6 rounded-2xl border space-y-4 transition-colors ${
-        theme === 'dark' ? 'bg-[#001B41] border-[#002B66]' : 'bg-white border-slate-200 shadow-sm'
+      {/* Hero Header Panel */}
+      <div className={`p-6 sm:p-7 rounded-2xl border space-y-4 transition-all relative overflow-hidden ${
+        theme === 'dark' 
+          ? 'bg-[#001B41] border-[#002B66]' 
+          : 'bg-white border-slate-200/90 shadow-card-premium'
       }`}>
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="space-y-1">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-5 relative z-10">
+          <div className="space-y-1.5">
             <div className="flex items-center gap-2 text-[#006FE3] font-mono text-xs font-bold uppercase tracking-wider font-heading">
               <GitBranch className="w-4 h-4 text-[#006FE3]" />
               <span>Chained Exploit Path &bull; {companyName}</span>
             </div>
-            <h2 className={`text-2xl font-extrabold tracking-tight font-heading ${theme === 'dark' ? 'text-white' : 'text-[#001B41]'}`}>
+            <h2 className={`text-2xl sm:text-3xl font-extrabold tracking-tight font-heading ${
+              theme === 'dark' ? 'text-white' : 'text-[#001B41]'
+            }`}>
               {effectiveChain.title}
             </h2>
-            <p className={`text-xs ${theme === 'dark' ? 'text-slate-300' : 'text-slate-700'}`}>
-              Target: <strong className="text-[#006FE3] font-mono">{effectiveChain.targetAsset}</strong> &bull; Combined Risk: <strong className="text-[#DC2626] font-mono font-bold">HIGH (CVSS {effectiveChain.cvss})</strong>
-            </p>
+            <div className="flex flex-wrap items-center gap-3 pt-1 text-xs">
+              <span className={`font-mono ${theme === 'dark' ? 'text-slate-300' : 'text-slate-600'}`}>
+                Target Asset: <strong className="text-[#006FE3] font-mono font-bold">{effectiveChain.targetAsset}</strong>
+              </span>
+              <span className="text-slate-300 hidden sm:inline">&bull;</span>
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full font-mono text-[11px] font-bold bg-[#DC2626]/10 text-[#DC2626] border border-[#DC2626]/30">
+                <Flame className="w-3 h-3 text-[#DC2626]" />
+                Aggregated Risk: CVSS {effectiveChain.cvss}
+              </span>
+              <span className="text-slate-300 hidden sm:inline">&bull;</span>
+              <span className="text-[11px] font-mono text-slate-500 font-medium">
+                {steps.length} Sequenced Exploit Stages
+              </span>
+            </div>
           </div>
 
           <button
             onClick={handlePlaySimulation}
             disabled={isPlaying}
-            className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-xs font-heading transition-all ${
+            className={`flex items-center gap-2.5 px-6 py-3 rounded-xl font-bold text-xs font-heading transition-all shadow-md ${
               isPlaying
                 ? 'bg-[#006FE3]/20 text-[#006FE3] border border-[#006FE3]/40 cursor-wait animate-pulse'
-                : 'bg-[#006FE3] hover:bg-[#005bbd] text-white shadow-md shadow-[#006FE3]/25 hover:scale-[1.02] active:scale-[0.98]'
+                : 'bg-[#006FE3] hover:bg-[#005bbd] text-white shadow-[#006FE3]/25 hover:scale-[1.02] active:scale-[0.98]'
             }`}
           >
             <Play className="w-4 h-4 fill-current" />
@@ -284,29 +312,38 @@ export default function AttackChainView({
       </div>
 
       {/* Stepper Card */}
-      <div className={`p-6 rounded-2xl border space-y-6 transition-colors ${
-        theme === 'dark' ? 'bg-[#001B41] border-[#002B66]' : 'bg-white border-slate-200 shadow-sm'
+      <div className={`p-6 sm:p-7 rounded-2xl border space-y-6 transition-all ${
+        theme === 'dark' 
+          ? 'bg-[#001B41] border-[#002B66]' 
+          : 'bg-white border-slate-200/90 shadow-card-premium'
       }`}>
-        <div className={`flex items-center justify-between border-b pb-3 ${
-          theme === 'dark' ? 'border-[#002B66]' : 'border-slate-200'
+        <div className={`flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b pb-3.5 ${
+          theme === 'dark' ? 'border-[#002B66]' : 'border-slate-100'
         }`}>
-          <span className={`text-xs font-mono font-bold uppercase ${
-            theme === 'dark' ? 'text-slate-400' : 'text-slate-700'
-          }`}>
-            Multi-Stage Attack Path ({steps.length} Stages)
-          </span>
-          <span className="text-xs font-mono text-[#006FE3] font-bold">
-            Click any step to inspect technical payload
+          <div className="flex items-center gap-2">
+            <span className="w-2.5 h-2.5 rounded-full bg-[#006FE3] animate-pulse"></span>
+            <span className={`text-xs font-mono font-bold uppercase tracking-wider ${
+              theme === 'dark' ? 'text-slate-300' : 'text-[#001B41]'
+            }`}>
+              Multi-Stage Attack Graph ({steps.length} Stages)
+            </span>
+          </div>
+          <span className="text-xs font-mono text-[#006FE3] font-semibold">
+            Select any node to inspect payload &amp; impact
           </span>
         </div>
 
-        {/* Step Grid */}
-        <div className={`grid grid-cols-1 sm:grid-cols-${steps.length} gap-3`}>
+        {/* Step Flowchart Cards */}
+        <div 
+          className="grid gap-3.5"
+          style={{
+            gridTemplateColumns: `repeat(${steps.length}, minmax(0, 1fr))`
+          }}
+        >
           {steps.map((step, idx) => {
             const isSelected = safeActiveStep === idx;
             const isPassed = safeActiveStep >= idx;
 
-            // Brand stage color assignment
             const isImpact = step.type === 'IMPACT' || step.type === 'EXPLOIT';
             const isPivot = step.type === 'PIVOT' || step.type === 'INTERNAL' || step.type === 'ESCALATE';
 
@@ -314,64 +351,72 @@ export default function AttackChainView({
               <div
                 key={idx}
                 onClick={() => setActiveStep(idx)}
-                className={`p-4 rounded-xl cursor-pointer border transition-all ${
+                className={`p-4 rounded-xl cursor-pointer border transition-all text-left relative group ${
                   isSelected
-                    ? 'bg-[#006FE3]/15 border-[#006FE3] ring-2 ring-[#006FE3]/40 shadow-lg'
+                    ? 'bg-[#006FE3]/10 border-[#006FE3] ring-2 ring-[#006FE3]/30 shadow-md'
                     : isPassed
-                    ? theme === 'dark' ? 'bg-[#001127] border-[#002B66]' : 'bg-slate-50 border-slate-300'
-                    : theme === 'dark' ? 'bg-[#001127]/60 border-[#002B66]/60 opacity-60' : 'bg-slate-100 border-slate-200 opacity-60'
+                    ? theme === 'dark' 
+                      ? 'bg-[#001127] border-[#002B66] hover:border-[#006FE3]/50' 
+                      : 'bg-slate-50 border-slate-200 hover:border-[#006FE3]/50 hover:bg-white'
+                    : theme === 'dark' 
+                    ? 'bg-[#001127]/50 border-[#002B66]/60 opacity-60' 
+                    : 'bg-slate-100/70 border-slate-200 opacity-60'
                 }`}
               >
                 <div className="flex items-center justify-between mb-2">
-                  <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-mono font-bold ${
+                  <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-mono font-bold transition-all ${
                     isSelected
-                      ? 'bg-[#006FE3] text-white shadow-sm'
+                      ? 'bg-[#006FE3] text-white shadow-sm ring-2 ring-[#006FE3]/20'
                       : isPassed
                       ? isImpact
                         ? 'bg-[#DC2626]/20 text-[#DC2626] border border-[#DC2626]/40'
                         : isPivot
                         ? 'bg-[#3C2C86]/30 text-[#80B7F1] border border-[#3C2C86]'
                         : 'bg-[#006FE3]/20 text-[#006FE3] border border-[#006FE3]/40'
-                      : 'bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
+                      : 'bg-slate-200 dark:bg-slate-800 text-slate-500'
                   }`}>
                     {step.stepNumber}
                   </span>
-                  <span className={`text-[10px] font-mono font-bold ${
+                  <span className={`text-[10px] font-mono font-bold tracking-wider uppercase ${
                     isImpact 
                       ? 'text-[#DC2626]' 
                       : isPivot 
                       ? 'text-[#80B7F1]' 
-                      : theme === 'dark' ? 'text-slate-400' : 'text-slate-600'
+                      : theme === 'dark' ? 'text-slate-400' : 'text-slate-500'
                   }`}>
                     {step.type}
                   </span>
                 </div>
 
                 <div className={`text-xs font-bold font-heading mb-1 line-clamp-1 ${
-                  theme === 'dark' ? 'text-white' : 'text-[#001B41]'
+                  isSelected 
+                    ? 'text-[#006FE3]' 
+                    : theme === 'dark' ? 'text-white' : 'text-[#001B41]'
                 }`}>
                   {step.title}
                 </div>
-                <div className="text-[11px] font-mono text-[#006FE3] font-bold">
-                  Ref: {step.findingRef}
+                <div className="text-[11px] font-mono text-slate-500 group-hover:text-[#006FE3] transition-colors">
+                  Ref: <span className="font-semibold text-[#006FE3]">{step.findingRef}</span>
                 </div>
               </div>
             );
           })}
         </div>
 
-        {/* Node Detail Box */}
-        <div className={`p-6 rounded-xl border space-y-4 ${
-          theme === 'dark' ? 'bg-[#001127] border-[#002B66]' : 'bg-slate-50 border-slate-200'
+        {/* Selected Stage Detail Panel */}
+        <div className={`p-6 rounded-xl border space-y-4 transition-all ${
+          theme === 'dark' 
+            ? 'bg-[#001127] border-[#002B66]' 
+            : 'bg-slate-50 border-slate-200/90'
         }`}>
-          <div className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b pb-3 ${
+          <div className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b pb-3.5 ${
             theme === 'dark' ? 'border-[#002B66]' : 'border-slate-200'
           }`}>
-            <div className="flex items-center gap-3">
-              <span className="text-xs font-mono font-bold px-2.5 py-1 rounded bg-[#006FE3] text-white shadow-sm">
-                Step {currentStepData.stepNumber}: {currentStepData.type}
+            <div className="flex flex-wrap items-center gap-3">
+              <span className="text-xs font-mono font-bold px-3 py-1 rounded-lg bg-[#006FE3] text-white shadow-sm">
+                Stage {currentStepData.stepNumber}: {currentStepData.type}
               </span>
-              <h3 className={`text-base font-bold font-heading ${theme === 'dark' ? 'text-white' : 'text-[#001B41]'}`}>
+              <h3 className={`text-base font-extrabold font-heading ${theme === 'dark' ? 'text-white' : 'text-[#001B41]'}`}>
                 {currentStepData.title}
               </h3>
             </div>
@@ -379,8 +424,10 @@ export default function AttackChainView({
             {linkedVuln && (
               <button
                 onClick={() => onSelectVuln(linkedVuln)}
-                className={`flex items-center gap-1.5 text-xs font-mono font-bold text-[#006FE3] px-3 py-1.5 rounded-lg border transition-all ${
-                  theme === 'dark' ? 'bg-[#001B41] border-[#002B66] hover:bg-[#006FE3] hover:text-white' : 'bg-white border-slate-200 hover:bg-[#006FE3] hover:text-white shadow-sm'
+                className={`flex items-center gap-1.5 text-xs font-mono font-bold text-[#006FE3] px-3.5 py-1.5 rounded-xl border transition-all ${
+                  theme === 'dark' 
+                    ? 'bg-[#001B41] border-[#002B66] hover:bg-[#006FE3] hover:text-white' 
+                    : 'bg-white border-slate-200 hover:bg-[#006FE3] hover:text-white shadow-sm'
                 }`}
               >
                 <span>Inspect {currentStepData.findingRef}</span>
@@ -396,19 +443,54 @@ export default function AttackChainView({
           </p>
 
           {currentStepData.impact && (
-            <div className="p-3.5 rounded-xl bg-[#DC2626]/10 border border-[#DC2626]/30 text-[#DC2626] text-xs font-mono leading-relaxed">
-              <strong>Impact:</strong> {currentStepData.impact}
+            <div className="p-4 rounded-xl bg-[#DC2626]/10 border border-[#DC2626]/30 text-[#DC2626] text-xs font-mono leading-relaxed flex items-start gap-2.5">
+              <AlertTriangle className="w-4 h-4 text-[#DC2626] flex-shrink-0 mt-0.5" />
+              <div>
+                <strong className="font-bold">Security Impact:</strong> {currentStepData.impact}
+              </div>
             </div>
           )}
 
-          {/* Technical Code Snippet */}
+          {/* Technical Code / Payload Snippet */}
           {currentStepData.codeSnippet && (
-            <pre className="p-4 rounded-xl bg-[#000E20] border border-[#002B66] text-cyan-300 font-mono text-xs overflow-x-auto select-all leading-relaxed">
-              <code>{currentStepData.codeSnippet}</code>
-            </pre>
+            <div className="space-y-2 pt-1">
+              <div className="flex items-center justify-between">
+                <div className="text-xs font-mono font-bold text-[#006FE3] flex items-center gap-1.5 font-heading">
+                  <Terminal className="w-3.5 h-3.5 text-[#006FE3]" />
+                  <span>Technical Exploit Payload &amp; Response:</span>
+                </div>
+                <button
+                  onClick={() => handleCopyCode(currentStepData.codeSnippet)}
+                  className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-mono border transition-all ${
+                    copiedCode
+                      ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-600'
+                      : theme === 'dark'
+                      ? 'bg-[#001B41] hover:bg-[#002B66] text-slate-300 border-[#002B66]'
+                      : 'bg-white hover:bg-slate-100 text-slate-700 border-slate-200 shadow-sm'
+                  }`}
+                >
+                  {copiedCode ? (
+                    <>
+                      <Check className="w-3.5 h-3.5 text-emerald-500" />
+                      <span className="font-bold">Copied!</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-3.5 h-3.5" />
+                      <span>Copy Payload</span>
+                    </>
+                  )}
+                </button>
+              </div>
+
+              <pre className="p-4 rounded-xl bg-[#001127] border border-[#002B66] text-cyan-300 font-mono text-xs overflow-x-auto select-all leading-relaxed shadow-inner">
+                <code>{currentStepData.codeSnippet}</code>
+              </pre>
+            </div>
           )}
         </div>
       </div>
     </div>
   );
 }
+
