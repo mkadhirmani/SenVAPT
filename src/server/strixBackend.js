@@ -1377,11 +1377,17 @@ export async function triggerN8nScanProxy(payload) {
       targetDomain: cleanDomain,
       target: cleanDomain,
       targetUrl: `https://${cleanDomain}`,
+      target_url: `https://${cleanDomain}`,
       url: `https://${cleanDomain}`,
       forceNew: true,
       newScan: true,
+      fast: true,
+      passive: true,
+      skipAmass: true,
+      skip_amass: true,
       timestamp: Date.now(),
-      scanStartTime: Date.now()
+      scanStartTime: Date.now(),
+      ...(payload.options || {})
     };
 
     const res = await secureN8nFetch(effectiveUrl, {

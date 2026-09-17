@@ -1502,7 +1502,8 @@ export default function ScanHud({
               }
 
               if (pollAttempts % 3 === 0 && (!results?.liveLogLines || results.liveLogLines.length === 0)) {
-                appendLog(`[STREAM] Waiting for engine live scan.log stream... (${elapsedMin > 0 ? `${elapsedMin}m ` : ''}${elapsedSec}s)`);
+                const subDetail = results?.reconFiles?.includes('subfinder.txt') ? ' (Subfinder completed, Amass running on server)' : '';
+                appendLog(`[STREAM] Waiting for Strix live scan.log stream... (${elapsedMin > 0 ? `${elapsedMin}m ` : ''}${elapsedSec}s)${subDetail}`);
               }
               return;
             }
