@@ -1375,14 +1375,12 @@ export default function ScanHud({
         });
 
         appendLog(`[GATEWAY RESPONSE] ${JSON.stringify(triggerRes.data || 'Workflow was started')}`);
-        appendLog(`[SUCCESS] Autonomous security audit pipeline triggered on remote server via n8n!`);
-        appendLog(`[STAGE 1] Remote reconnaissance initialized (Subfinder / Amass subdomain discovery).`);
+        appendLog(`[LIVE STREAM] Connecting to live scan.log stream on remote server...`);
 
         // Background Polling for scan results ZIP via n8n fetch webhook
         if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
         let pollAttempts = 0;
         let baselineRunId = null;
-        let announcedRecon = false;
         let lastLoggedRunId = null;
 
         const cleanSlug = cleanDomain.toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -1454,27 +1452,9 @@ export default function ScanHud({
               }
             }
 
-            // Report real reconnaissance artifacts discovered on server
-            if (results?.reconFiles && results.reconFiles.length > 0 && !announcedRecon) {
-              announcedRecon = true;
-              appendLog(`[RECON ARTIFACTS] Remote server generated reconnaissance files: ${results.reconFiles.join(', ')}`);
-            }
-
-            // Report when Strix actually launches its dedicated run folder
-            if (results?.activeRunId && results.activeRunId !== lastLoggedRunId) {
-              lastLoggedRunId = results.activeRunId;
-              appendLog(`[STRIX ACTIVE] Strix autonomous engine initialized: /root/${cleanDomain}-scan/strix_runs/${results.activeRunId}`);
-              appendLog(`[STAGE 2] Autonomous agent vulnerability probing & exploit verification in progress.`);
-            }
-
-            // Stream real-time live logs from the remote server's scan.log
+            // Stream real-time live logs from the remote server's exact scan.log
             if (results?.liveLogLines && Array.isArray(results.liveLogLines) && results.liveLogLines.length > 0) {
-              setLogs(prev => {
-                const prevSet = new Set(prev);
-                const additions = results.liveLogLines.filter(line => !prevSet.has(line));
-                if (additions.length === 0) return prev;
-                return [...prev, ...additions];
-              });
+              setLogs(results.liveLogLines);
             }
 
             // Stream real-time telemetry if available
@@ -1521,9 +1501,8 @@ export default function ScanHud({
                 return;
               }
 
-              if (pollAttempts % 3 === 0) {
-                const statusMsg = results?.message || `Strix autonomous audit actively testing ${cleanDomain}...`;
-                appendLog(`[LIVE AUDIT] ${statusMsg} (Elapsed: ${elapsedMin > 0 ? `${elapsedMin}m ` : ''}${elapsedSec}s)`);
+              if (pollAttempts % 3 === 0 && (!results?.liveLogLines || results.liveLogLines.length === 0)) {
+                appendLog(`[STREAM] Waiting for engine live scan.log stream... (${elapsedMin > 0 ? `${elapsedMin}m ` : ''}${elapsedSec}s)`);
               }
               return;
             }
