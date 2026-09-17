@@ -1649,8 +1649,6 @@ export function resolveStrixOutputFolderFromExtract(extractDir, minStartTimeMs =
       const content = stripAnsi(rawContent);
       const rawLines = content.split('\n');
       const filteredLines = rawLines.map(l => l.trimEnd()).filter(l => l.length > 0);
-      liveLogLines = filteredLines.slice(-60);
-      liveLogTail = liveLogLines.join('\n');
 
       let lastCompLineIdx = -1;
       let lastInitLineIdx = -1;
@@ -1663,19 +1661,29 @@ export function resolveStrixOutputFolderFromExtract(extractDir, minStartTimeMs =
 
       // Check initiated block for Output path (e.g. Output root/<domain>-scan/strix_runs/<runId>)
       if (lastInitLineIdx !== -1) {
-        const initText = filteredLines.slice(lastInitLineIdx, lastInitLineIdx + 15).join('\n');
+        const initBoxLines = filteredLines.slice(lastInitLineIdx, Math.min(filteredLines.length, lastInitLineIdx + 40));
+        const initText = initBoxLines.join('\n');
         const initOut = extractOutputDirFromText(initText, detectedTargetDomain || targetDomain);
         if (initOut) {
           initiatedRunFullPath = initOut;
           const initSegs = initOut.split('/').filter(Boolean);
           initiatedRunOutputFolder = initSegs[initSegs.length - 1] || null;
         }
+        if (!initiatedRunOutputFolder) {
+          const directMatch = initText.match(/(?:Output|run_dir)\s*[:|=]?\s*['"]?(?:strix_runs\/|\/?root\/[^\/]+\/strix_runs\/|\/?[^\s\r\n│\t,)"']+\/strix_runs\/)?([a-zA-Z0-9_\-\.]+)/i);
+          if (directMatch && directMatch[1] && directMatch[1].toLowerCase() !== 'tokens') {
+            initiatedRunOutputFolder = directMatch[1].trim();
+            initiatedRunFullPath = buildServerScanOutputPath(detectedTargetDomain || targetDomain, initiatedRunOutputFolder);
+          }
+        }
       }
 
-      // Parse output folder from completed section or end of log
+      // Parse output folder from completed section ONLY if a fresh completion occurred AFTER initiation
       let completedRunOutputFolder = null;
       let completedRunFullPath = null;
-      if (lastCompLineIdx !== -1) {
+      const isFreshCompletion = lastCompLineIdx !== -1 && (lastInitLineIdx === -1 ? minStartTimeMs === 0 : lastCompLineIdx > lastInitLineIdx);
+
+      if (isFreshCompletion) {
         const compText = filteredLines.slice(lastCompLineIdx).join('\n');
         const discoveredOut = extractOutputDirFromText(compText, detectedTargetDomain || targetDomain);
         if (discoveredOut) {
@@ -1696,48 +1704,18 @@ export function resolveStrixOutputFolderFromExtract(extractDir, minStartTimeMs =
         }
       }
 
-      // Also inspect the end of scan.log (last 40 lines) where real-time output path is printed upon completion
-      if (!completedRunFullPath) {
-        const tailText = filteredLines.slice(-40).join('\n');
-        const tailOut = extractOutputDirFromText(tailText, detectedTargetDomain || targetDomain);
-        if (tailOut) {
-          completedRunFullPath = tailOut;
-          const segments = tailOut.split('/').filter(Boolean);
-          completedRunOutputFolder = segments[segments.length - 1] || null;
-        }
-      }
+      // Slicing live log lines and parsing telemetry:
+      // If an initiation was found, the current scan ONLY consists of lines starting at lastInitLineIdx!
+      // This guarantees that past scan completions and old findings do not pollute the current scan.
+      const currentScanLines = lastInitLineIdx !== -1 ? filteredLines.slice(lastInitLineIdx) : filteredLines;
+      liveLogLines = currentScanLines.slice(-60);
+      liveLogTail = liveLogLines.join('\n');
 
-      // Freshness check on the completion:
-      // If minStartTimeMs > 0, an old completion from a past run MUST NOT mark isLogCompleted!
-      const compRunLower = completedRunOutputFolder ? completedRunOutputFolder.toLowerCase() : null;
-      const isCompBelongingToStale = compRunLower && staleRunNames.has(compRunLower);
-      const isLogModifiedBeforeScan = minStartTimeMs > 0 && (logStat.mtimeMs < staleThresholdMs);
-
-      const hasFreshInitiation = lastInitLineIdx !== -1 && lastCompLineIdx >= lastInitLineIdx;
-      const compCandidate = candidateDirs.find(c => c.name.toLowerCase() === compRunLower);
-      const isCompCandidateFresh = compCandidate && (compCandidate.startTimeMs >= staleThresholdMs || compCandidate.endTimeMs >= minStartTimeMs);
-
-      // If the log confirms completion (initiation + completion in same log, or completion occurred after initiation):
-      if (lastCompLineIdx !== -1 && (hasFreshInitiation || lastCompLineIdx >= lastInitLineIdx || isCompCandidateFresh || !isCompBelongingToStale || minStartTimeMs === 0)) {
-        isLogCompleted = true;
-        isLogActive = false;
-        latestRunOutputFolder = completedRunOutputFolder || initiatedRunOutputFolder;
-        latestRunFullPath = completedRunFullPath || initiatedRunFullPath;
-      } else if (lastInitLineIdx !== -1) {
-        isLogActive = true;
-        isLogCompleted = false;
-        latestRunOutputFolder = initiatedRunOutputFolder;
-        latestRunFullPath = initiatedRunFullPath;
-      } else {
-        isLogActive = minStartTimeMs > 0;
-        isLogCompleted = false;
-      }
-
-      // Parse tokens and cost from log
-      const inTokenMatch = content.match(/Input Tokens\s*([\d\.]+\s*[kKMGT]?)/i);
-      const cachedTokenMatch = content.match(/Cached Tokens\s*([\d\.]+\s*[kKMGT]?)/i);
-      const outTokenMatch = content.match(/Output Tokens\s*([\d\.]+\s*[kKMGT]?)/i);
-      const costMatch = content.match(/Cost\s*\$?([\d\.]+)/i);
+      const currentScanText = currentScanLines.join('\n');
+      const inTokenMatch = currentScanText.match(/Input Tokens\s*([\d\.]+\s*[kKMGT]?)/i);
+      const cachedTokenMatch = currentScanText.match(/Cached Tokens\s*([\d\.]+\s*[kKMGT]?)/i);
+      const outTokenMatch = currentScanText.match(/Output Tokens\s*([\d\.]+\s*[kKMGT]?)/i);
+      const costMatch = currentScanText.match(/Cost\s*\$?([\d\.]+)/i);
 
       if (inTokenMatch) parsedTokens += parseMultiplier(inTokenMatch[1]);
       if (cachedTokenMatch) parsedTokens += parseMultiplier(cachedTokenMatch[1]);
@@ -1745,19 +1723,53 @@ export function resolveStrixOutputFolderFromExtract(extractDir, minStartTimeMs =
       if (costMatch && !parsedCost) parsedCost = parseFloat(costMatch[1]) || 0;
 
       // Parse Target domain from Strix header/summary box
-      const targetMatch = content.match(/(?:Target|Target\s+Domain)\s+(?:(?:\d+)\s+targets\s*)?([a-zA-Z0-9\.\-]+)/i);
+      const targetMatch = currentScanText.match(/(?:Target|Target\s+Domain)\s+(?:(?:\d+)\s+targets\s*)?([a-zA-Z0-9\.\-]+)/i);
       if (targetMatch && targetMatch[1] && targetMatch[1].includes('.') && !targetMatch[1].startsWith('.')) {
         detectedTargetDomain = targetMatch[1].trim();
       } else {
-        const targetIdx = filteredLines.findIndex(l => /Target\s+/i.test(l));
+        const targetIdx = currentScanLines.findIndex(l => /Target\s+/i.test(l));
         if (targetIdx !== -1) {
-          for (let j = targetIdx; j < Math.min(filteredLines.length, targetIdx + 8); j++) {
-            const domM = filteredLines[j].match(/([a-zA-Z0-9][a-zA-Z0-9\-]*\.[a-zA-Z]{2,}(?:\.[a-zA-Z]{2,})?)/);
+          for (let j = targetIdx; j < Math.min(currentScanLines.length, targetIdx + 8); j++) {
+            const domM = currentScanLines[j].match(/([a-zA-Z0-9][a-zA-Z0-9\-]*\.[a-zA-Z]{2,}(?:\.[a-zA-Z]{2,})?)/);
             if (domM) {
               detectedTargetDomain = domM[1].trim();
               break;
             }
           }
+        }
+      }
+
+      // Status determination:
+      if (lastInitLineIdx !== -1) {
+        if (lastCompLineIdx > lastInitLineIdx) {
+          // Both initiation and completion belong to the current scan
+          isLogCompleted = true;
+          isLogActive = false;
+          latestRunOutputFolder = completedRunOutputFolder || initiatedRunOutputFolder;
+          latestRunFullPath = completedRunFullPath || initiatedRunFullPath;
+        } else {
+          // Initiation exists, but no completion after it: the scan is ACTIVELY RUNNING!
+          isLogCompleted = false;
+          isLogActive = true;
+          latestRunOutputFolder = initiatedRunOutputFolder;
+          latestRunFullPath = initiatedRunFullPath;
+        }
+      } else {
+        // No initiation found in log
+        const isLogModifiedBeforeScan = minStartTimeMs > 0 && (logStat.mtimeMs < staleThresholdMs);
+        if (isLogModifiedBeforeScan) {
+          // Log is older than requested scan start time - stale log from earlier
+          isLogActive = true;
+          isLogCompleted = false;
+        } else if (lastCompLineIdx !== -1 && minStartTimeMs === 0) {
+          // Static viewing of past completed scan
+          isLogCompleted = true;
+          isLogActive = false;
+          latestRunOutputFolder = completedRunOutputFolder;
+          latestRunFullPath = completedRunFullPath;
+        } else {
+          isLogActive = minStartTimeMs > 0;
+          isLogCompleted = false;
         }
       }
 
@@ -1790,8 +1802,87 @@ export function resolveStrixOutputFolderFromExtract(extractDir, minStartTimeMs =
 
   // 4. SCAN RESOLUTION
   if (minStartTimeMs > 0) {
-    // FRESH SCAN MODE: We must strictly locate a completed run directory created AFTER minStartTimeMs - 90s
-    // Exclude any directory in staleRunNames or previousRunId
+    // If the log is actively running (latest initiation detected with no subsequent completion):
+    if (isLogActive && !isLogCompleted) {
+      const activeRunId = initiatedRunOutputFolder || null;
+      return {
+        bestDir: null,
+        folderName: activeRunId || targetDomain,
+        outputFullPath: initiatedRunFullPath || buildServerScanOutputPath(effectiveDomain, activeRunId || targetDomain),
+        isScanning: true,
+        inProgress: true,
+        isStalled: false,
+        reconFiles: reconFilesFound,
+        scanFinished: false,
+        freshFound: false,
+        baselineRunId: Array.from(staleRunNames)[0] || null,
+        activeRunId: activeRunId || null,
+        liveLogLines,
+        strixLog: liveLogTail,
+        tokens: parsedTokens,
+        cost: parsedCost,
+        message: activeRunId
+          ? `Strix autonomous audit actively running on server (Run: ${activeRunId}). Waiting for completion...`
+          : 'Strix autonomous audit actively running on remote server. Waiting for fresh results...'
+      };
+    }
+
+    // If the log confirms completion:
+    if (isLogCompleted) {
+      const targetRunName = latestRunOutputFolder || initiatedRunOutputFolder;
+      let resolvedDir = targetRunName ? findDirectoryByName(extractDir, targetRunName) : null;
+      if (!resolvedDir && targetRunName) {
+        const matchCand = candidateDirs.find(c => c.name.toLowerCase() === targetRunName.toLowerCase());
+        if (matchCand) resolvedDir = matchCand.dir;
+      }
+
+      const hasArtifacts = resolvedDir && (
+        fs.existsSync(path.join(resolvedDir, 'run.json')) ||
+        fs.existsSync(path.join(resolvedDir, 'penetration_test_report.md')) ||
+        fs.existsSync(path.join(resolvedDir, 'findings.sarif')) ||
+        fs.existsSync(path.join(resolvedDir, 'vulnerabilities.json')) ||
+        fs.existsSync(path.join(resolvedDir, 'vulnerabilities'))
+      );
+
+      if (resolvedDir && hasArtifacts) {
+        return {
+          bestDir: resolvedDir,
+          folderName: targetRunName,
+          outputFullPath: latestRunFullPath || buildServerScanOutputPath(effectiveDomain, targetRunName),
+          isScanning: false,
+          inProgress: false,
+          scanFinished: true,
+          freshFound: true,
+          targetDomain: detectedTargetDomain || targetDomain,
+          tokens: parsedTokens,
+          cost: parsedCost,
+          liveLogLines,
+          strixLog: liveLogTail
+        };
+      }
+
+      // The log indicates completion, but the target run folder has not yet synced into the archive.
+      // Do NOT fall back to an old scan folder! Keep polling until the files arrive.
+      return {
+        bestDir: null,
+        folderName: targetRunName || targetDomain,
+        outputFullPath: latestRunFullPath || buildServerScanOutputPath(effectiveDomain, targetRunName || targetDomain),
+        isScanning: true,
+        inProgress: true,
+        isStalled: false,
+        reconFiles: reconFilesFound,
+        scanFinished: false,
+        freshFound: false,
+        activeRunId: targetRunName,
+        liveLogLines,
+        strixLog: liveLogTail,
+        tokens: parsedTokens,
+        cost: parsedCost,
+        message: `Strix audit completed on server (${targetRunName}); finalizing report artifacts...`
+      };
+    }
+
+    // FRESH SCAN MODE fallback for when scan.log is missing or empty
     const freshCandidates = candidateDirs.filter(c => {
       const cNameLower = c.name.toLowerCase();
       if (staleRunNames.has(cNameLower)) return false;
@@ -1799,53 +1890,13 @@ export function resolveStrixOutputFolderFromExtract(extractDir, minStartTimeMs =
         if (Array.isArray(previousRunId) && previousRunId.some(pid => pid && String(pid).toLowerCase() === cNameLower)) return false;
         if (typeof previousRunId === 'string' && previousRunId.toLowerCase() === cNameLower) return false;
       }
-      if (c.startTimeMs > 0) {
-        return c.startTimeMs >= staleThresholdMs;
-      }
-      if (c.endTimeMs > 0 && c.endTimeMs < minStartTimeMs) {
-        return false;
-      }
-      return c.mtime >= staleThresholdMs;
+      if (c.startTimeMs > 0) return c.startTimeMs >= staleThresholdMs;
+      if (c.endTimeMs > 0 && c.endTimeMs < minStartTimeMs) return false;
+      return false; // Never rely on c.mtime alone
     });
 
-    const activeRunId = initiatedRunOutputFolder || (freshCandidates.find(c => c.isRunning)?.name) || null;
-
-    // Check if any fresh candidate is truly completed
-    const completedFreshCandidate = freshCandidates.find(c => c.isFinalized && !c.isRunning);
-
-    if (isLogCompleted) {
-      const finalName = latestRunOutputFolder || activeRunId || (completedFreshCandidate?.name) || (freshCandidates[0]?.name) || targetDomain;
-      let resolvedDir = latestRunOutputFolder ? findDirectoryByName(extractDir, latestRunOutputFolder) : null;
-      if (!resolvedDir && completedFreshCandidate) {
-        resolvedDir = completedFreshCandidate.dir;
-      }
-      if (!resolvedDir && freshCandidates.length > 0) {
-        resolvedDir = freshCandidates[0].dir;
-      }
-      if (!resolvedDir && candidateDirs.length > 0) {
-        resolvedDir = candidateDirs[0].dir;
-      }
-      if (!resolvedDir) {
-        resolvedDir = extractDir;
-      }
-
-      return {
-        bestDir: resolvedDir,
-        folderName: finalName,
-        outputFullPath: latestRunFullPath || buildServerScanOutputPath(effectiveDomain, finalName),
-        isScanning: false,
-        inProgress: false,
-        scanFinished: true,
-        freshFound: true,
-        targetDomain: detectedTargetDomain || targetDomain,
-        tokens: parsedTokens,
-        cost: parsedCost,
-        liveLogLines,
-        strixLog: liveLogTail
-      };
-    }
-
-    if (completedFreshCandidate) {
+    const completedFreshCandidate = freshCandidates.find(c => c.isFinalized && !c.isRunning && !staleRunNames.has(c.name.toLowerCase()));
+    if (completedFreshCandidate && !initiatedRunOutputFolder) {
       const finalName = completedFreshCandidate.name;
       return {
         bestDir: completedFreshCandidate.dir,

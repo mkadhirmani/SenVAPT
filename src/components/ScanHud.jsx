@@ -1452,11 +1452,10 @@ export default function ScanHud({
             // Stream real-time live logs from the remote server's scan.log
             if (results?.liveLogLines && Array.isArray(results.liveLogLines) && results.liveLogLines.length > 0) {
               setLogs(prev => {
-                const newLogs = [...prev];
-                for (const line of results.liveLogLines) {
-                  if (!newLogs.includes(line)) newLogs.push(line);
-                }
-                return newLogs;
+                const prevSet = new Set(prev);
+                const additions = results.liveLogLines.filter(line => !prevSet.has(line));
+                if (additions.length === 0) return prev;
+                return [...prev, ...additions];
               });
             }
 
@@ -1470,15 +1469,13 @@ export default function ScanHud({
               }));
             }
 
-            // Scan completion check: polling continues only while scan is actively executing on the server
-            const logIndicatesCompleted = (Array.isArray(results?.liveLogLines) && results.liveLogLines.some(l => 
-              /Penetration\s+test\s+completed|Scan\s+completed|Scan\s+finished|All\s+tasks\s+completed|VAPT\s+assessment\s+completed/i.test(l)
-            )) || /Penetration\s+test\s+completed/i.test(results?.strixLog || '');
-
-            const isStillRunning = !logIndicatesCompleted && (!results || 
+            // Scan completion check: polling continues strictly while scan is actively executing on the server
+            // Only finalize when the backend confirms the fresh scan has finished and artifacts are ready
+            const isStillRunning = (!results || 
                                    results.inProgress === true || 
                                    results.isScanning === true || 
-                                   !results.scanFinished);
+                                   !results.scanFinished ||
+                                   !results.freshFound);
 
             if (isStillRunning) {
               // 1. Detect if the remote scan stalled or failed to launch Strix
