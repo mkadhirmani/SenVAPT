@@ -252,6 +252,8 @@ export async function secureN8nFetch(urlStr, options = {}, redirectCount = 0) {
         reject(new Error(`Connection refused by ${parsed.hostname}:${parsed.port || (isHttps ? 443 : 80)}. Server is offline or port is closed.`));
       } else if (err.code === 'ENOTFOUND') {
         reject(new Error(`DNS resolution failed for ${parsed.hostname}. Domain does not exist.`));
+      } else if (err.code === 'ECONNRESET' || (err.message && (err.message.includes('socket disconnected') || err.message.includes('TLS connection was established')))) {
+        reject(new Error(`Connection reset by corporate cluster router (${parsed.hostname}) before TLS handshake completed. The n8n application pods in the OpenShift/Kubernetes cluster appear to be stopped, crashed, or restarting (all backend pods down).`));
       } else {
         reject(err);
       }
@@ -1399,7 +1401,12 @@ export async function triggerN8nScanProxy(payload) {
     } catch (e) {}
 
     if (!res.ok) {
-      throw new Error(`n8n Webhook returned HTTP ${status}: ${resText || res.statusText}`);
+      let cleanErr = resText;
+      if (resText.includes('Application is not available') || resText.includes('<html') || resText.includes('<!DOCTYPE')) {
+        const hasPodsDown = resText.includes('all pods are down');
+        cleanErr = `Application is not available in cluster${hasPodsDown ? ' (All n8n pods in OpenShift are down or stopped)' : ''}.`;
+      }
+      throw new Error(`n8n Webhook returned HTTP ${status}: ${cleanErr || res.statusText}`);
     }
 
     return {
@@ -2407,7 +2414,11 @@ export async function testN8nFetchWebhookProxy(payload) {
     const buffer = Buffer.from(arrayBuf);
 
     if (!res.ok) {
-      const errText = buffer.toString('utf-8');
+      let errText = buffer.toString('utf-8');
+      if (errText.includes('Application is not available') || errText.includes('<html') || errText.includes('<!DOCTYPE')) {
+        const hasPodsDown = errText.includes('all pods are down');
+        errText = `Application is not available in cluster${hasPodsDown ? ' (All n8n pods in OpenShift are down or stopped)' : ''}.`;
+      }
       return {
         success: false,
         status: status,
