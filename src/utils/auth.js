@@ -398,36 +398,6 @@ export async function authenticateUser(usernameOrEmail, password, selectedRole =
     console.warn('Backend login attempt note:', err.message);
   }
 
-  // 2. Direct Supabase query (fetch credential directly from Supabase vapt_users table)
-  try {
-    const { data: supaUsers, error: supaErr } = await supabase
-      .from('vapt_users')
-      .select('*')
-      .or(`username.ilike.${trimmedInput},email.ilike.${trimmedInput}`)
-      .limit(1);
-
-    if (!supaErr && Array.isArray(supaUsers) && supaUsers.length > 0) {
-      const row = supaUsers[0];
-      if (row.password && row.password === trimmedPass) {
-        if (selectedRole === 'admin' && row.role !== 'admin') {
-          throw new Error('Access Denied: This account does not have administrator privileges. Please switch to User Login.');
-        }
-        const token = `token-${row.id}-${Date.now()}`;
-        setAuthToken(token);
-        const formatted = formatUserFromSupabase(row);
-        formatted.password = trimmedPass;
-        const user = setCurrentUser(formatted);
-        await initSupabaseBrowserConfig().catch(() => {});
-        return user;
-      }
-    }
-  } catch (supaErr) {
-    if (supaErr.message && supaErr.message.startsWith('Access Denied:')) {
-      throw supaErr;
-    }
-    console.warn('Direct Supabase authentication note:', supaErr.message);
-  }
-
   throw new Error('Invalid username or password.');
 }
 

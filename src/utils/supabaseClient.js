@@ -438,7 +438,8 @@ export function formatScanFromSupabase(row) {
 
 /**
  * Format a user record for Supabase storage (vapt_users table)
- * The original plaintext password is preserved and visible in Supabase.
+ * Security rule: Plaintext passwords are NEVER stored in the database.
+ * Only cryptographically secure PBKDF2 hashes are accepted.
  */
 export function formatUserForSupabase(user) {
   if (!user) return null;
@@ -458,15 +459,18 @@ export function formatUserForSupabase(user) {
     scans_count: Number(user.scansCount || user.scans_count || 0),
     created_at: user.createdAt || user.created_at || new Date().toISOString()
   };
-  if (rawPassword) {
+
+  // Only include password if it is already a secure PBKDF2 hash. Never send plaintext!
+  if (rawPassword && typeof rawPassword === 'string' && rawPassword.startsWith('pbkdf2$')) {
     payload.password = rawPassword;
   }
+
   return payload;
 }
 
 /**
  * Format a database record from Supabase back to dashboard user object
- * Preserves the original password so it remains visible and accessible.
+ * Security rule: Password hashes are NEVER returned to the client-side state.
  */
 export function formatUserFromSupabase(row) {
   if (!row) return null;
@@ -474,7 +478,7 @@ export function formatUserFromSupabase(row) {
     id: row.id,
     username: row.username,
     email: row.email,
-    password: row.password || '',
+    password: '', // Redacted for security; never returned to frontend
     name: row.name || row.username || 'User',
     role: row.role || 'user',
     title: row.title || (row.role === 'admin' ? 'Administrator' : 'Security Analyst'),

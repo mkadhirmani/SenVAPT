@@ -1474,6 +1474,13 @@ const server = http.createServer(async (req, res) => {
       return res.end('Bad Request');
     }
 
+    // Block dotfiles and hidden file probes (e.g. /.env, /.git, /.strix_server_config.json, /.users_store.json)
+    const pathSegments = cleanPath.split('/').filter(Boolean);
+    if (pathSegments.some(seg => seg.startsWith('.'))) {
+      res.statusCode = 404;
+      return res.end('Not Found');
+    }
+
     // Block directory traversal probes immediately
     if (pathname.includes('..') || cleanPath.includes('..')) {
       res.statusCode = 403;

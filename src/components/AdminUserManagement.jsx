@@ -155,7 +155,7 @@ export default function AdminUserManagement({
       setSelectedUserId(cleanUsername);
       setIsAddUserOpen(false);
       setNewUserData({ username: '', email: '', password: '', role: 'user' });
-      showFeedback(`User "${cleanUsername}" created & original password visible in Supabase!`);
+      showFeedback(`User "${cleanUsername}" created with encrypted credentials!`);
     } catch (err) {
       showFeedback(err.message || 'Failed to create user');
     }
@@ -433,7 +433,7 @@ export default function AdminUserManagement({
                 <th className="py-3 px-4 font-heading">User</th>
                 <th className="py-3 px-3 font-heading">Role</th>
                 <th className="py-3 px-3 font-heading">Status</th>
-                <th className="py-3 px-3 font-heading">Password</th>
+                <th className="py-3 px-3 font-heading">Security</th>
                 <th className="py-3 px-3 font-heading">Scans</th>
                 <th className="py-3 px-4 font-heading">Assigned Permissions (Click to Toggle)</th>
                 <th className="py-3 px-4 text-right font-heading">Actions</th>
@@ -506,14 +506,15 @@ export default function AdminUserManagement({
                       )}
                     </td>
 
-                    {/* Password Column */}
+                    {/* Security Status */}
                     <td className="py-3.5 px-3 font-mono">
-                      <span className={`px-2 py-0.5 rounded text-[11px] font-mono font-bold border ${
+                      <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-mono font-bold border ${
                         theme === 'dark' 
                           ? 'bg-[#001127] border-[#0A3778] text-[#4D9AEC]' 
                           : 'bg-slate-100 border-slate-200 text-[#006FE3]'
                       }`}>
-                        {user.password || '••••••••'}
+                        <Shield className="w-3 h-3 text-[#299346]" />
+                        <span>Encrypted</span>
                       </span>
                     </td>
 

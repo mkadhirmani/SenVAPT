@@ -157,7 +157,17 @@ function strixBackendPlugin() {
   return {
     name: 'strix-backend-middleware',
     configureServer(server) {
-
+      // Block dotfiles and hidden file probes (e.g. /.env, /.git, /.strix_server_config.json, /.users_store.json)
+      server.middlewares.use((req, res, next) => {
+        const rawUrl = req.url || '';
+        const pathname = rawUrl.split('?')[0];
+        const segments = pathname.split('/').filter(Boolean);
+        if (segments.some(s => s.startsWith('.') && s !== '.' && s !== '..')) {
+          res.statusCode = 404;
+          return res.end('Not Found');
+        }
+        next();
+      });
 
       // 1. LLM Proxy Route (Requires Valid Session)
       server.middlewares.use('/api/llm-proxy', async (req, res) => {
