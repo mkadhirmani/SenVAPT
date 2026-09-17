@@ -208,24 +208,46 @@ export function formatScanForSupabase(scan) {
     rawFolder = rawFolder.replace(/\.zip$/i, '');
   }
 
-  // Determine server resultant folder path (never a .zip file)
-  let outputFolderPath = scan.outputFolderPath || scan.metadata?.remoteRunDir || scan.extractedPath || '';
-  if (outputFolderPath.includes('/root/')) {
-    outputFolderPath = '/' + outputFolderPath.slice(outputFolderPath.indexOf('root/'));
-  }
-  if (outputFolderPath.endsWith('.zip') || !outputFolderPath) {
-    outputFolderPath = `/root/strix_runs/${rawFolder}`;
-  }
-
   // If rawFolder has a path, take the basename
   const segments = rawFolder.split(/[\\\/]/).filter(Boolean);
   const folderName = segments.length > 0 ? segments[segments.length - 1] : `scan-${Date.now()}`;
 
+  const targetUrl = scan.targetUrl || scan.metadata?.targetUrl || 'https://target.com';
+  const companyName = scan.companyName || scan.metadata?.companyName || 'Target Organization';
+
+  const cleanDomain = (targetUrl || companyName || '')
+    .trim()
+    .replace(/^https?:\/\//i, '')
+    .replace(/^www\./i, '')
+    .split('/')[0]
+    .split(':')[0]
+    .toLowerCase();
+
+  const domPrefix = cleanDomain 
+    ? `${cleanDomain}-scan` 
+    : (folderName.includes('_') ? `${folderName.split('_')[0].replace(/-/g, '.')}-scan` : 'scan');
+
+  // Determine server resultant folder path (never a .zip file, strictly /root/<domain>-scan/strix_runs/<folder>)
+  let outputFolderPath = scan.outputFolderPath || scan.metadata?.remoteRunDir || scan.extractedPath || '';
+  if (outputFolderPath.includes('/root/')) {
+    outputFolderPath = '/' + outputFolderPath.slice(outputFolderPath.indexOf('root/'));
+  }
+  if (!outputFolderPath || outputFolderPath.endsWith('.zip')) {
+    outputFolderPath = `/root/${domPrefix}/strix_runs/${folderName}`;
+  } else if (outputFolderPath.startsWith('/root/strix_runs/')) {
+    const fName = outputFolderPath.replace('/root/strix_runs/', '').trim();
+    outputFolderPath = `/root/${domPrefix}/strix_runs/${fName || folderName}`;
+  } else if (outputFolderPath.startsWith('/strix_runs/')) {
+    const fName = outputFolderPath.replace('/strix_runs/', '').trim();
+    outputFolderPath = `/root/${domPrefix}/strix_runs/${fName || folderName}`;
+  } else if (outputFolderPath.match(/\/?root\/([^\s\r\n│\t,\/]+-scan)\/strix_runs\/([^\s\r\n│\t,\/]+)/i)) {
+    const m = outputFolderPath.match(/\/?root\/([^\s\r\n│\t,\/]+-scan)\/strix_runs\/([^\s\r\n│\t,\/]+)/i);
+    outputFolderPath = `/root/${m[1]}/strix_runs/${m[2]}`;
+  }
+
   // ID should match the resultant folder run ID
   const id = scan.id && !scan.id.endsWith('.zip') ? scan.id : folderName;
 
-  const targetUrl = scan.targetUrl || scan.metadata?.targetUrl || 'https://target.com';
-  const companyName = scan.companyName || scan.metadata?.companyName || 'Target Organization';
   const durationSec = scan.durationSec || scan.metadata?.durationSec || 240;
   const duration = scan.duration || `${Math.max(1, Math.round(durationSec / 60))} min`;
 
@@ -336,7 +358,32 @@ export function formatScanFromSupabase(row) {
   const targetUrl = row.target_url || row.targetUrl || 'https://target.com';
   const companyName = row.company_name || row.companyName || 'Target Organization';
   const folderName = row.folder_name || row.folderName || row.id;
-  const outputFolderPath = row.output_folder_path || row.outputFolderPath || `/root/strix_runs/${folderName}`;
+
+  const cleanDomain = (targetUrl || companyName || '')
+    .trim()
+    .replace(/^https?:\/\//i, '')
+    .replace(/^www\./i, '')
+    .split('/')[0]
+    .split(':')[0]
+    .toLowerCase();
+
+  const domPrefix = cleanDomain 
+    ? `${cleanDomain}-scan` 
+    : (folderName && folderName.includes('_') ? `${folderName.split('_')[0].replace(/-/g, '.')}-scan` : 'scan');
+
+  let outputFolderPath = row.output_folder_path || row.outputFolderPath || '';
+  if (!outputFolderPath || outputFolderPath.endsWith('.zip')) {
+    outputFolderPath = `/root/${domPrefix}/strix_runs/${folderName}`;
+  } else if (outputFolderPath.startsWith('/root/strix_runs/')) {
+    const fName = outputFolderPath.replace('/root/strix_runs/', '').trim();
+    outputFolderPath = `/root/${domPrefix}/strix_runs/${fName || folderName}`;
+  } else if (outputFolderPath.startsWith('/strix_runs/')) {
+    const fName = outputFolderPath.replace('/strix_runs/', '').trim();
+    outputFolderPath = `/root/${domPrefix}/strix_runs/${fName || folderName}`;
+  } else if (outputFolderPath.match(/\/?root\/([^\s\r\n│\t,\/]+-scan)\/strix_runs\/([^\s\r\n│\t,\/]+)/i)) {
+    const m = outputFolderPath.match(/\/?root\/([^\s\r\n│\t,\/]+-scan)\/strix_runs\/([^\s\r\n│\t,\/]+)/i);
+    outputFolderPath = `/root/${m[1]}/strix_runs/${m[2]}`;
+  }
   const durationSec = row.duration_sec !== undefined ? Number(row.duration_sec) : 240;
   const duration = row.duration || `${Math.max(1, Math.round(durationSec / 60))} min`;
 

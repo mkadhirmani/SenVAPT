@@ -258,11 +258,22 @@ export default function ScanHud({
 
   const cleanScanPath = (p) => {
     if (!p) return null;
-    let s = p.trim().replace(/^['"`]|['"`]$/g, '').replace(/[.,:;)]+$/, '');
+    let s = p.trim().replace(/^['"`│\s]+|['"`│\s]+$/g, '').replace(/[.,:;)]+$/, '');
     if (s.endsWith('.md') || s.endsWith('.csv') || s.endsWith('.sarif') || s.endsWith('.json') || s.endsWith('.log')) {
       s = s.substring(0, s.lastIndexOf('/'));
     }
-    return (s && s.startsWith('/') && s.length > 3) ? s : null;
+    if (!s.startsWith('/')) s = '/' + s;
+    const dom = (targetDomain || target || '').trim().replace(/^https?:\/\//i, '').replace(/^www\./i, '').split('/')[0].split(':')[0].toLowerCase();
+    if (s.startsWith('/root/strix_runs/') || s.startsWith('/strix_runs/')) {
+      const folder = s.replace(/^\/(?:root\/)?strix_runs\//, '').trim();
+      const domPrefix = dom ? `${dom}-scan` : `${folder.split('_')[0].replace(/-/g, '.')}-scan`;
+      return `/root/${domPrefix}/strix_runs/${folder}`;
+    }
+    const mFull = s.match(/\/?root\/([^\s\r\n│\t,\/]+-scan)\/strix_runs\/([^\s\r\n│\t,\/]+)/i);
+    if (mFull) {
+      return `/root/${mFull[1]}/strix_runs/${mFull[2]}`;
+    }
+    return (s && s.length > 3) ? s : null;
   };
 
   // Derive clean agent name without Strix or Root Agent references
@@ -297,7 +308,10 @@ export default function ScanHud({
         } else {
           const mView = line.match(/strix view\s+([a-zA-Z0-9_\-]+)/i);
           if (mView) {
-            latestOutputFolder = `/root/strix_runs/${mView[1]}`;
+            const folder = mView[1].trim();
+            const dom = (targetDomain || target || '').trim().replace(/^https?:\/\//i, '').replace(/^www\./i, '').split('/')[0].split(':')[0].toLowerCase();
+            const domPrefix = dom ? `${dom}-scan` : `${folder.split('_')[0].replace(/-/g, '.')}-scan`;
+            latestOutputFolder = `/root/${domPrefix}/strix_runs/${folder}`;
           } else {
             const m1 = line.match(/\[OUTPUT FOLDER PATH\]\s*([^\s\r\n\t,)]+)/i);
             if (m1) {
@@ -823,10 +837,23 @@ export default function ScanHud({
         if (!inferredCompany) inferredCompany = 'Security Audit Target';
 
         const runFolderName = (results.folderName && !results.folderName.endsWith('.zip')) ? results.folderName : `scan-${Date.now()}`;
+        const dom = (detectedTarget || inferredCompany || targetDomain || target || '').trim().replace(/^https?:\/\//i, '').replace(/^www\./i, '').split('/')[0].split(':')[0].toLowerCase();
+        const domPrefix = dom ? `${dom}-scan` : `${runFolderName.split('_')[0].replace(/-/g, '.')}-scan`;
+        let computedOutputFolder = results.outputFolderPath || results.extractedPath || '';
+        if (!computedOutputFolder || computedOutputFolder.endsWith('.zip') || computedOutputFolder.startsWith('/root/strix_runs/') || computedOutputFolder.startsWith('/strix_runs/')) {
+          const fn = computedOutputFolder.startsWith('/root/strix_runs/')
+            ? computedOutputFolder.replace('/root/strix_runs/', '')
+            : (computedOutputFolder.startsWith('/strix_runs/') ? computedOutputFolder.replace('/strix_runs/', '') : runFolderName);
+          computedOutputFolder = `/root/${domPrefix}/strix_runs/${fn}`;
+        } else if (computedOutputFolder.match(/\/?root\/([^\s\r\n│\t,\/]+-scan)\/strix_runs\/([^\s\r\n│\t,\/]+)/i)) {
+          const m = computedOutputFolder.match(/\/?root\/([^\s\r\n│\t,\/]+-scan)\/strix_runs\/([^\s\r\n│\t,\/]+)/i);
+          computedOutputFolder = `/root/${m[1]}/strix_runs/${m[2]}`;
+        }
+
         const newScan = {
           id: runFolderName,
           folderName: runFolderName,
-          outputFolderPath: results.outputFolderPath || results.extractedPath || `/root/strix_runs/${runFolderName}`,
+          outputFolderPath: computedOutputFolder,
           companyName: inferredCompany,
           targetUrl: detectedTarget,
           timestamp: results.timestamp || new Date().toISOString().replace('T', ' ').slice(0, 16),
