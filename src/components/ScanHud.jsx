@@ -263,7 +263,7 @@ export default function ScanHud({
       s = s.substring(0, s.lastIndexOf('/'));
     }
     if (!s.startsWith('/')) s = '/' + s;
-    const dom = (targetDomain || target || '').trim().replace(/^https?:\/\//i, '').replace(/^www\./i, '').split('/')[0].split(':')[0].toLowerCase();
+    const dom = (targetUrl || '').trim().replace(/^https?:\/\//i, '').replace(/^www\./i, '').split('/')[0].split(':')[0].toLowerCase();
     if (s.startsWith('/root/strix_runs/') || s.startsWith('/strix_runs/')) {
       const folder = s.replace(/^\/(?:root\/)?strix_runs\//, '').trim();
       const domPrefix = dom ? `${dom}-scan` : `${folder.split('_')[0].replace(/-/g, '.')}-scan`;
@@ -309,7 +309,7 @@ export default function ScanHud({
           const mView = line.match(/strix view\s+([a-zA-Z0-9_\-]+)/i);
           if (mView) {
             const folder = mView[1].trim();
-            const dom = (targetDomain || target || '').trim().replace(/^https?:\/\//i, '').replace(/^www\./i, '').split('/')[0].split(':')[0].toLowerCase();
+            const dom = (targetUrl || '').trim().replace(/^https?:\/\//i, '').replace(/^www\./i, '').split('/')[0].split(':')[0].toLowerCase();
             const domPrefix = dom ? `${dom}-scan` : `${folder.split('_')[0].replace(/-/g, '.')}-scan`;
             latestOutputFolder = `/root/${domPrefix}/strix_runs/${folder}`;
           } else {
@@ -837,7 +837,7 @@ export default function ScanHud({
         if (!inferredCompany) inferredCompany = 'Security Audit Target';
 
         const runFolderName = (results.folderName && !results.folderName.endsWith('.zip')) ? results.folderName : `scan-${Date.now()}`;
-        const dom = (detectedTarget || inferredCompany || targetDomain || target || '').trim().replace(/^https?:\/\//i, '').replace(/^www\./i, '').split('/')[0].split(':')[0].toLowerCase();
+        const dom = (detectedTarget || inferredCompany || targetUrl || '').trim().replace(/^https?:\/\//i, '').replace(/^www\./i, '').split('/')[0].split(':')[0].toLowerCase();
         const domPrefix = dom ? `${dom}-scan` : `${runFolderName.split('_')[0].replace(/-/g, '.')}-scan`;
         let computedOutputFolder = results.outputFolderPath || results.extractedPath || '';
         if (!computedOutputFolder || computedOutputFolder.endsWith('.zip') || computedOutputFolder.startsWith('/root/strix_runs/') || computedOutputFolder.startsWith('/strix_runs/')) {
@@ -1377,44 +1377,42 @@ export default function ScanHud({
         appendLog(`[GATEWAY RESPONSE] ${JSON.stringify(triggerRes.data || 'Workflow was started')}`);
         appendLog(`[SUCCESS] Autonomous security audit launched on remote server!`);
         appendLog(`[AGENT ACTIVE] Strix autonomous engine is actively scanning ${cleanDomain}...`);
-        appendLog(`[STAGE 1] DNS & Network reconnaissance initialized.`);
-
-        // Stage progression logs
-        const stages = [
-          { delay: 3000, log: `[RECON] Discovered active host records & TLS certificates for ${cleanDomain}` },
-          { delay: 7000, log: `[PORT SCAN] Probing HTTP/HTTPS endpoints, service banners & headers...` },
-          { delay: 12000, log: `[CRAWLER] Mapped endpoints, forms, and API routes on ${cleanDomain}` },
-          { delay: 18000, log: `[AI REASONING] LLM evaluating attack surface & generating tailored fuzzing payloads...` },
-          { delay: 26000, log: `[VULN PROBE] Testing OWASP Top 10 vulnerabilities (SQLi, XSS, SSRF, Auth Bypass)...` },
-          { delay: 35000, log: `[ANALYSIS] Strix LLM agent verifying discovered proof-of-concepts & impact...` }
-        ];
-
-        stages.forEach(s => {
-          setTimeout(() => {
-            appendLog(s.log);
-            setScanStats(prev => ({
-              ...prev,
-              requests: prev.requests + Math.floor(Math.random() * 45) + 20,
-              tokens: prev.tokens + Math.floor(Math.random() * 250000) + 120000,
-              cost: parseFloat((prev.cost + 0.35).toFixed(2))
-            }));
-          }, s.delay);
-        });
+        appendLog(`[STAGE 1] Remote reconnaissance initialized (Subfinder / Amass subdomain discovery).`);
 
         // Background Polling for scan results ZIP via n8n fetch webhook
         if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
         let pollAttempts = 0;
         let baselineRunId = null;
-        if (localFolders && Array.isArray(localFolders)) {
-          const cleanSlug = cleanDomain.toLowerCase().replace(/[^a-z0-9]/g, '');
-          const existing = localFolders.find(f => {
-            const fn = (typeof f === 'string' ? f : (f.name || f.folderName || '')).toLowerCase().replace(/[^a-z0-9]/g, '');
-            return fn.includes(cleanSlug) && cleanSlug.length > 3;
+        let announcedRecon = false;
+        let lastLoggedRunId = null;
+
+        const cleanSlug = cleanDomain.toLowerCase().replace(/[^a-z0-9]/g, '');
+        const previousRunIds = [];
+
+        // Collect all previous run IDs for this target domain from scan history
+        if (Array.isArray(scanHistory)) {
+          scanHistory.forEach(s => {
+            if (!s) return;
+            const sUrl = (s.targetUrl || s.companyName || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+            const sId = (s.id || s.folderName || '').trim();
+            if (sUrl.includes(cleanSlug) || sId.toLowerCase().includes(cleanSlug)) {
+              if (sId && !previousRunIds.includes(sId)) previousRunIds.push(sId);
+            }
           });
-          if (existing) {
-            baselineRunId = typeof existing === 'string' ? existing : (existing.name || existing.folderName);
-          }
         }
+
+        // Collect all previous run IDs from local downloaded folders
+        if (localFolders && Array.isArray(localFolders)) {
+          localFolders.forEach(f => {
+            const fn = (typeof f === 'string' ? f : (f.name || f.folderName || '')).trim();
+            const fnSlug = fn.toLowerCase().replace(/[^a-z0-9]/g, '');
+            if (fnSlug.includes(cleanSlug) && cleanSlug.length > 3) {
+              if (fn && !previousRunIds.includes(fn)) previousRunIds.push(fn);
+            }
+          });
+        }
+
+        baselineRunId = previousRunIds;
 
         pollIntervalRef.current = setInterval(async () => {
           pollAttempts++;
@@ -1429,10 +1427,26 @@ export default function ScanHud({
               previousRunId: baselineRunId
             });
 
-            // Capture the baseline run ID (from previous scan) on the first poll
-            if (results?.baselineRunId && !baselineRunId) {
-              baselineRunId = results.baselineRunId;
-              appendLog(`[SERVER MONITOR] Connected to Strix agent. Baseline scan ID: ${baselineRunId}`);
+            // Capture any baseline run ID from previous scan
+            if (results?.baselineRunId) {
+              if (Array.isArray(baselineRunId)) {
+                if (!baselineRunId.includes(results.baselineRunId)) baselineRunId.push(results.baselineRunId);
+              } else if (!baselineRunId) {
+                baselineRunId = [results.baselineRunId];
+              }
+            }
+
+            // Report real reconnaissance artifacts discovered on server
+            if (results?.reconFiles && results.reconFiles.length > 0 && !announcedRecon) {
+              announcedRecon = true;
+              appendLog(`[RECON ARTIFACTS] Remote server generated reconnaissance files: ${results.reconFiles.join(', ')}`);
+            }
+
+            // Report when Strix actually launches its dedicated run folder
+            if (results?.activeRunId && results.activeRunId !== lastLoggedRunId) {
+              lastLoggedRunId = results.activeRunId;
+              appendLog(`[STRIX ACTIVE] Strix autonomous engine initialized: /root/${cleanDomain}-scan/strix_runs/${results.activeRunId}`);
+              appendLog(`[STAGE 2] Autonomous agent vulnerability probing & exploit verification in progress.`);
             }
 
             // Stream real-time live logs from the remote server's scan.log
@@ -1463,9 +1477,32 @@ export default function ScanHud({
                                    !results.scanFinished;
 
             if (isStillRunning) {
+              // 1. Detect if the remote scan stalled or failed to launch Strix
+              if (results?.isStalled) {
+                clearInterval(pollIntervalRef.current);
+                if (elapsedTimerRef.current) clearInterval(elapsedTimerRef.current);
+                setIsScanning(false);
+                setScanFinished(false);
+                setScanError(results.message);
+                appendLog(`[STALLED] ${results.message}`);
+                return;
+              }
+
+              // 2. Client-side fail-safe timeout (20 minutes without scan.log creation)
+              const elapsedMin = Math.floor((Date.now() - startTime) / 60000);
+              const elapsedSec = Math.floor(((Date.now() - startTime) % 60000) / 1000);
+              if (elapsedMin >= 20 && !results?.activeRunId && (!results?.liveLogLines || results.liveLogLines.length === 0)) {
+                clearInterval(pollIntervalRef.current);
+                if (elapsedTimerRef.current) clearInterval(elapsedTimerRef.current);
+                setIsScanning(false);
+                setScanFinished(false);
+                const timeoutMsg = `Scan execution timed out after ${elapsedMin} minutes. Only reconnaissance files (${results?.reconFiles?.join(', ') || 'amass.txt, subfinder.txt'}) exist on the server; Strix engine was not started (scan.log not created). Please check n8n workflow or remote server logs.`;
+                setScanError(timeoutMsg);
+                appendLog(`[ERROR] ${timeoutMsg}`);
+                return;
+              }
+
               if (pollAttempts % 3 === 0) {
-                const elapsedMin = Math.floor((Date.now() - startTime) / 60000);
-                const elapsedSec = Math.floor(((Date.now() - startTime) % 60000) / 1000);
                 const statusMsg = results?.message || `Strix autonomous audit actively testing ${cleanDomain}...`;
                 appendLog(`[LIVE AUDIT] ${statusMsg} (Elapsed: ${elapsedMin > 0 ? `${elapsedMin}m ` : ''}${elapsedSec}s)`);
               }

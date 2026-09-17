@@ -282,6 +282,10 @@ export async function autoPersistScanToSupabase(scanData) {
       console.warn('[SUPABASE AUTO-SAVE] Invalid scan payload or missing ID:', scanData?.id);
       return null;
     }
+    // Never persist test/mock artifacts to Supabase
+    if (payload.id.includes('cloudscale-systems') || (payload.target_url && payload.target_url.includes('cloudscale-systems.io')) || payload.id.startsWith('test-') || payload.id.startsWith('test_')) {
+      return null;
+    }
     const { data, error } = await supabase
       .from('vapt_scans')
       .upsert([payload], { onConflict: 'id' });
@@ -1448,7 +1452,11 @@ export function resolveStrixOutputFolderFromExtract(extractDir, minStartTimeMs =
   const staleThresholdMs = minStartTimeMs > 0 ? (minStartTimeMs - 90000) : 0;
   const staleRunNames = new Set();
   if (previousRunId) {
-    staleRunNames.add(previousRunId.toLowerCase());
+    if (Array.isArray(previousRunId)) {
+      previousRunId.forEach(id => { if (id) staleRunNames.add(String(id).toLowerCase()); });
+    } else {
+      staleRunNames.add(String(previousRunId).toLowerCase());
+    }
   }
 
   // 1. Search for all log files, strictly prioritizing root/target scan.log over nested strix.log
@@ -1481,6 +1489,25 @@ export function resolveStrixOutputFolderFromExtract(extractDir, minStartTimeMs =
   otherLogs.sort((a, b) => b.mtime - a.mtime);
 
   const logFiles = mainScanLogs.length > 0 ? mainScanLogs.map(l => l.path) : otherLogs.map(l => l.path);
+
+  // 1b. Check for reconnaissance artifacts (subfinder.txt, amass.txt, httpx.txt, resolved.txt, target.txt)
+  const reconFilesFound = [];
+  const findReconFiles = (dir, depth = 0) => {
+    if (depth > 6) return;
+    try {
+      const items = fs.readdirSync(dir);
+      for (const item of items) {
+        if (['subfinder.txt', 'amass.txt', 'httpx.txt', 'resolved.txt', 'target.txt'].includes(item.toLowerCase())) {
+          if (!reconFilesFound.includes(item)) reconFilesFound.push(item);
+        }
+        const full = path.join(dir, item);
+        try {
+          if (fs.statSync(full).isDirectory()) findReconFiles(full, depth + 1);
+        } catch (_) {}
+      }
+    } catch (_) {}
+  };
+  findReconFiles(extractDir);
 
   // 2. Find all candidate directories in extractDir that contain Strix files
   const candidateDirs = [];
@@ -1538,9 +1565,15 @@ export function resolveStrixOutputFolderFromExtract(extractDir, minStartTimeMs =
         const effectiveStart = startTimeMs || stats.mtimeMs || 0;
         const name = path.basename(dir);
 
-        // When checking for a fresh scan, classify any candidate created before scan start as stale
-        if (minStartTimeMs > 0 && effectiveStart < staleThresholdMs && (stats.mtimeMs || 0) < staleThresholdMs) {
-          staleRunNames.add(name.toLowerCase());
+        // When checking for a fresh scan, classify any candidate created or completed before scan start as stale
+        if (minStartTimeMs > 0) {
+          if (startTimeMs > 0 && startTimeMs < staleThresholdMs) {
+            staleRunNames.add(name.toLowerCase());
+          } else if (endTimeMs > 0 && endTimeMs < minStartTimeMs) {
+            staleRunNames.add(name.toLowerCase());
+          } else if (!startTimeMs && !endTimeMs && (stats.mtimeMs || 0) < staleThresholdMs) {
+            staleRunNames.add(name.toLowerCase());
+          }
         }
 
         candidateDirs.push({
@@ -1673,7 +1706,11 @@ export function resolveStrixOutputFolderFromExtract(extractDir, minStartTimeMs =
       const isCompBelongingToStale = compRunLower && staleRunNames.has(compRunLower);
       const isLogModifiedBeforeScan = minStartTimeMs > 0 && (logStat.mtimeMs < staleThresholdMs);
 
-      if (lastCompLineIdx !== -1 && !isCompBelongingToStale && !isLogModifiedBeforeScan && (lastInitLineIdx === -1 || lastCompLineIdx >= lastInitLineIdx)) {
+      const hasFreshInitiation = lastInitLineIdx !== -1 && lastCompLineIdx >= lastInitLineIdx;
+      const compCandidate = candidateDirs.find(c => c.name.toLowerCase() === compRunLower);
+      const isCompCandidateFresh = compCandidate && (compCandidate.startTimeMs >= staleThresholdMs || compCandidate.endTimeMs >= minStartTimeMs);
+
+      if (lastCompLineIdx !== -1 && !isCompBelongingToStale && !isLogModifiedBeforeScan && (hasFreshInitiation || isCompCandidateFresh || minStartTimeMs === 0)) {
         isLogCompleted = true;
         isLogActive = false;
         latestRunOutputFolder = completedRunOutputFolder;
@@ -1683,12 +1720,6 @@ export function resolveStrixOutputFolderFromExtract(extractDir, minStartTimeMs =
         isLogCompleted = false;
         latestRunOutputFolder = initiatedRunOutputFolder;
         latestRunFullPath = initiatedRunFullPath;
-      } else if (completedRunFullPath && !isCompBelongingToStale && !isLogModifiedBeforeScan) {
-        // Completion banner detected at end of real-time log
-        isLogCompleted = true;
-        isLogActive = false;
-        latestRunOutputFolder = completedRunOutputFolder;
-        latestRunFullPath = completedRunFullPath;
       } else {
         isLogActive = minStartTimeMs > 0;
         isLogCompleted = false;
@@ -1754,9 +1785,19 @@ export function resolveStrixOutputFolderFromExtract(extractDir, minStartTimeMs =
     // FRESH SCAN MODE: We must strictly locate a completed run directory created AFTER minStartTimeMs - 90s
     // Exclude any directory in staleRunNames or previousRunId
     const freshCandidates = candidateDirs.filter(c => {
-      if (staleRunNames.has(c.name.toLowerCase())) return false;
-      if (previousRunId && c.name.toLowerCase() === previousRunId.toLowerCase()) return false;
-      return (c.startTimeMs >= staleThresholdMs || c.mtime >= staleThresholdMs);
+      const cNameLower = c.name.toLowerCase();
+      if (staleRunNames.has(cNameLower)) return false;
+      if (previousRunId) {
+        if (Array.isArray(previousRunId) && previousRunId.some(pid => pid && String(pid).toLowerCase() === cNameLower)) return false;
+        if (typeof previousRunId === 'string' && previousRunId.toLowerCase() === cNameLower) return false;
+      }
+      if (c.startTimeMs > 0) {
+        return c.startTimeMs >= staleThresholdMs;
+      }
+      if (c.endTimeMs > 0 && c.endTimeMs < minStartTimeMs) {
+        return false;
+      }
+      return c.mtime >= staleThresholdMs;
     });
 
     const activeRunId = initiatedRunOutputFolder || (freshCandidates.find(c => c.isRunning)?.name) || null;
@@ -1806,14 +1847,36 @@ export function resolveStrixOutputFolderFromExtract(extractDir, minStartTimeMs =
       };
     }
 
-    // No fresh completed scan exists yet. Scan is actively in progress!
-    const baselineId = Array.from(staleRunNames)[0] || previousRunId || null;
+    // No fresh completed scan exists yet.
+    // Check if only recon files exist without any scan.log or Strix run folder
+    const hasNoStrixLog = (mainScanLogs.length === 0 && otherLogs.length === 0);
+    const hasNoStrixRuns = (candidateDirs.length === 0);
+    const elapsedMs = minStartTimeMs > 0 ? (Date.now() - minStartTimeMs) : 0;
+    const elapsedMinutes = Math.floor(elapsedMs / 60000);
+
+    // If 15+ minutes have passed and STILL no scan.log or strix_runs exist, the scan stalled on recon / failed to launch Strix
+    const isStalled = minStartTimeMs > 0 && elapsedMinutes >= 15 && hasNoStrixLog && hasNoStrixRuns;
+
+    let inProgressMessage = '';
+    if (isStalled) {
+      inProgressMessage = `Scan execution stalled on remote server: Only reconnaissance files (${reconFilesFound.join(', ') || 'amass.txt, subfinder.txt'}) exist. Strix engine was not started (scan.log not created after ${elapsedMinutes}m). Please verify n8n workflow or check if amass is hung on server.`;
+    } else if (reconFilesFound.length > 0 && hasNoStrixLog) {
+      inProgressMessage = `Reconnaissance phase in progress on server (${reconFilesFound.join(', ')} generated). Waiting for Strix autonomous engine startup... (${elapsedMinutes}m elapsed)`;
+    } else if (activeRunId) {
+      inProgressMessage = `Strix autonomous audit actively running on server (Run: ${activeRunId}). Waiting for completion...`;
+    } else {
+      inProgressMessage = 'Autonomous security audit in progress on remote server. Waiting for fresh results...';
+    }
+
+    const baselineId = Array.from(staleRunNames)[0] || (Array.isArray(previousRunId) ? previousRunId[0] : previousRunId) || null;
     return {
       bestDir: null,
       folderName: activeRunId || (freshCandidates[0]?.name) || targetDomain,
       outputFullPath: null,
-      isScanning: true,
-      inProgress: true,
+      isScanning: !isStalled,
+      inProgress: !isStalled,
+      isStalled,
+      reconFiles: reconFilesFound,
       scanFinished: false,
       freshFound: false,
       baselineRunId: baselineId,
@@ -1822,9 +1885,7 @@ export function resolveStrixOutputFolderFromExtract(extractDir, minStartTimeMs =
       strixLog: liveLogTail,
       tokens: parsedTokens,
       cost: parsedCost,
-      message: activeRunId 
-        ? `Strix autonomous audit actively running on server (Run: ${activeRunId}). Waiting for completion...`
-        : 'Autonomous security audit in progress on remote server. Waiting for fresh results...'
+      message: inProgressMessage
     };
   }
 
@@ -2100,12 +2161,14 @@ export async function fetchN8nScanResultsProxy(payload) {
     // Find directory containing Strix files inside the extracted folder using smart log and timestamp analysis
     const resolvedResult = resolveStrixOutputFolderFromExtract(extractDir, minStartTimeMs, norm.domain, previousRunId);
 
-    if (minStartTimeMs > 0 && (!resolvedResult.freshFound || !resolvedResult.bestDir || !resolvedResult.scanFinished || resolvedResult.inProgress)) {
-      // Scan is still actively running on server - return inProgress signal and live logs to frontend
+    if (minStartTimeMs > 0 && (!resolvedResult.freshFound || !resolvedResult.bestDir || !resolvedResult.scanFinished || resolvedResult.inProgress || resolvedResult.isStalled)) {
+      // Scan is either actively running or stalled on server - return signal and diagnostic message
       return {
         success: true,
-        inProgress: true,
-        isScanning: true,
+        inProgress: !resolvedResult.isStalled,
+        isScanning: !resolvedResult.isStalled,
+        isStalled: resolvedResult.isStalled || false,
+        reconFiles: resolvedResult.reconFiles || [],
         scanFinished: false,
         freshFound: false,
         baselineRunId: resolvedResult.baselineRunId || null,

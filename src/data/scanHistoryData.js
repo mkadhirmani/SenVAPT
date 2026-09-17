@@ -272,6 +272,20 @@ export const SAMPLE_ALPHA_ATTACK_CHAIN = {
 
 export const INITIAL_SCAN_HISTORY = [];
 
+// Strictly filter out any default mock example scans (Alpha Financial Cloud, Beta Energy Network, Gamma Enterprise Systems, test scans)
+const MOCK_SCAN_IDS = new Set([
+  'scan-alpha-corp_406f',
+  'scan-beta-portal_81f4',
+  'scan-gamma-estate_93f0',
+  'cloudscale-systems-io_9f21'
+]);
+const MOCK_NAMES = new Set([
+  'alpha financial cloud',
+  'beta energy network',
+  'gamma enterprise systems',
+  'cloudscale-systems inc'
+]);
+
 export function getStoredScanHistory() {
   try {
     const stored = localStorage.getItem('sennovate_scan_history');
@@ -284,18 +298,6 @@ export function getStoredScanHistory() {
         }
       } catch (e) {}
     }
-
-    // Strictly filter out any default mock example scans (Alpha Financial Cloud, Beta Energy Network, Gamma Enterprise Systems)
-    const MOCK_SCAN_IDS = new Set([
-      'scan-alpha-corp_406f',
-      'scan-beta-portal_81f4',
-      'scan-gamma-estate_93f0'
-    ]);
-    const MOCK_NAMES = new Set([
-      'alpha financial cloud',
-      'beta energy network',
-      'gamma enterprise systems'
-    ]);
 
     list = list.filter(s => {
       if (!s) return false;
@@ -504,7 +506,13 @@ export async function syncScanHistoryWithServer() {
     console.warn('Note syncing scan history from backend server:', e);
   }
 
-  const merged = Array.from(scanMap.values());
+  const merged = Array.from(scanMap.values()).filter(s => {
+    if (!s) return false;
+    if (MOCK_SCAN_IDS.has(s.id)) return false;
+    const cName = (s.companyName || '').toLowerCase().trim();
+    if (MOCK_NAMES.has(cName)) return false;
+    return true;
+  });
   if (merged.length > 0) {
     localStorage.setItem('sennovate_scan_history', JSON.stringify(merged));
     // Ensure all existing scans are stored in Supabase
