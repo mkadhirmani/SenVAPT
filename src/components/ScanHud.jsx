@@ -1471,10 +1471,14 @@ export default function ScanHud({
             }
 
             // Scan completion check: polling continues only while scan is actively executing on the server
-            const isStillRunning = !results || 
+            const logIndicatesCompleted = (Array.isArray(results?.liveLogLines) && results.liveLogLines.some(l => 
+              /Penetration\s+test\s+completed|Scan\s+completed|Scan\s+finished|All\s+tasks\s+completed|VAPT\s+assessment\s+completed/i.test(l)
+            )) || /Penetration\s+test\s+completed/i.test(results?.strixLog || '');
+
+            const isStillRunning = !logIndicatesCompleted && (!results || 
                                    results.inProgress === true || 
                                    results.isScanning === true || 
-                                   !results.scanFinished;
+                                   !results.scanFinished);
 
             if (isStillRunning) {
               // 1. Detect if the remote scan stalled or failed to launch Strix

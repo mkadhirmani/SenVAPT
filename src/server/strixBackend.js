@@ -1717,11 +1717,12 @@ export function resolveStrixOutputFolderFromExtract(extractDir, minStartTimeMs =
       const compCandidate = candidateDirs.find(c => c.name.toLowerCase() === compRunLower);
       const isCompCandidateFresh = compCandidate && (compCandidate.startTimeMs >= staleThresholdMs || compCandidate.endTimeMs >= minStartTimeMs);
 
-      if (lastCompLineIdx !== -1 && !isCompBelongingToStale && !isLogModifiedBeforeScan && (hasFreshInitiation || isCompCandidateFresh || minStartTimeMs === 0)) {
+      // If the log confirms completion (initiation + completion in same log, or completion occurred after initiation):
+      if (lastCompLineIdx !== -1 && (hasFreshInitiation || lastCompLineIdx >= lastInitLineIdx || isCompCandidateFresh || !isCompBelongingToStale || minStartTimeMs === 0)) {
         isLogCompleted = true;
         isLogActive = false;
-        latestRunOutputFolder = completedRunOutputFolder;
-        latestRunFullPath = completedRunFullPath;
+        latestRunOutputFolder = completedRunOutputFolder || initiatedRunOutputFolder;
+        latestRunFullPath = completedRunFullPath || initiatedRunFullPath;
       } else if (lastInitLineIdx !== -1) {
         isLogActive = true;
         isLogCompleted = false;
@@ -1812,28 +1813,36 @@ export function resolveStrixOutputFolderFromExtract(extractDir, minStartTimeMs =
     // Check if any fresh candidate is truly completed
     const completedFreshCandidate = freshCandidates.find(c => c.isFinalized && !c.isRunning);
 
-    if (isLogCompleted && latestRunOutputFolder && !staleRunNames.has(latestRunOutputFolder.toLowerCase())) {
-      let resolvedDir = findDirectoryByName(extractDir, latestRunOutputFolder);
+    if (isLogCompleted) {
+      const finalName = latestRunOutputFolder || activeRunId || (completedFreshCandidate?.name) || (freshCandidates[0]?.name) || targetDomain;
+      let resolvedDir = latestRunOutputFolder ? findDirectoryByName(extractDir, latestRunOutputFolder) : null;
       if (!resolvedDir && completedFreshCandidate) {
         resolvedDir = completedFreshCandidate.dir;
       }
-      if (resolvedDir) {
-        const finalName = latestRunOutputFolder || path.basename(resolvedDir);
-        return {
-          bestDir: resolvedDir,
-          folderName: finalName,
-          outputFullPath: latestRunFullPath || buildServerScanOutputPath(effectiveDomain, finalName),
-          isScanning: false,
-          inProgress: false,
-          scanFinished: true,
-          freshFound: true,
-          targetDomain: detectedTargetDomain || targetDomain,
-          tokens: parsedTokens,
-          cost: parsedCost,
-          liveLogLines,
-          strixLog: liveLogTail
-        };
+      if (!resolvedDir && freshCandidates.length > 0) {
+        resolvedDir = freshCandidates[0].dir;
       }
+      if (!resolvedDir && candidateDirs.length > 0) {
+        resolvedDir = candidateDirs[0].dir;
+      }
+      if (!resolvedDir) {
+        resolvedDir = extractDir;
+      }
+
+      return {
+        bestDir: resolvedDir,
+        folderName: finalName,
+        outputFullPath: latestRunFullPath || buildServerScanOutputPath(effectiveDomain, finalName),
+        isScanning: false,
+        inProgress: false,
+        scanFinished: true,
+        freshFound: true,
+        targetDomain: detectedTargetDomain || targetDomain,
+        tokens: parsedTokens,
+        cost: parsedCost,
+        liveLogLines,
+        strixLog: liveLogTail
+      };
     }
 
     if (completedFreshCandidate) {
