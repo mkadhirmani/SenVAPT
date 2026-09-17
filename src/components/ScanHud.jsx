@@ -1398,7 +1398,26 @@ export default function ScanHud({
             if (sUrl.includes(cleanSlug) || sId.toLowerCase().includes(cleanSlug)) {
               if (sId && !previousRunIds.includes(sId)) previousRunIds.push(sId);
             }
+            if (s.metadata?.runId && !previousRunIds.includes(s.metadata.runId)) {
+              previousRunIds.push(s.metadata.runId);
+            }
+            if (s.outputFolderPath) {
+              const seg = s.outputFolderPath.split('/').filter(Boolean).pop();
+              if (seg && !previousRunIds.includes(seg)) previousRunIds.push(seg);
+            }
           });
+        }
+
+        // Also add currentTarget if already loaded for this domain
+        if (currentTarget.id && !previousRunIds.includes(currentTarget.id)) {
+          previousRunIds.push(currentTarget.id);
+        }
+        if (currentTarget.folderName && !previousRunIds.includes(currentTarget.folderName)) {
+          previousRunIds.push(currentTarget.folderName);
+        }
+        if (currentTarget.outputFolderPath) {
+          const seg = currentTarget.outputFolderPath.split('/').filter(Boolean).pop();
+          if (seg && !previousRunIds.includes(seg)) previousRunIds.push(seg);
         }
 
         // Collect all previous run IDs from local downloaded folders
@@ -2005,26 +2024,36 @@ export default function ScanHud({
 
   const logTelemetry = getLiveTelemetryFromLogs(logs);
   
-  const activeTotalTokens = logTelemetry.totalTokens !== null 
-    ? logTelemetry.totalTokens 
-    : (scanStats?.totalTokens || scanStats?.tokens || currentTarget.tokens || currentTarget.metadata?.tokens || 0);
+  const activeTotalTokens = isScanning
+    ? (logTelemetry.totalTokens !== null ? logTelemetry.totalTokens : (scanStats?.totalTokens || scanStats?.tokens || 0))
+    : (logTelemetry.totalTokens !== null 
+        ? logTelemetry.totalTokens 
+        : (scanStats?.totalTokens || scanStats?.tokens || currentTarget.tokens || currentTarget.metadata?.tokens || 0));
 
-  const activeOutputTokens = logTelemetry.outputTokens !== null 
-    ? logTelemetry.outputTokens 
-    : (scanStats?.outputTokens || currentTarget.outputTokens || currentTarget.metadata?.outputTokens || Math.round(activeTotalTokens * 0.05));
+  const activeOutputTokens = isScanning
+    ? (logTelemetry.outputTokens !== null ? logTelemetry.outputTokens : (scanStats?.outputTokens || 0))
+    : (logTelemetry.outputTokens !== null 
+        ? logTelemetry.outputTokens 
+        : (scanStats?.outputTokens || currentTarget.outputTokens || currentTarget.metadata?.outputTokens || Math.round(activeTotalTokens * 0.05)));
 
-  const activeRequests = logTelemetry.requests !== null 
-    ? logTelemetry.requests 
-    : (scanStats?.requests || currentTarget.requests || currentTarget.metadata?.requests || 0);
+  const activeRequests = isScanning
+    ? (logTelemetry.requests !== null ? logTelemetry.requests : (scanStats?.requests || 0))
+    : (logTelemetry.requests !== null 
+        ? logTelemetry.requests 
+        : (scanStats?.requests || currentTarget.requests || currentTarget.metadata?.requests || 0));
 
-  const activeCost = logTelemetry.cost !== null 
-    ? logTelemetry.cost 
-    : (typeof scanStats?.cost === 'number' 
-        ? scanStats.cost 
-        : (typeof currentTarget.cost === 'number' ? currentTarget.cost : (typeof currentTarget.metadata?.cost === 'number' ? currentTarget.metadata.cost : null)));
+  const activeCost = isScanning
+    ? (logTelemetry.cost !== null ? logTelemetry.cost : (typeof scanStats?.cost === 'number' ? scanStats.cost : 0))
+    : (logTelemetry.cost !== null 
+        ? logTelemetry.cost 
+        : (typeof scanStats?.cost === 'number' 
+            ? scanStats.cost 
+            : (typeof currentTarget.cost === 'number' ? currentTarget.cost : (typeof currentTarget.metadata?.cost === 'number' ? currentTarget.metadata.cost : null))));
 
-  const discoveredFindings = scannerState?.discoveredFindings || currentTarget.vulnerabilities || [];
-  const activeDurationSec = scanStats?.durationSec || (currentTarget.durationSec || (currentTarget.duration ? parseDurationToSeconds(currentTarget.duration) : 0));
+  const discoveredFindings = isScanning
+    ? (scannerState?.discoveredFindings || [])
+    : (scannerState?.discoveredFindings || currentTarget.vulnerabilities || []);
+  const activeDurationSec = scanStats?.durationSec || (isScanning ? 0 : (currentTarget.durationSec || (currentTarget.duration ? parseDurationToSeconds(currentTarget.duration) : 0)));
 
   const isAdmin = currentUser?.role === 'admin';
   const canViewTerminal = isAdmin || checkUserPermission(currentUser, 'view_terminal');

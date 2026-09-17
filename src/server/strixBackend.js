@@ -1739,10 +1739,26 @@ export function resolveStrixOutputFolderFromExtract(extractDir, minStartTimeMs =
         }
       }
 
+      // Check if initiated or completed folder is a stale run
+      const isInitStale = initiatedRunOutputFolder && staleRunNames.has(initiatedRunOutputFolder.toLowerCase());
+      const isCompStale = completedRunOutputFolder && staleRunNames.has(completedRunOutputFolder.toLowerCase());
+      const isLogModifiedBeforeScan = minStartTimeMs > 0 && (logStat.mtimeMs < staleThresholdMs);
+
       // Status determination:
-      if (lastInitLineIdx !== -1) {
-        if (lastCompLineIdx > lastInitLineIdx) {
-          // Both initiation and completion belong to the current scan
+      if (minStartTimeMs > 0 && (isLogModifiedBeforeScan || isCompStale || isInitStale)) {
+        // Log is from before the new scan started, or refers to a previous completed run.
+        // The new scan has not written its fresh Strix logs yet.
+        isLogCompleted = false;
+        isLogActive = true;
+        if (completedRunOutputFolder) staleRunNames.add(completedRunOutputFolder.toLowerCase());
+        if (initiatedRunOutputFolder) staleRunNames.add(initiatedRunOutputFolder.toLowerCase());
+        latestRunOutputFolder = null;
+        latestRunFullPath = null;
+        liveLogLines = [];
+        liveLogTail = '';
+      } else if (lastInitLineIdx !== -1) {
+        if (lastCompLineIdx > lastInitLineIdx && !isCompStale) {
+          // Both initiation and completion belong to the current fresh scan
           isLogCompleted = true;
           isLogActive = false;
           latestRunOutputFolder = completedRunOutputFolder || initiatedRunOutputFolder;
@@ -1756,12 +1772,7 @@ export function resolveStrixOutputFolderFromExtract(extractDir, minStartTimeMs =
         }
       } else {
         // No initiation found in log
-        const isLogModifiedBeforeScan = minStartTimeMs > 0 && (logStat.mtimeMs < staleThresholdMs);
-        if (isLogModifiedBeforeScan) {
-          // Log is older than requested scan start time - stale log from earlier
-          isLogActive = true;
-          isLogCompleted = false;
-        } else if (lastCompLineIdx !== -1 && minStartTimeMs === 0) {
+        if (lastCompLineIdx !== -1 && minStartTimeMs === 0) {
           // Static viewing of past completed scan
           isLogCompleted = true;
           isLogActive = false;
@@ -1802,34 +1813,11 @@ export function resolveStrixOutputFolderFromExtract(extractDir, minStartTimeMs =
 
   // 4. SCAN RESOLUTION
   if (minStartTimeMs > 0) {
-    // If the log is actively running (latest initiation detected with no subsequent completion):
-    if (isLogActive && !isLogCompleted) {
-      const activeRunId = initiatedRunOutputFolder || null;
-      return {
-        bestDir: null,
-        folderName: activeRunId || targetDomain,
-        outputFullPath: initiatedRunFullPath || buildServerScanOutputPath(effectiveDomain, activeRunId || targetDomain),
-        isScanning: true,
-        inProgress: true,
-        isStalled: false,
-        reconFiles: reconFilesFound,
-        scanFinished: false,
-        freshFound: false,
-        baselineRunId: Array.from(staleRunNames)[0] || null,
-        activeRunId: activeRunId || null,
-        liveLogLines,
-        strixLog: liveLogTail,
-        tokens: parsedTokens,
-        cost: parsedCost,
-        message: activeRunId
-          ? `Strix autonomous audit actively running on server (Run: ${activeRunId}). Waiting for completion...`
-          : 'Strix autonomous audit actively running on remote server. Waiting for fresh results...'
-      };
-    }
+    const targetRunName = latestRunOutputFolder || initiatedRunOutputFolder;
+    const isTargetStale = targetRunName && staleRunNames.has(targetRunName.toLowerCase());
 
-    // If the log confirms completion:
-    if (isLogCompleted) {
-      const targetRunName = latestRunOutputFolder || initiatedRunOutputFolder;
+    // If the log confirms completion of a GENUINELY FRESH scan (not belonging to any stale run):
+    if (isLogCompleted && !isTargetStale) {
       let resolvedDir = targetRunName ? findDirectoryByName(extractDir, targetRunName) : null;
       if (!resolvedDir && targetRunName) {
         const matchCand = candidateDirs.find(c => c.name.toLowerCase() === targetRunName.toLowerCase());
@@ -1882,77 +1870,29 @@ export function resolveStrixOutputFolderFromExtract(extractDir, minStartTimeMs =
       };
     }
 
-    // FRESH SCAN MODE fallback for when scan.log is missing or empty
-    const freshCandidates = candidateDirs.filter(c => {
-      const cNameLower = c.name.toLowerCase();
-      if (staleRunNames.has(cNameLower)) return false;
-      if (previousRunId) {
-        if (Array.isArray(previousRunId) && previousRunId.some(pid => pid && String(pid).toLowerCase() === cNameLower)) return false;
-        if (typeof previousRunId === 'string' && previousRunId.toLowerCase() === cNameLower) return false;
-      }
-      if (c.startTimeMs > 0) return c.startTimeMs >= staleThresholdMs;
-      if (c.endTimeMs > 0 && c.endTimeMs < minStartTimeMs) return false;
-      return false; // Never rely on c.mtime alone
-    });
-
-    const completedFreshCandidate = freshCandidates.find(c => c.isFinalized && !c.isRunning && !staleRunNames.has(c.name.toLowerCase()));
-    if (completedFreshCandidate && !initiatedRunOutputFolder) {
-      const finalName = completedFreshCandidate.name;
-      return {
-        bestDir: completedFreshCandidate.dir,
-        folderName: finalName,
-        outputFullPath: latestRunFullPath || buildServerScanOutputPath(effectiveDomain, finalName),
-        isScanning: false,
-        inProgress: false,
-        scanFinished: true,
-        freshFound: true,
-        targetDomain: detectedTargetDomain || targetDomain,
-        tokens: parsedTokens,
-        cost: parsedCost,
-        liveLogLines,
-        strixLog: liveLogTail
-      };
-    }
-
-    // No fresh completed scan exists yet.
-    // Check if only recon files exist without any scan.log or Strix run folder
-    const hasNoStrixLog = (mainScanLogs.length === 0 && otherLogs.length === 0);
-    const hasNoStrixRuns = (candidateDirs.length === 0);
-    const elapsedMs = minStartTimeMs > 0 ? (Date.now() - minStartTimeMs) : 0;
-    const elapsedMinutes = Math.floor(elapsedMs / 60000);
-
-    // If 15+ minutes have passed and STILL no scan.log or strix_runs exist, the scan stalled on recon / failed to launch Strix
-    const isStalled = minStartTimeMs > 0 && elapsedMinutes >= 15 && hasNoStrixLog && hasNoStrixRuns;
-
-    let inProgressMessage = '';
-    if (isStalled) {
-      inProgressMessage = `Scan execution stalled on remote server: Only reconnaissance files (${reconFilesFound.join(', ') || 'amass.txt, subfinder.txt'}) exist. Strix engine was not started (scan.log not created after ${elapsedMinutes}m). Please verify n8n workflow or check if amass is hung on server.`;
-    } else if (reconFilesFound.length > 0 && hasNoStrixLog) {
-      inProgressMessage = `Reconnaissance phase in progress on server (${reconFilesFound.join(', ')} generated). Waiting for Strix autonomous engine startup... (${elapsedMinutes}m elapsed)`;
-    } else if (activeRunId) {
-      inProgressMessage = `Strix autonomous audit actively running on server (Run: ${activeRunId}). Waiting for completion...`;
-    } else {
-      inProgressMessage = 'Autonomous security audit in progress on remote server. Waiting for fresh results...';
-    }
-
-    const baselineId = Array.from(staleRunNames)[0] || (Array.isArray(previousRunId) ? previousRunId[0] : previousRunId) || null;
+    // Active scan is running or reconnaissance phase in progress:
+    const activeRunId = (initiatedRunOutputFolder && !isTargetStale && !staleRunNames.has(initiatedRunOutputFolder.toLowerCase())) ? initiatedRunOutputFolder : null;
     return {
       bestDir: null,
-      folderName: activeRunId || (freshCandidates[0]?.name) || targetDomain,
-      outputFullPath: null,
-      isScanning: !isStalled,
-      inProgress: !isStalled,
-      isStalled,
+      folderName: activeRunId || targetDomain,
+      outputFullPath: activeRunId ? buildServerScanOutputPath(effectiveDomain, activeRunId) : null,
+      isScanning: true,
+      inProgress: true,
+      isStalled: false,
       reconFiles: reconFilesFound,
       scanFinished: false,
       freshFound: false,
-      baselineRunId: baselineId,
-      activeRunId: activeRunId || (freshCandidates[0]?.name) || null,
-      liveLogLines,
-      strixLog: liveLogTail,
-      tokens: parsedTokens,
-      cost: parsedCost,
-      message: inProgressMessage
+      baselineRunId: Array.from(staleRunNames)[0] || null,
+      activeRunId: activeRunId || null,
+      liveLogLines: activeRunId ? liveLogLines : [],
+      strixLog: activeRunId ? liveLogTail : '',
+      tokens: activeRunId ? parsedTokens : 0,
+      cost: activeRunId ? parsedCost : 0,
+      message: activeRunId
+        ? `Strix autonomous audit actively running on server (Run: ${activeRunId}). Waiting for completion...`
+        : (reconFilesFound.length > 0
+            ? `Reconnaissance phase in progress on server (${reconFilesFound.join(', ')} generated). Waiting for Strix autonomous engine startup...`
+            : `Autonomous security audit launched on server. Waiting for Strix engine to initialize...`)
     };
   }
 
