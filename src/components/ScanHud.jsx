@@ -1375,8 +1375,7 @@ export default function ScanHud({
         });
 
         appendLog(`[GATEWAY RESPONSE] ${JSON.stringify(triggerRes.data || 'Workflow was started')}`);
-        appendLog(`[SUCCESS] Autonomous security audit launched on remote server!`);
-        appendLog(`[AGENT ACTIVE] Strix autonomous engine is actively scanning ${cleanDomain}...`);
+        appendLog(`[SUCCESS] Autonomous security audit pipeline triggered on remote server via n8n!`);
         appendLog(`[STAGE 1] Remote reconnaissance initialized (Subfinder / Amass subdomain discovery).`);
 
         // Background Polling for scan results ZIP via n8n fetch webhook
@@ -1508,15 +1507,15 @@ export default function ScanHud({
                 return;
               }
 
-              // 2. Client-side fail-safe timeout (20 minutes without scan.log creation)
+              // 2. Client-side fail-safe timeout (8 minutes without Strix launch)
               const elapsedMin = Math.floor((Date.now() - startTime) / 60000);
               const elapsedSec = Math.floor(((Date.now() - startTime) % 60000) / 1000);
-              if (elapsedMin >= 20 && !results?.activeRunId && (!results?.liveLogLines || results.liveLogLines.length === 0)) {
+              if (elapsedMin >= 8 && !results?.activeRunId && (!results?.liveLogLines || results.liveLogLines.length === 0)) {
                 clearInterval(pollIntervalRef.current);
                 if (elapsedTimerRef.current) clearInterval(elapsedTimerRef.current);
                 setIsScanning(false);
                 setScanFinished(false);
-                const timeoutMsg = `Scan execution timed out after ${elapsedMin} minutes. Only reconnaissance files (${results?.reconFiles?.join(', ') || 'amass.txt, subfinder.txt'}) exist on the server; Strix engine was not started (scan.log not created). Please check n8n workflow or remote server logs.`;
+                const timeoutMsg = `Reconnaissance phase exceeded ${elapsedMin} minutes. Amass enumeration is taking unusually long or hung on ${cleanDomain}. Strix engine has not been launched yet. In your n8n workflow, consider using 'amass enum -passive' or adding a timeout (e.g. timeout 180 amass ...) so Strix can start.`;
                 setScanError(timeoutMsg);
                 appendLog(`[ERROR] ${timeoutMsg}`);
                 return;

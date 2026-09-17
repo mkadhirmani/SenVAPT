@@ -14,6 +14,7 @@ dist-ssr/
 .scans_cache.json
 .users_store.json
 .users.json
+.session_secret
 .supabase_config.json
 .supabase_schema.sql
 supabase_schema.sql

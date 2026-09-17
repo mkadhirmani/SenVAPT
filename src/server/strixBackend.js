@@ -1499,15 +1499,32 @@ export function resolveStrixOutputFolderFromExtract(extractDir, minStartTimeMs =
 
   // 1b. Check for reconnaissance artifacts (subfinder.txt, amass.txt, httpx.txt, resolved.txt, target.txt)
   const reconFilesFound = [];
+  const reconFileDetails = [];
   const findReconFiles = (dir, depth = 0) => {
     if (depth > 6) return;
     try {
       const items = fs.readdirSync(dir);
       for (const item of items) {
-        if (['subfinder.txt', 'amass.txt', 'httpx.txt', 'resolved.txt', 'target.txt'].includes(item.toLowerCase())) {
-          if (!reconFilesFound.includes(item)) reconFilesFound.push(item);
-        }
         const full = path.join(dir, item);
+        const lowerName = item.toLowerCase();
+        if (['subfinder.txt', 'amass.txt', 'httpx.txt', 'resolved.txt', 'target.txt'].includes(lowerName)) {
+          try {
+            const st = fs.statSync(full);
+            // In fresh scan mode, ignore artifacts created or modified before the current scan started
+            if (minStartTimeMs > 0 && st.mtimeMs < staleThresholdMs) {
+              continue;
+            }
+            if (!reconFilesFound.includes(item)) {
+              reconFilesFound.push(item);
+              reconFileDetails.push({
+                name: item,
+                size: st.size,
+                mtime: st.mtimeMs,
+                isEmpty: st.size === 0
+              });
+            }
+          } catch (_) {}
+        }
         try {
           if (fs.statSync(full).isDirectory()) findReconFiles(full, depth + 1);
         } catch (_) {}
@@ -1872,14 +1889,57 @@ export function resolveStrixOutputFolderFromExtract(extractDir, minStartTimeMs =
 
     // Active scan is running or reconnaissance phase in progress:
     const activeRunId = (initiatedRunOutputFolder && !isTargetStale && !staleRunNames.has(initiatedRunOutputFolder.toLowerCase())) ? initiatedRunOutputFolder : null;
+
+    // Check elapsed time and stalled status during recon/scan
+    const elapsedMinutes = minStartTimeMs > 0 ? (Date.now() - minStartTimeMs) / 60000 : 0;
+    const hasActiveRun = Boolean(activeRunId);
+    const subfinderInfo = reconFileDetails.find(f => f.name.toLowerCase() === 'subfinder.txt');
+    const amassInfo = reconFileDetails.find(f => f.name.toLowerCase() === 'amass.txt');
+
+    let reconStatusDesc = '';
+    if (reconFilesFound.length > 0) {
+      if (subfinderInfo && (!amassInfo || amassInfo.isEmpty)) {
+        const subCount = subfinderInfo.size > 1000 ? `${Math.round(subfinderInfo.size / 1024)} KB` : `${subfinderInfo.size} B`;
+        reconStatusDesc = `Subfinder completed (${subCount}), Amass enumeration in progress`;
+      } else if (reconFilesFound.includes('target.txt') || reconFilesFound.includes('httpx.txt')) {
+        reconStatusDesc = `Reconnaissance finalized (${reconFilesFound.join(', ')} ready), launching Strix`;
+      } else {
+        reconStatusDesc = `Reconnaissance in progress (${reconFilesFound.join(', ')})`;
+      }
+    }
+
+    let isStalled = false;
+    let statusMessage = '';
+
+    if (hasActiveRun) {
+      statusMessage = `Strix autonomous audit actively running on server (Run: ${activeRunId}). Waiting for completion...`;
+    } else if (reconFilesFound.length > 0) {
+      if (elapsedMinutes >= 10 && (!amassInfo || amassInfo.isEmpty)) {
+        isStalled = true;
+        statusMessage = `Remote reconnaissance stalled after ${Math.floor(elapsedMinutes)} minutes. Amass enumeration is taking unusually long or hung on ${targetDomain} (0 bytes written to amass.txt). Strix autonomous engine has not started yet.`;
+      } else if (elapsedMinutes >= 4 && (!amassInfo || amassInfo.isEmpty)) {
+        statusMessage = `Reconnaissance in progress (${reconStatusDesc}). Notice: Amass enumeration on large targets with >1,000 subdomains can take extended time in n8n workflows. Strix will launch once Amass finishes.`;
+      } else {
+        statusMessage = `Reconnaissance phase in progress on server (${reconStatusDesc}). Waiting for Strix autonomous engine startup...`;
+      }
+    } else {
+      if (elapsedMinutes >= 5) {
+        isStalled = true;
+        statusMessage = `No active scan or reconnaissance files detected on remote server after ${Math.floor(elapsedMinutes)} minutes. Please verify n8n execution history or server container status.`;
+      } else {
+        statusMessage = `Autonomous security audit launched on server. Waiting for Strix engine to initialize...`;
+      }
+    }
+
     return {
       bestDir: null,
       folderName: activeRunId || targetDomain,
       outputFullPath: activeRunId ? buildServerScanOutputPath(effectiveDomain, activeRunId) : null,
-      isScanning: true,
-      inProgress: true,
-      isStalled: false,
+      isScanning: !isStalled,
+      inProgress: !isStalled,
+      isStalled,
       reconFiles: reconFilesFound,
+      reconDetails: reconFileDetails,
       scanFinished: false,
       freshFound: false,
       baselineRunId: Array.from(staleRunNames)[0] || null,
@@ -1888,11 +1948,7 @@ export function resolveStrixOutputFolderFromExtract(extractDir, minStartTimeMs =
       strixLog: activeRunId ? liveLogTail : '',
       tokens: activeRunId ? parsedTokens : 0,
       cost: activeRunId ? parsedCost : 0,
-      message: activeRunId
-        ? `Strix autonomous audit actively running on server (Run: ${activeRunId}). Waiting for completion...`
-        : (reconFilesFound.length > 0
-            ? `Reconnaissance phase in progress on server (${reconFilesFound.join(', ')} generated). Waiting for Strix autonomous engine startup...`
-            : `Autonomous security audit launched on server. Waiting for Strix engine to initialize...`)
+      message: statusMessage
     };
   }
 
