@@ -293,7 +293,7 @@ function getGlobalUsersStoreRaw() {
   return defaults;
 }
 
-function getSanitizedUsersStore(includePasswords = true) {
+function getSanitizedUsersStore(includePasswords = false) {
   const users = getGlobalUsersStoreRaw();
   return users.map(u => {
     const sanitized = { ...u };
@@ -468,13 +468,16 @@ function applySecurityHeaders(req, res) {
   res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains; preload');
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=(), usb=()');
   res.setHeader('X-XSS-Protection', '1; mode=block');
+  res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+  res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
   res.setHeader(
     'Content-Security-Policy',
-    "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: https: blob:; connect-src 'self' https:; frame-ancestors 'none';"
+    "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: https: blob:; connect-src 'self' https:; frame-ancestors 'none'; object-src 'none'; base-uri 'self';"
   );
   res.setHeader('Server', 'Sennovate-Security-Gateway');
+  try { res.removeHeader('X-Powered-By'); } catch (_) {}
 }
 
 // CORS Validation (Restricted to same origin, senvapt.sennovate.ai, and localhost)
@@ -568,6 +571,16 @@ function parseJsonBody(req) {
 
 // Create Production HTTP Server
 const server = http.createServer(async (req, res) => {
+  // Apply Security and CORS Headers to all responses immediately
+  applySecurityHeaders(req, res);
+  applyCorsHeaders(req, res);
+
+  // Block HTTP TRACE / TRACK (Cross-Site Tracing XST)
+  if (req.method === 'TRACE' || req.method === 'TRACK') {
+    res.statusCode = 405;
+    return res.end('Method Not Allowed');
+  }
+
   // Block directory traversal or encoded dot segments in raw request URL
   const rawUrl = req.url || '';
   if (
@@ -580,12 +593,35 @@ const server = http.createServer(async (req, res) => {
     return res.end('Forbidden');
   }
 
+  let cleanUrl = rawUrl.split('?')[0];
+  try { cleanUrl = decodeURIComponent(cleanUrl); } catch (_) {}
+
+  // Block null byte injection
+  if (cleanUrl.includes('\0')) {
+    res.statusCode = 400;
+    return res.end('Bad Request');
+  }
+
+  // Block dotfiles and hidden file probes (e.g. /.env, /.git, /.strix_server_config.json, /.users_store.json)
+  const segments = cleanUrl.split('/').filter(Boolean);
+  if (segments.some(seg => seg.startsWith('.') && seg !== '.' && seg !== '..')) {
+    res.statusCode = 404;
+    return res.end('Not Found');
+  }
+
+  // Block direct requests for sensitive server-side files
+  const blockedFiles = [
+    'package.json', 'package-lock.json', 'server.js', 'vite.config.js',
+    'tsconfig.json', '.env', '.env.local', '.env.example'
+  ];
+  const lastSegment = (segments[segments.length - 1] || '').toLowerCase();
+  if (blockedFiles.includes(lastSegment) || lastSegment.endsWith('.env') || lastSegment.endsWith('.sql') || lastSegment.endsWith('.secret')) {
+    res.statusCode = 404;
+    return res.end('Not Found');
+  }
+
   const parsedUrl = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   const pathname = parsedUrl.pathname;
-
-  // Apply Security and CORS Headers to all responses
-  applySecurityHeaders(req, res);
-  applyCorsHeaders(req, res);
 
   if (req.method === 'OPTIONS') {
     res.statusCode = 200;
@@ -1447,6 +1483,11 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (pathname === '/api/strix/fetch-server-file') {
+      if (session.role !== 'admin' && !session.permissions?.load_custom_folder) {
+        res.setHeader('Content-Type', 'application/json');
+        res.statusCode = 403;
+        return res.end(JSON.stringify({ success: false, error: 'Access Denied: Administrator privilege required.' }));
+      }
       try {
         const payload = await parseJsonBody(req);
         const result = await fetchServerFileProxy(payload);
@@ -1459,6 +1500,13 @@ const server = http.createServer(async (req, res) => {
         return res.end(JSON.stringify({ success: false, error: err.message }));
       }
     }
+  }
+
+  // Block unhandled API routes from falling through to SPA HTML
+  if (pathname.startsWith('/api/')) {
+    res.setHeader('Content-Type', 'application/json');
+    res.statusCode = 404;
+    return res.end(JSON.stringify({ success: false, error: 'API endpoint not found.' }));
   }
 
   // ==========================================

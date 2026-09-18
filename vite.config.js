@@ -67,6 +67,90 @@ function loadEnvVariables() {
 }
 loadEnvVariables();
 
+// Global Security Headers Middleware
+function applySecurityHeaders(req, res) {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains; preload');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=(), usb=()');
+  res.setHeader('X-XSS-Protection', '1; mode=block');
+  res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+  res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
+  res.setHeader(
+    'Content-Security-Policy',
+    "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: https: blob:; connect-src 'self' https:; frame-ancestors 'none'; object-src 'none'; base-uri 'self';"
+  );
+  res.setHeader('Server', 'Sennovate-Security-Gateway');
+  try { res.removeHeader('X-Powered-By'); } catch (_) {}
+}
+
+// CORS Validation (Restricted to same origin, senvapt.sennovate.ai, and localhost)
+function applyCorsHeaders(req, res) {
+  const origin = req.headers['origin'];
+  const host = req.headers['host'];
+  
+  if (origin) {
+    try {
+      const parsedOrigin = new URL(origin);
+      const isAllowed = 
+        parsedOrigin.hostname === 'senvapt.sennovate.ai' ||
+        parsedOrigin.hostname.endsWith('.sennovate.ai') ||
+        parsedOrigin.hostname === 'localhost' ||
+        parsedOrigin.hostname === '127.0.0.1' ||
+        (host && parsedOrigin.host === host);
+
+      if (isAllowed) {
+        res.setHeader('Access-Control-Allow-Origin', origin);
+        res.setHeader('Access-Control-Allow-Credentials', 'true');
+      }
+    } catch (_) {}
+  }
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, X-Auth-Token');
+}
+
+// SSRF Target Validator for LLM Proxy
+const ALLOWED_LLM_HOSTS = new Set([
+  'openrouter.ai',
+  'api.openai.com',
+  'api.anthropic.com',
+  'generativelanguage.googleapis.com',
+  'api.groq.com',
+  'api.mistral.ai',
+  'api.cohere.com',
+  'api.deepseek.com'
+]);
+
+function isSafeLlmUrl(urlStr) {
+  if (!urlStr || typeof urlStr !== 'string') return false;
+  try {
+    const u = new URL(urlStr);
+    if (u.protocol !== 'https:' && u.protocol !== 'http:') return false;
+    
+    const hostname = u.hostname.toLowerCase();
+    
+    // Disallow IP literals directly (prevent private subnet SSRF)
+    if (/^(\d{1,3}\.){3}\d{1,3}$/.test(hostname) || hostname === 'localhost' || hostname.includes('::')) {
+      return false;
+    }
+    
+    // Disallow cloud metadata endpoints
+    if (hostname.includes('metadata') || hostname.includes('169.254') || hostname.includes('internal')) {
+      return false;
+    }
+    
+    for (const allowed of ALLOWED_LLM_HOSTS) {
+      if (hostname === allowed || hostname.endsWith(`.${allowed}`)) {
+        return true;
+      }
+    }
+    return false;
+  } catch (_) {
+    return false;
+  }
+}
+
 // Built-in Strix Backend & LLM Proxy Server Plugin
 function strixBackendPlugin() {
   // In-Memory Cryptographic Session Registry
@@ -157,24 +241,69 @@ function strixBackendPlugin() {
   return {
     name: 'strix-backend-middleware',
     configureServer(server) {
-      // Block dotfiles and hidden file probes (e.g. /.env, /.git, /.strix_server_config.json, /.users_store.json)
+      // Global Security & CORS Headers Middleware
       server.middlewares.use((req, res, next) => {
+        applySecurityHeaders(req, res);
+        applyCorsHeaders(req, res);
+
+        // Block HTTP TRACE / TRACK (Cross-Site Tracing XST)
+        if (req.method === 'TRACE' || req.method === 'TRACK') {
+          res.statusCode = 405;
+          return res.end('Method Not Allowed');
+        }
+
+        // Block directory traversal or encoded dot segments in raw request URL
         const rawUrl = req.url || '';
-        const pathname = rawUrl.split('?')[0];
-        const segments = pathname.split('/').filter(Boolean);
+        if (
+          rawUrl.includes('..') || 
+          rawUrl.toLowerCase().includes('%2e%2e') || 
+          rawUrl.includes('%252e') || 
+          rawUrl.includes('\0')
+        ) {
+          res.statusCode = 403;
+          return res.end('Forbidden');
+        }
+
+        let cleanUrl = rawUrl.split('?')[0];
+        try { cleanUrl = decodeURIComponent(cleanUrl); } catch (_) {}
+
+        // Block null byte injection
+        if (cleanUrl.includes('\0')) {
+          res.statusCode = 400;
+          return res.end('Bad Request');
+        }
+
+        // Block dotfiles and hidden file probes (e.g. /.env, /.git, /.strix_server_config.json, /.users_store.json)
+        const segments = cleanUrl.split('/').filter(Boolean);
         if (segments.some(s => s.startsWith('.') && s !== '.' && s !== '..')) {
           res.statusCode = 404;
           return res.end('Not Found');
         }
+
+        // Block direct requests for sensitive server-side files
+        const blockedFiles = [
+          'package.json', 'package-lock.json', 'server.js', 'vite.config.js',
+          'tsconfig.json', '.env', '.env.local', '.env.example'
+        ];
+        const lastSegment = (segments[segments.length - 1] || '').toLowerCase();
+        if (blockedFiles.includes(lastSegment) || lastSegment.endsWith('.env') || lastSegment.endsWith('.sql') || lastSegment.endsWith('.secret')) {
+          res.statusCode = 404;
+          return res.end('Not Found');
+        }
+
+        if (req.method === 'OPTIONS') {
+          res.statusCode = 200;
+          return res.end();
+        }
+
         next();
       });
 
-      // 1. LLM Proxy Route (Requires Valid Session)
+      // 1. LLM Proxy Route (Requires Valid Session & Strict SSRF Defense)
       server.middlewares.use('/api/llm-proxy', async (req, res) => {
+        applyCorsHeaders(req, res);
+
         if (req.method === 'OPTIONS') {
-          res.setHeader('Access-Control-Allow-Origin', '*');
-          res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
-          res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
           res.statusCode = 200;
           return res.end();
         }
@@ -192,10 +321,24 @@ function strixBackendPlugin() {
         }
 
         let body = '';
-        req.on('data', chunk => { body += chunk; });
+        req.on('data', chunk => { 
+          body += chunk; 
+          if (body.length > 10 * 1024 * 1024) {
+            req.destroy();
+          }
+        });
         req.on('end', async () => {
           try {
-            const { targetUrl, headers, data } = JSON.parse(body);
+            const { targetUrl, headers, data } = JSON.parse(body || '{}');
+            if (!isSafeLlmUrl(targetUrl)) {
+              applyCorsHeaders(req, res);
+              res.setHeader('Content-Type', 'application/json');
+              res.statusCode = 400;
+              return res.end(JSON.stringify({ 
+                error: 'SSRF Protection: The specified LLM endpoint is not permitted. Only authorized external AI providers may be proxied.' 
+              }));
+            }
+
             const fetchRes = await fetch(targetUrl, {
               method: 'POST',
               headers: headers || { 'Content-Type': 'application/json' },
@@ -204,12 +347,12 @@ function strixBackendPlugin() {
 
             const status = fetchRes.status;
             const resText = await fetchRes.text();
-            res.setHeader('Access-Control-Allow-Origin', '*');
+            applyCorsHeaders(req, res);
             res.setHeader('Content-Type', 'application/json');
             res.statusCode = status;
             res.end(resText);
           } catch (err) {
-            res.setHeader('Access-Control-Allow-Origin', '*');
+            applyCorsHeaders(req, res);
             res.setHeader('Content-Type', 'application/json');
             res.statusCode = 500;
             res.end(JSON.stringify({ error: err.message }));
@@ -247,7 +390,7 @@ function strixBackendPlugin() {
           res.statusCode = 401;
           return res.end(JSON.stringify({ success: false, error: 'Unauthorized' }));
         }
-        res.setHeader('Access-Control-Allow-Origin', '*');
+        applyCorsHeaders(req, res);
         res.setHeader('Content-Type', 'application/json');
         res.statusCode = 200;
         res.end(JSON.stringify({ success: true, scans: getServerScanHistory() }));
@@ -269,7 +412,7 @@ function strixBackendPlugin() {
             const ok = saveServerScanHistory(scansList);
             // Security policy: Scans and vulnerability findings do not penetrate to Supabase
             // Findings are safely cached locally and on the server.
-            res.setHeader('Access-Control-Allow-Origin', '*');
+            applyCorsHeaders(req, res);
             res.setHeader('Content-Type', 'application/json');
             res.statusCode = ok ? 200 : 500;
             res.end(JSON.stringify({ success: ok, count: scansList.length }));
@@ -289,7 +432,7 @@ function strixBackendPlugin() {
           res.statusCode = 403;
           return res.end(JSON.stringify({ success: false, error: 'Access Denied: Administrator privilege required.' }));
         }
-        res.setHeader('Access-Control-Allow-Origin', '*');
+        applyCorsHeaders(req, res);
         res.setHeader('Content-Type', 'application/json');
         res.statusCode = 200;
         res.end(JSON.stringify({ success: true, config: getSanitizedServerConfig() }));
@@ -308,7 +451,7 @@ function strixBackendPlugin() {
           try {
             const newConf = JSON.parse(body || '{}');
             const saved = saveGlobalServerConfig(newConf);
-            res.setHeader('Access-Control-Allow-Origin', '*');
+            applyCorsHeaders(req, res);
             res.setHeader('Content-Type', 'application/json');
             res.statusCode = 200;
             res.end(JSON.stringify({ success: true, config: getSanitizedServerConfig() }));
@@ -357,7 +500,7 @@ function strixBackendPlugin() {
           res.statusCode = 403;
           return res.end(JSON.stringify({ success: false, error: 'Access Denied: Administrator privilege required.' }));
         }
-        res.setHeader('Access-Control-Allow-Origin', '*');
+        applyCorsHeaders(req, res);
         res.setHeader('Content-Type', 'application/json');
         res.statusCode = 200;
         res.end(JSON.stringify({ success: true, config: getSanitizedLlmConfig() }));
@@ -376,7 +519,7 @@ function strixBackendPlugin() {
           try {
             const conf = JSON.parse(body || '{}');
             saveGlobalLlmConfig(conf);
-            res.setHeader('Access-Control-Allow-Origin', '*');
+            applyCorsHeaders(req, res);
             res.setHeader('Content-Type', 'application/json');
             res.statusCode = 200;
             res.end(JSON.stringify({ success: true, config: getSanitizedLlmConfig() }));
@@ -541,7 +684,7 @@ function strixBackendPlugin() {
         return defaults;
       };
 
-      const getSanitizedUsers = (includePasswords = true) => {
+      const getSanitizedUsers = (includePasswords = false) => {
         const users = getGlobalUsersRaw();
         return users.map(u => {
           const sanitized = { ...u };
@@ -836,7 +979,7 @@ function strixBackendPlugin() {
           res.statusCode = 403;
           return res.end(JSON.stringify({ success: false, error: 'Access Denied: Administrator privilege required.' }));
         }
-        res.setHeader('Access-Control-Allow-Origin', '*');
+        applyCorsHeaders(req, res);
         res.setHeader('Content-Type', 'application/json');
 
         try {
@@ -968,14 +1111,14 @@ function strixBackendPlugin() {
                     permissions: u.permissions || {}
                   })), null, 2), 'utf-8');
                 } catch (_) {}
-                res.setHeader('Access-Control-Allow-Origin', '*');
+                applyCorsHeaders(req, res);
                 res.setHeader('Content-Type', 'application/json');
                 res.statusCode = 200;
                 return res.end(JSON.stringify({ success: true, users: refreshedUsers }));
               }
             } catch (_) { }
 
-            res.setHeader('Access-Control-Allow-Origin', '*');
+            applyCorsHeaders(req, res);
             res.setHeader('Content-Type', 'application/json');
             res.statusCode = 200;
             res.end(JSON.stringify({ success: true, users: getSanitizedUsers() }));
@@ -1036,13 +1179,13 @@ function strixBackendPlugin() {
                     permissions: u.permissions || {}
                   })), null, 2), 'utf-8');
                 } catch (_) {}
-                res.setHeader('Access-Control-Allow-Origin', '*');
+                applyCorsHeaders(req, res);
                 res.setHeader('Content-Type', 'application/json');
                 res.statusCode = 200;
                 return res.end(JSON.stringify({ success: true, users: refreshedUsers }));
               }
             } catch (_) { }
-            res.setHeader('Access-Control-Allow-Origin', '*');
+            applyCorsHeaders(req, res);
             res.setHeader('Content-Type', 'application/json');
             res.statusCode = 200;
             res.end(JSON.stringify({ success: true, users: getSanitizedUsers() }));
@@ -1076,7 +1219,7 @@ function strixBackendPlugin() {
                 }
               } catch (_) { }
             }
-            res.setHeader('Access-Control-Allow-Origin', '*');
+            applyCorsHeaders(req, res);
             res.setHeader('Content-Type', 'application/json');
             res.statusCode = 200;
             res.end(JSON.stringify({ success: true, count: users ? users.length : 0 }));
@@ -1104,10 +1247,10 @@ function strixBackendPlugin() {
           users: getSanitizedUsers(),
           scans: getServerScanHistory()
         };
-        res.setHeader('Access-Control-Allow-Origin', '*');
+        applyCorsHeaders(req, res);
         res.setHeader('Content-Type', 'application/json');
         res.statusCode = 200;
-        res.end(JSON.stringify({ success: true, backup: backupData }));
+        return res.end(JSON.stringify({ success: true, backup: backupData }));
       });
 
       server.middlewares.use('/api/system/import-backup', (req, res) => {
@@ -1128,7 +1271,7 @@ function strixBackendPlugin() {
             if (backup.users) saveGlobalUsers(backup.users);
             if (backup.scans) saveServerScanHistory(backup.scans);
 
-            res.setHeader('Access-Control-Allow-Origin', '*');
+            applyCorsHeaders(req, res);
             res.setHeader('Content-Type', 'application/json');
             res.statusCode = 200;
             res.end(JSON.stringify({ success: true, message: 'System snapshot imported and applied successfully' }));
@@ -1573,6 +1716,11 @@ function strixBackendPlugin() {
           res.statusCode = 401;
           return res.end(JSON.stringify({ success: false, error: 'Unauthorized: Valid session required.' }));
         }
+        if (session.role !== 'admin' && !session.permissions?.load_custom_folder) {
+          res.setHeader('Content-Type', 'application/json');
+          res.statusCode = 403;
+          return res.end(JSON.stringify({ success: false, error: 'Access Denied: Administrator privilege required.' }));
+        }
         if (req.method !== 'POST') {
           res.statusCode = 405;
           return res.end('Method Not Allowed');
@@ -1594,6 +1742,29 @@ function strixBackendPlugin() {
           }
         });
       });
+    },
+    configurePreviewServer(server) {
+      server.middlewares.use((req, res, next) => {
+        applySecurityHeaders(req, res);
+        applyCorsHeaders(req, res);
+        if (req.method === 'TRACE' || req.method === 'TRACK') {
+          res.statusCode = 405;
+          return res.end('Method Not Allowed');
+        }
+        const rawUrl = req.url || '';
+        if (rawUrl.includes('..') || rawUrl.toLowerCase().includes('%2e%2e') || rawUrl.includes('%252e') || rawUrl.includes('\0')) {
+          res.statusCode = 403;
+          return res.end('Forbidden');
+        }
+        let cleanUrl = rawUrl.split('?')[0];
+        try { cleanUrl = decodeURIComponent(cleanUrl); } catch (_) {}
+        const segments = cleanUrl.split('/').filter(Boolean);
+        if (segments.some(s => s.startsWith('.') && s !== '.' && s !== '..')) {
+          res.statusCode = 404;
+          return res.end('Not Found');
+        }
+        next();
+      });
     }
   };
 }
@@ -1604,5 +1775,22 @@ export default defineConfig({
     port: 5173,
     host: true,
     open: false
+  },
+  preview: {
+    port: 4173,
+    host: true
+  },
+  build: {
+    sourcemap: false,
+    minify: 'esbuild',
+    rollupOptions: {
+      output: {
+        manualChunks: undefined
+      }
+    }
+  },
+  esbuild: {
+    drop: ['debugger'],
+    legalComments: 'none'
   }
 });
