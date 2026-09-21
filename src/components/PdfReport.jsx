@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import { exportReportToPdf } from '../utils/pdfExport';
 import { askLlmWithRag } from '../utils/llmEngine';
+import { sortVulnerabilities } from '../utils/severityUtils';
 import { paginateBlocks, A4_CONSTANTS } from '../utils/pdfPaginationEngine';
 
 function cleanText(text) {
@@ -176,7 +177,7 @@ export default function PdfReport({
   const [customAiSummary, setCustomAiSummary] = useState(null);
 
   const sortedVulns = useMemo(() => {
-    return [...vulnerabilities].sort((a, b) => (b.cvss || 0) - (a.cvss || 0));
+    return sortVulnerabilities(vulnerabilities);
   }, [vulnerabilities]);
 
   const critVulns = sortedVulns.filter(v => v.severity === 'CRITICAL');
@@ -733,8 +734,9 @@ Format with clean markdown bullet points and bold headers. Keep the text punchy,
                 </span>
                 <span className={`text-xs font-mono font-bold px-2.5 py-0.5 rounded ${
                   vuln.severity === 'CRITICAL' ? 'bg-red-100 text-red-900 border border-red-300 font-black' : 
-                  vuln.severity === 'HIGH' ? 'bg-orange-100 text-orange-900 border border-orange-200' : 
-                  'bg-amber-100 text-amber-900 border border-amber-200'
+                  vuln.severity === 'HIGH' ? 'bg-orange-100 text-orange-950 border border-orange-300 font-extrabold' : 
+                  vuln.severity === 'MEDIUM' ? 'bg-yellow-100 text-yellow-950 border border-yellow-300 font-bold' :
+                  'bg-sky-100 text-sky-900 border border-sky-200'
                 }`}>
                   {vuln.severity} &bull; CVSS {vuln.cvss}
                 </span>
@@ -892,8 +894,9 @@ Format with clean markdown bullet points and bold headers. Keep the text punchy,
                     <td className="p-2.5 font-mono">
                       <span className={`px-2 py-0.5 rounded text-[9.5px] font-bold ${
                         v.severity === 'CRITICAL' ? 'bg-red-100 text-red-900 border border-red-300 font-black' : 
-                        v.severity === 'HIGH' ? 'bg-orange-100 text-orange-900 border border-orange-200' : 
-                        'bg-amber-100 text-amber-900 border border-amber-200'
+                        v.severity === 'HIGH' ? 'bg-orange-100 text-orange-950 border border-orange-300 font-extrabold' : 
+                        v.severity === 'MEDIUM' ? 'bg-yellow-100 text-yellow-950 border border-yellow-300 font-bold' :
+                        'bg-sky-100 text-sky-900 border border-sky-200'
                       }`}>{v.severity}</span>
                     </td>
                     <td className="p-2.5 font-mono font-bold text-[11.5px]">{v.cvss}</td>

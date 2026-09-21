@@ -95,13 +95,21 @@ export default function TopHeader({
         {riskLevel && riskLevel !== 'NONE' && (
           <div className={`flex items-center gap-1.5 px-2.5 h-9 rounded-lg text-xs font-mono font-medium border ${
             riskLevel === 'CRITICAL'
-              ? 'bg-red-50 border-red-200 text-red-700'
+              ? 'bg-red-50 border-red-200 text-red-700 dark:bg-red-950/60 dark:border-red-800 dark:text-red-300'
               : riskLevel === 'HIGH'
-              ? 'bg-amber-50 border-amber-200 text-amber-800'
-              : 'bg-emerald-50 border-emerald-200 text-emerald-700'
+              ? 'bg-orange-50 border-orange-300 text-orange-800 dark:bg-orange-950/60 dark:border-orange-700 dark:text-orange-300 font-bold'
+              : (riskLevel === 'MEDIUM' || riskLevel === 'ELEVATED')
+              ? 'bg-yellow-50 border-yellow-300 text-yellow-900 dark:bg-yellow-950/60 dark:border-yellow-700 dark:text-yellow-300 font-bold'
+              : 'bg-emerald-50 border-emerald-200 text-emerald-700 dark:bg-emerald-950/50 dark:border-emerald-800 dark:text-emerald-300'
           }`}>
             <span className={`w-1.5 h-1.5 rounded-full ${
-              riskLevel === 'CRITICAL' ? 'bg-red-500' : riskLevel === 'HIGH' ? 'bg-amber-500' : 'bg-emerald-500'
+              riskLevel === 'CRITICAL' 
+                ? 'bg-red-500' 
+                : riskLevel === 'HIGH' 
+                ? 'bg-orange-500' 
+                : (riskLevel === 'MEDIUM' || riskLevel === 'ELEVATED')
+                ? 'bg-yellow-400'
+                : 'bg-emerald-500'
             }`}></span>
             <span>{riskLevel} {riskScore > 0 ? `(${riskScore}/10)` : ''}</span>
           </div>

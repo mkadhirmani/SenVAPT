@@ -1,3 +1,5 @@
+import { sortVulnerabilities } from '../utils/severityUtils.js';
+
 export const SCAN_METADATA = {
   runId: "demo-target-estate_88a1",
   runName: "Enterprise Digital Assets Security Audit",
@@ -43,7 +45,7 @@ export const SCAN_METADATA = {
   ]
 };
 
-export const VULNERABILITIES = [
+export const VULNERABILITIES = sortVulnerabilities([
   {
     id: "vuln-0004",
     title: "DOM XSS via postMessage Without Origin Validation in login.html",
@@ -416,7 +418,7 @@ CN=portal.example-security.com`,
     ],
     assumptions: "Users must bypass browser TLS warning dialogs to establish connection."
   }
-];
+]);
 
 export const ATTACK_CHAIN = {
   title: "1-Click Account Takeover & DOM XSS Exploitation Chain",

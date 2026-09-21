@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useMemo } from 'react';
+import { sortVulnerabilities, getSeverityStyles } from '../utils/severityUtils';
 import { 
   ShieldAlert, 
   ShieldCheck, 
@@ -48,11 +49,16 @@ export default function DashboardOverview({
 
   const currentTarget = activeScan || scanHistory.find(s => s.id === activeScanId) || {};
 
-  const critVulns = vulnerabilities.filter(v => v.severity === 'CRITICAL');
-  const highVulns = vulnerabilities.filter(v => v.severity === 'HIGH');
-  const medVulns = vulnerabilities.filter(v => v.severity === 'MEDIUM');
-  const lowVulns = vulnerabilities.filter(v => v.severity === 'LOW');
-  const topVuln = vulnerabilities[0] || null;
+  // Canonical sort: CRITICAL -> HIGH -> MEDIUM -> LOW
+  const sortedVulnerabilities = useMemo(() => {
+    return sortVulnerabilities(vulnerabilities);
+  }, [vulnerabilities]);
+
+  const critVulns = sortedVulnerabilities.filter(v => v.severity === 'CRITICAL');
+  const highVulns = sortedVulnerabilities.filter(v => v.severity === 'HIGH');
+  const medVulns = sortedVulnerabilities.filter(v => v.severity === 'MEDIUM');
+  const lowVulns = sortedVulnerabilities.filter(v => v.severity === 'LOW');
+  const topVuln = sortedVulnerabilities[0] || null;
 
   const severityBreakdown = [
     critVulns.length > 0 ? `${critVulns.length} Critical` : null,
@@ -303,11 +309,19 @@ export default function DashboardOverview({
                 riskLevel === 'CRITICAL'
                   ? 'bg-red-50 text-red-700 border-red-200'
                   : riskLevel === 'HIGH'
-                  ? 'bg-amber-50 text-amber-800 border-amber-200'
+                  ? 'bg-orange-50 text-orange-800 border-orange-200'
+                  : (riskLevel === 'MEDIUM' || riskLevel === 'ELEVATED')
+                  ? 'bg-yellow-50 text-yellow-900 border-yellow-200'
                   : 'bg-emerald-50 text-emerald-700 border-emerald-200'
               }`}>
                 <span className={`w-1.5 h-1.5 rounded-full ${
-                  riskLevel === 'CRITICAL' ? 'bg-red-600' : riskLevel === 'HIGH' ? 'bg-amber-600' : 'bg-emerald-600'
+                  riskLevel === 'CRITICAL' 
+                    ? 'bg-red-600' 
+                    : riskLevel === 'HIGH' 
+                    ? 'bg-orange-500' 
+                    : (riskLevel === 'MEDIUM' || riskLevel === 'ELEVATED')
+                    ? 'bg-yellow-400' 
+                    : 'bg-emerald-600'
                 }`}></span>
                 <span>{riskLevel} Risk Posture</span>
               </span>
@@ -365,9 +379,9 @@ export default function DashboardOverview({
             <div className="text-3xl font-heading font-bold text-slate-900 dark:text-white tracking-tight">
               {riskScore}<span className="text-sm font-normal text-slate-400"> / 10.0</span>
             </div>
-            <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+            <div className="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-1.5 overflow-hidden">
               <div 
-                className={`h-full ${riskScore >= 9.0 ? 'bg-red-500' : riskScore >= 7.0 ? 'bg-amber-500' : 'bg-emerald-500'}`}
+                className={`h-full ${riskScore >= 9.0 ? 'bg-red-500' : riskScore >= 7.0 ? 'bg-orange-500' : riskScore >= 4.0 ? 'bg-yellow-400' : 'bg-emerald-500'}`}
                 style={{ width: `${Math.min(riskScore * 10, 100)}%` }}
               ></div>
             </div>
@@ -434,7 +448,11 @@ export default function DashboardOverview({
               <span className={`text-xs font-semibold px-2 py-0.5 rounded border uppercase ${
                 (topVuln?.severity || 'HIGH') === 'CRITICAL'
                   ? 'bg-red-50 text-red-700 border-red-200'
-                  : 'bg-amber-50 text-amber-800 border-amber-200'
+                  : (topVuln?.severity || 'HIGH') === 'HIGH'
+                  ? 'bg-orange-50 text-orange-800 border-orange-200'
+                  : (topVuln?.severity || 'HIGH') === 'MEDIUM'
+                  ? 'bg-yellow-50 text-yellow-900 border-yellow-200'
+                  : 'bg-sky-50 text-sky-700 border-sky-200'
               }`}>
                 {topVuln ? topVuln.severity : 'HIGH'}
               </span>
@@ -548,10 +566,8 @@ export default function DashboardOverview({
           </div>
 
           <div className="space-y-2.5">
-            {vulnerabilities.map((vuln) => {
-              const isCritical = vuln.severity === 'CRITICAL';
-              const isHigh = vuln.severity === 'HIGH';
-              const isMedium = vuln.severity === 'MEDIUM';
+            {sortedVulnerabilities.map((vuln) => {
+              const styles = getSeverityStyles(vuln.severity);
 
               return (
                 <div
@@ -564,26 +580,10 @@ export default function DashboardOverview({
                   }`}
                 >
                   {/* Left Severity Accent Strip */}
-                  <div className={`absolute top-0 bottom-0 left-0 w-1 ${
-                    isCritical 
-                      ? 'bg-red-500' 
-                      : isHigh 
-                      ? 'bg-amber-500' 
-                      : isMedium 
-                      ? 'bg-yellow-500' 
-                      : 'bg-emerald-500'
-                  }`}></div>
+                  <div className={`absolute top-0 bottom-0 left-0 w-1.5 ${styles.strip}`}></div>
 
                   <div className="flex items-center gap-3 min-w-0">
-                    <span className={`text-[11px] font-mono font-semibold px-2 py-0.5 rounded border flex-shrink-0 w-20 text-center uppercase tracking-wide ${
-                      isCritical
-                        ? 'bg-red-50 text-red-700 border-red-200'
-                        : isHigh
-                        ? 'bg-amber-50 text-amber-800 border-amber-200'
-                        : isMedium
-                        ? 'bg-yellow-50 text-yellow-800 border-yellow-200'
-                        : 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                    }`}>
+                    <span className={`text-[11px] font-mono font-bold px-2 py-0.5 rounded border flex-shrink-0 w-24 text-center uppercase tracking-wide ${styles.badge}`}>
                       {vuln.severity}
                     </span>
                     <div className="min-w-0">

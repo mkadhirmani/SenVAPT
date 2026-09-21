@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { sortVulnerabilities } from '../utils/severityUtils';
 import { 
   Users, 
   UserCheck, 
@@ -627,7 +628,7 @@ export default function AdminUserManagement({
         ) : (
           <div className="space-y-4">
             {selectedUserScans.map((scan) => {
-              const findings = scan.vulnerabilities || [];
+              const findings = sortVulnerabilities(scan.vulnerabilities || []);
               const highList = findings.filter(v => v.severity === 'HIGH' || v.severity === 'CRITICAL');
               const medList = findings.filter(v => v.severity === 'MEDIUM');
 
@@ -709,8 +710,10 @@ export default function AdminUserManagement({
                                   vuln.severity === 'CRITICAL'
                                     ? 'bg-rose-500/15 text-rose-600 border border-rose-500/30 font-black'
                                     : vuln.severity === 'HIGH'
-                                    ? 'bg-[#B9623C]/15 text-[#B9623C] border border-[#B9623C]/30'
-                                    : 'bg-amber-500/15 text-amber-600 border border-amber-500/30'
+                                    ? 'bg-orange-500/15 text-orange-600 border border-orange-500/30 font-extrabold'
+                                    : vuln.severity === 'MEDIUM'
+                                    ? 'bg-yellow-500/15 text-yellow-700 dark:text-yellow-400 border border-yellow-500/30 font-bold'
+                                    : 'bg-sky-500/15 text-sky-600 border border-sky-500/30'
                                 }`}>
                                   {vuln.severity} ({vuln.cvss})
                                 </span>

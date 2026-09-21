@@ -176,9 +176,9 @@ export default function ScanHistory({
                   : isCritical
                   ? 'bg-red-500'
                   : isHigh
-                  ? 'bg-amber-500'
+                  ? 'bg-orange-500'
                   : isElevated
-                  ? 'bg-yellow-500'
+                  ? 'bg-yellow-400'
                   : 'bg-emerald-500'
               }`} />
 
@@ -239,9 +239,9 @@ export default function ScanHistory({
                     isCritical
                       ? 'bg-red-50 border-red-200 text-red-700'
                       : isHigh
-                      ? 'bg-amber-50 border-amber-200 text-amber-800'
+                      ? 'bg-orange-50 border-orange-300 text-orange-800 font-extrabold'
                       : isElevated
-                      ? 'bg-yellow-50 border-yellow-200 text-yellow-800'
+                      ? 'bg-yellow-50 border-yellow-300 text-yellow-900 font-extrabold'
                       : 'bg-emerald-50 border-emerald-200 text-emerald-700'
                   }`}>
                     <div className="text-[10px] uppercase font-semibold tracking-wider">Risk Level</div>

@@ -15,6 +15,7 @@ import StrixConnectionModal from './components/StrixConnectionModal';
 import LoginScreen from './components/LoginScreen';
 import AdminUserManagement from './components/AdminUserManagement';
 import { SCAN_METADATA, VULNERABILITIES } from './data/scanData';
+import { sortVulnerabilities } from './utils/severityUtils';
 import {
   getStoredScanHistory,
   saveScanHistory,
@@ -620,7 +621,7 @@ export default function App() {
 
   // Handle loading custom scan folder via modal (7-File Engine)
   const handleCustomDataLoaded = (vulns, metadata, extraData) => {
-    let customVulns = Array.isArray(vulns) ? vulns : (vulns?.vulnerabilities || []);
+    let customVulns = sortVulnerabilities(Array.isArray(vulns) ? vulns : (vulns?.vulnerabilities || []));
     let customMeta = metadata || vulns?.metadata || {};
     let extra = extraData || {};
 
@@ -690,7 +691,7 @@ export default function App() {
   const resolveScanFindings = (scan) => {
     if (!scan) return [];
     if (scan.vulnerabilities && Array.isArray(scan.vulnerabilities)) {
-      return scan.vulnerabilities;
+      return sortVulnerabilities(scan.vulnerabilities);
     }
     return [];
   };

@@ -1,8 +1,9 @@
 import { SCAN_METADATA, VULNERABILITIES } from './scanData.js';
 import { getAuthHeaders } from '../utils/auth.js';
 import { supabase, formatScanForSupabase, formatScanFromSupabase, isSupabaseConfigured } from '../utils/supabaseClient.js';
+import { sortVulnerabilities } from '../utils/severityUtils.js';
 
-export const SAMPLE_BETA_VULNERABILITIES = [
+export const SAMPLE_BETA_VULNERABILITIES = sortVulnerabilities([
   {
     id: "vuln-0004",
     title: "Unrestricted File Upload in Customer Inquiry Form",
@@ -96,7 +97,7 @@ export const SAMPLE_BETA_VULNERABILITIES = [
     evidence: "Server: Apache/2.4.52\n(No Content-Security-Policy header present)",
     fixEffort: "1-2 Hours"
   }
-];
+]);
 
 export const SAMPLE_BETA_ATTACK_CHAIN = {
   title: "Remote File Upload to Member Data Access Chain",
@@ -137,7 +138,7 @@ export const SAMPLE_BETA_ATTACK_CHAIN = {
   ]
 };
 
-export const SAMPLE_ALPHA_VULNERABILITIES = [
+export const SAMPLE_ALPHA_VULNERABILITIES = sortVulnerabilities([
   {
     id: "vuln-0004",
     title: "Unrestricted File Upload Handler in Contact Inquiry Form",
@@ -229,7 +230,7 @@ export const SAMPLE_ALPHA_VULNERABILITIES = [
     evidence: "HTTP/1.1 200 OK\n(Content-Security-Policy header: ABSENT)\n(Strict-Transport-Security: ABSENT)\n(X-Frame-Options: ABSENT)\n(X-Content-Type-Options: ABSENT)",
     fixEffort: "1-2 Hours"
   }
-];
+]);
 
 export const SAMPLE_ALPHA_ATTACK_CHAIN = {
   title: "Remote File Upload to Corporate Perimeter Access Chain",
@@ -309,7 +310,7 @@ export function getStoredScanHistory() {
 
     // Preserve each scan's distinct findings, tokens, cost, user attribution, and timestamps
     const enrichedList = list.map(scan => {
-      let vulns = Array.isArray(scan.vulnerabilities) ? scan.vulnerabilities : [];
+      let vulns = sortVulnerabilities(Array.isArray(scan.vulnerabilities) ? scan.vulnerabilities : []);
 
       const critCount = vulns.filter(v => v.severity === 'CRITICAL').length;
       const highCount = vulns.filter(v => v.severity === 'HIGH').length;

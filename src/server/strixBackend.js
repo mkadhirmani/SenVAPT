@@ -8,6 +8,7 @@ import tls from 'tls';
 import { execSync, execFileSync } from 'child_process';
 import { Client } from 'ssh2';
 import { supabase, formatScanForSupabase } from '../utils/supabaseClient.js';
+import { sortVulnerabilities } from '../utils/severityUtils.js';
 
 /**
  * Helper to determine if an IP address belongs to private/loopback/link-local/metadata ranges (SSRF Protection)
@@ -2847,8 +2848,7 @@ export function extractFindingsFromAllSources(raw, actualTargetUrl) {
     });
   }
 
-  parsedVulns.sort((a, b) => (b.cvss || 0) - (a.cvss || 0));
-  return parsedVulns;
+  return sortVulnerabilities(parsedVulns);
 }
 
 export function fetchRemoteStrixResults(config, targetUrl, runDir) {

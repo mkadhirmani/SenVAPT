@@ -16,6 +16,7 @@ import {
 import { initializeKnowledgeBase } from '../utils/ragEngine';
 import { fetchLocalStrixFolder, listLocalScanFoldersApi } from '../utils/strixApi';
 import { saveScanToSupabase } from '../utils/supabaseClient';
+import { sortVulnerabilities } from '../utils/severityUtils';
 
 export default function ScanDataLoader({ isOpen, onClose, onDataLoaded, currentTarget, theme = 'light' }) {
   const [folderInput, setFolderInput] = useState('');
@@ -54,7 +55,7 @@ export default function ScanDataLoader({ isOpen, onClose, onDataLoaded, currentT
         throw new Error('No valid scan data found in the specified folder.');
       }
 
-      const vulns = data.vulnerabilities || [];
+      const vulns = sortVulnerabilities(data.vulnerabilities || []);
       const metadata = data.metadata || {
         runId: data.folderName || cleanPath,
         targetUrl: data.targetUrl || 'https://target.com',
@@ -271,8 +272,7 @@ export default function ScanDataLoader({ isOpen, onClose, onDataLoaded, currentT
         });
       }
 
-      parsedVulns = Array.from(findingsMap.values());
-      parsedVulns.sort((a, b) => (b.cvss || 0) - (a.cvss || 0));
+      parsedVulns = sortVulnerabilities(Array.from(findingsMap.values()));
 
       const totalTokens = runJson.llm_usage?.total_tokens || 48920150;
       const targetUrl = runJson.targets_info?.[0]?.details?.target_url || runJson.targets_info?.[0]?.original || 'https://target.com';
