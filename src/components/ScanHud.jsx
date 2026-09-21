@@ -1417,17 +1417,6 @@ export default function ScanHud({
           if (seg && !previousRunIds.includes(seg)) previousRunIds.push(seg);
         }
 
-        // Collect all previous run IDs from local downloaded folders
-        if (localFolders && Array.isArray(localFolders)) {
-          localFolders.forEach(f => {
-            const fn = (typeof f === 'string' ? f : (f.name || f.folderName || '')).trim();
-            const fnSlug = fn.toLowerCase().replace(/[^a-z0-9]/g, '');
-            if (fnSlug.includes(cleanSlug) && cleanSlug.length > 3) {
-              if (fn && !previousRunIds.includes(fn)) previousRunIds.push(fn);
-            }
-          });
-        }
-
         baselineRunId = previousRunIds;
 
         pollIntervalRef.current = setInterval(async () => {
@@ -1596,6 +1585,9 @@ export default function ScanHud({
               }
             };
 
+            setIsScanning(false);
+            setScanFinished(true);
+
             updateScannerState({
               activeScanId: effectiveFolderName,
               discoveredFindings: vulns,
@@ -1616,15 +1608,13 @@ export default function ScanHud({
                 .catch(e => console.warn('Supabase auto-save error:', e));
             }
 
-            setIsScanning(false);
-            setScanFinished(true);
             refreshLocalFolders();
 
             // Intimate scan completion and immediately display findings on dashboard
             if (onViewFindings) {
               setTimeout(() => {
                 onViewFindings();
-              }, 600);
+              }, 400);
             }
           } catch (pollErr) {
             if (pollAttempts % 3 === 0) {
