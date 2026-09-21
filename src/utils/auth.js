@@ -1,4 +1,4 @@
-import { supabase, formatUserForSupabase, formatUserFromSupabase, isSupabaseConfigured, initSupabaseBrowserConfig } from './supabaseClient.js';
+import { formatUserForSupabase, formatUserFromSupabase, isSupabaseConfigured, initSupabaseBrowserConfig } from './supabaseClient.js';
 
 const USERS_STORAGE_KEY = 'sennovate_vapt_users';
 const CURRENT_USER_KEY = 'sennovate_current_user';
@@ -256,13 +256,6 @@ export function saveUsersList(users) {
       body: JSON.stringify({ users })
     }).catch(err => console.warn('Note syncing users to backend:', err));
 
-    // Dual-sync directly to Supabase vapt_users table with original passwords
-    try {
-      const payloads = users.map(formatUserForSupabase).filter(Boolean);
-      if (payloads.length > 0) {
-        supabase.from('vapt_users').upsert(payloads, { onConflict: 'username' }).then(() => {}, () => {});
-      }
-    } catch (_) {}
   } catch (e) {
     console.error('Error saving users:', e);
   }
@@ -342,11 +335,6 @@ export async function logoutUser() {
     const users = getUsersList();
     const updated = users.map(u => u.id === current.id ? { ...u, isOnline: false } : u);
     saveUsersList(updated);
-
-    // Sync online status to Supabase
-    try {
-      supabase.from('vapt_users').update({ is_online: false }).eq('id', current.id).then(() => {}, () => {});
-    } catch (_) {}
   }
   sessionStorage.removeItem(CURRENT_USER_KEY);
   try { localStorage.removeItem(CURRENT_USER_KEY); } catch (_) { }
@@ -545,16 +533,7 @@ export async function createNewUser(userData) {
     localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(updatedUsers));
   }
 
-  // 3. Immediately upsert to Supabase vapt_users with original plaintext password!
-  try {
-    const supaPayload = formatUserForSupabase(newUserObj);
-    await supabase.from('vapt_users').upsert([supaPayload], { onConflict: 'username' });
-    console.log(`[AUTH] User "${cleanUsername}" synced to Supabase with original password.`);
-  } catch (err) {
-    console.warn('Supabase direct user upsert note:', err.message);
-  }
-
-  // 4. Fetch the full authoritative user list from Supabase/server to guarantee
+  // 3. Fetch the full authoritative user list from server to guarantee
   // that all previous users and the newly created user are present together.
   try {
     const freshUsers = await fetchGlobalUsersList();
@@ -597,13 +576,6 @@ export async function deleteUser(userId) {
 
   const updatedUsers = data.users || [];
   localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(updatedUsers));
-  try {
-    const { supabase } = await import('./supabaseClient.js');
-    if (supabase) {
-      await supabase.from('vapt_users').delete().eq('username', userId);
-      await supabase.from('vapt_users').delete().eq('id', userId);
-    }
-  } catch (_) {}
   try { window.dispatchEvent(new CustomEvent('sennovate_users_updated', { detail: updatedUsers })); } catch (_) {}
   return updatedUsers;
 }

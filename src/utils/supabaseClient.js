@@ -27,14 +27,13 @@ export function getActiveSupabaseConfig() {
     } catch (_) {}
   }
 
-  const viteUrl = (typeof import.meta !== 'undefined' && import.meta.env) ? (import.meta.env.VITE_SUPABASE_URL || import.meta.env.SUPABASE_URL) : '';
-  const viteKey = (typeof import.meta !== 'undefined' && import.meta.env) ? (import.meta.env.VITE_SUPABASE_ANON_KEY || import.meta.env.SUPABASE_ANON_KEY) : '';
+  // Client-side browser only receives config dynamically after authentication via /api/supabase/config
+  const isNode = typeof process !== 'undefined' && process.env && typeof window === 'undefined';
+  const nodeUrl = isNode ? (process.env.SUPABASE_URL || '') : '';
+  const nodeKey = isNode ? (process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_KEY || '') : '';
 
-  const nodeUrl = (typeof process !== 'undefined' && process.env) ? (process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL) : '';
-  const nodeKey = (typeof process !== 'undefined' && process.env) ? (process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_KEY) : '';
-
-  const url = winUrl || viteUrl || nodeUrl || DEFAULT_SUPA_URL;
-  const key = winKey || viteKey || nodeKey || DEFAULT_SUPA_KEY;
+  const url = winUrl || nodeUrl || DEFAULT_SUPA_URL;
+  const key = winKey || nodeKey || DEFAULT_SUPA_KEY;
 
   return { url, key };
 }

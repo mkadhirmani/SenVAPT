@@ -294,38 +294,9 @@ export default function App() {
       )
       .subscribe();
 
-    // 2. Listen for changes on vapt_users
-    const usersChannel = supabase
-      .channel('realtime_vapt_users')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'vapt_users' },
-        async (payload) => {
-          try {
-            await fetchGlobalUsersList();
-            const active = getCurrentUser();
-            if (active) {
-              if (payload.eventType === 'DELETE' && payload.old?.id === active.id) {
-                logoutUser();
-                setAuthUser(null);
-              } else if (payload.eventType === 'UPDATE' && payload.new?.id === active.id) {
-                const formatted = formatUserFromSupabase(payload.new);
-                const merged = { ...active, ...formatted };
-                setCurrentUser(merged);
-                setAuthUser(merged);
-              }
-            }
-          } catch (e) {
-            console.warn('[Supabase Realtime Users Notice]', e.message);
-          }
-        }
-      )
-      .subscribe();
-
     return () => {
       try {
         supabase.removeChannel(scansChannel);
-        supabase.removeChannel(usersChannel);
       } catch (_) { }
     };
   }, []);

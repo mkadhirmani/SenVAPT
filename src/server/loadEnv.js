@@ -65,37 +65,16 @@ export function loadEnvFiles() {
         const conf = JSON.parse(fs.readFileSync(confFile, 'utf-8'));
         if (conf && conf.url && conf.key) {
           if (!process.env.SUPABASE_URL) process.env.SUPABASE_URL = conf.url;
-          if (!process.env.VITE_SUPABASE_URL) process.env.VITE_SUPABASE_URL = conf.url;
           if (!process.env.SUPABASE_ANON_KEY) process.env.SUPABASE_ANON_KEY = conf.key;
-          if (!process.env.VITE_SUPABASE_ANON_KEY) process.env.VITE_SUPABASE_ANON_KEY = conf.key;
         }
       }
     } catch (_) {}
   }
 
-  // Normalize Supabase environment variable names
-  if (process.env.SUPABASE_URL && !process.env.VITE_SUPABASE_URL) {
-    process.env.VITE_SUPABASE_URL = process.env.SUPABASE_URL;
-  }
-  if (process.env.VITE_SUPABASE_URL && !process.env.SUPABASE_URL) {
-    process.env.SUPABASE_URL = process.env.VITE_SUPABASE_URL;
-  }
-  if (process.env.SUPABASE_ANON_KEY && !process.env.VITE_SUPABASE_ANON_KEY) {
-    process.env.VITE_SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
-  }
-  if (process.env.VITE_SUPABASE_ANON_KEY && !process.env.SUPABASE_ANON_KEY) {
-    process.env.SUPABASE_ANON_KEY = process.env.VITE_SUPABASE_ANON_KEY;
-  }
-
-  // Default fallbacks are empty; credentials must come from environment variables or .supabase_config.json
-  const DEFAULT_SUPA_URL = '';
-  const DEFAULT_SUPA_KEY = '';
-
-  if (!process.env.SUPABASE_URL && DEFAULT_SUPA_URL) process.env.SUPABASE_URL = DEFAULT_SUPA_URL;
-  if (!process.env.VITE_SUPABASE_URL && DEFAULT_SUPA_URL) process.env.VITE_SUPABASE_URL = DEFAULT_SUPA_URL;
-  if (!process.env.SUPABASE_ANON_KEY && DEFAULT_SUPA_KEY) process.env.SUPABASE_ANON_KEY = DEFAULT_SUPA_KEY;
-  if (!process.env.VITE_SUPABASE_ANON_KEY && DEFAULT_SUPA_KEY) process.env.VITE_SUPABASE_ANON_KEY = DEFAULT_SUPA_KEY;
-
+  // Security Hardening: Ensure VITE_SUPABASE_* is NEVER set on process.env
+  // This guarantees Vite build/dev server never bakes credentials into client JS bundles.
+  delete process.env.VITE_SUPABASE_URL;
+  delete process.env.VITE_SUPABASE_ANON_KEY;
 }
 
 loadEnvFiles();
