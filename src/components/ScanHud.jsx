@@ -449,20 +449,47 @@ export default function ScanHud({
   };
 
   const handleStopScan = async () => {
-    if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
-    if (elapsedTimerRef.current) clearInterval(elapsedTimerRef.current);
-
-    if (activeScanId) {
-      try {
-        await stopStrixScan(activeScanId);
-      } catch (err) {
-        console.warn('Error stopping scan:', err);
-      }
+    // 1. Immediately clear all polling intervals and duration timers
+    if (pollIntervalRef.current) {
+      clearInterval(pollIntervalRef.current);
+      pollIntervalRef.current = null;
+    }
+    if (elapsedTimerRef.current) {
+      clearInterval(elapsedTimerRef.current);
+      elapsedTimerRef.current = null;
     }
 
+    const currentDomain = (targetUrl || scannerState?.targetUrl || '').replace(/^https?:\/\//i, '').replace(/^www\./i, '').split('/')[0].split(':')[0].trim().toLowerCase();
+    const effectiveScanId = activeScanId || scannerState?.activeScanId || (currentDomain ? `scan-${currentDomain}` : null);
+
+    appendLog('[!] Aborting scan: sending process termination signal to backend server...');
+
+    // 2. Transmit kill request to backend with domain and scan metadata
+    try {
+      const stopRes = await stopStrixScan({
+        scanId: effectiveScanId,
+        targetUrl: targetUrl || scannerState?.targetUrl || '',
+        domain: currentDomain
+      });
+
+      if (stopRes && stopRes.success) {
+        appendLog(`[BACKEND STOPPED] ${stopRes.message || 'All scan processes on server terminated.'}`);
+        if (stopRes.terminatedProcesses && stopRes.terminatedProcesses.length > 0) {
+          appendLog(`[TERMINATED PROCESSES] ${stopRes.terminatedProcesses.join(', ')}`);
+        }
+      } else {
+        appendLog(`[BACKEND NOTE] ${stopRes?.message || 'Stop signal delivered to server.'}`);
+      }
+    } catch (err) {
+      console.warn('Error stopping scan on backend:', err);
+      appendLog(`[BACKEND STOP NOTE] ${err.message}`);
+    }
+
+    // 3. Update dashboard state
     setIsScanning(false);
     setScanFinished(true);
-    appendLog('[!] Scan Aborted by operator.');
+    setScanError('Scan stopped by operator.');
+    appendLog('[!] Autonomous scan stopped on dashboard and terminated on backend server.');
   };
 
   const appendLog = (line) => {
@@ -1327,13 +1354,15 @@ export default function ScanHud({
 
       const effCred = serverConfig.n8nCredential || (serverConfig.n8nUsername && serverConfig.n8nPassword ? `${serverConfig.n8nUsername}:${serverConfig.n8nPassword}` : (serverConfig.n8nUsername || serverConfig.n8nPassword || ''));
       const startTime = Date.now();
+      const n8nScanId = `scan-${cleanDomain.replace(/[^a-z0-9]/g, '')}-${startTime}`;
+      setActiveScanId(n8nScanId);
       updateScannerState({
         scanStartTime: startTime,
         isScanning: true,
         scanFinished: false,
         scanError: null,
         discoveredFindings: [],
-        activeScanId: null,
+        activeScanId: n8nScanId,
         outputFolderPath: '',
         targetUrl: targetUrl,
         companyName: companyName,

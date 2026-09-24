@@ -1343,8 +1343,8 @@ const server = http.createServer(async (req, res) => {
 
     if (pathname === '/api/strix/stop-scan') {
       try {
-        const { scanId } = await parseJsonBody(req);
-        const result = stopRemoteStrixScan(scanId);
+        const body = await parseJsonBody(req);
+        const result = await stopRemoteStrixScan(body);
         res.setHeader('Content-Type', 'application/json');
         res.statusCode = 200;
         return res.end(JSON.stringify(result));

@@ -18,7 +18,8 @@ import {
   Zap,
   Webhook,
   Radio,
-  Download
+  Download,
+  Square
 } from 'lucide-react';
 import { 
   getStrixServerConfig, 
@@ -303,6 +304,30 @@ export default function StrixConnectionModal({ isOpen, onClose, onConnected, the
                       theme === 'dark'
                         ? 'bg-[#080E1C] border border-slate-700 text-white placeholder-slate-500 focus:border-emerald-400'
                         : 'bg-slate-50 border border-slate-300 text-slate-900 placeholder-slate-400 focus:border-emerald-500'
+                    }`}
+                  />
+                </div>
+
+                {/* 3. Stop / Abort Scan Webhook URL (Optional) */}
+                <div className="space-y-1.5">
+                  <label className={`text-xs font-mono font-bold flex items-center justify-between ${
+                    theme === 'dark' ? 'text-slate-300' : 'text-slate-800'
+                  }`}>
+                    <span className="flex items-center gap-1.5">
+                      <Square className="w-3.5 h-3.5 text-rose-500" />
+                      <span>3. Stop / Abort Scan Webhook URL (Optional):</span>
+                    </span>
+                    <span className="text-[10px] text-rose-400 font-normal">Workflow Abort Signal</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={config.n8nStopWebhookUrl || ''}
+                    onChange={(e) => setConfig({ ...config, n8nStopWebhookUrl: e.target.value })}
+                    placeholder="https://n8n-route-soc-pub-vms.apps.corp.sennovate.com/webhook/..."
+                    className={`w-full px-3.5 py-2.5 rounded-xl font-mono text-xs focus:outline-none transition-all ${
+                      theme === 'dark'
+                        ? 'bg-[#080E1C] border border-slate-700 text-white placeholder-slate-500 focus:border-rose-400'
+                        : 'bg-slate-50 border border-slate-300 text-slate-900 placeholder-slate-400 focus:border-rose-500'
                     }`}
                   />
                 </div>

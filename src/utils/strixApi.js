@@ -189,19 +189,28 @@ export async function startStrixScan(params) {
 }
 
 /**
- * Stop / Abort Strix Scan Immediately
+ * Stop / Abort Strix Scan Immediately and Terminate Backend Processes
  */
-export async function stopStrixScan(scanId) {
+export async function stopStrixScan(scanIdOrParams) {
+  const payload = typeof scanIdOrParams === 'object' && scanIdOrParams !== null
+    ? scanIdOrParams
+    : { scanId: scanIdOrParams };
+
   const res = await fetch('/api/strix/stop-scan', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       ...getAuthHeaders()
     },
-    body: JSON.stringify({ scanId })
+    body: JSON.stringify(payload)
   });
 
-  return await res.json();
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(data.error || data.message || `Stop scan failed with HTTP ${res.status}`);
+  }
+
+  return data;
 }
 
 /**

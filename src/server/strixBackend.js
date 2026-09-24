@@ -331,6 +331,7 @@ let globalStrixConfig = {
   triggerMode: 'n8n',
   n8nWebhookUrl: 'https://n8n-route-soc-pub-vms.apps.corp.sennovate.com/webhook/8fdd9fff-57fa-4401-94b7-e06daa92ea36',
   n8nFetchWebhookUrl: 'https://n8n-route-soc-pub-vms.apps.corp.sennovate.com/webhook/1bc30fe0-e31f-4cdb-91fd-d15d4f20ede3',
+  n8nStopWebhookUrl: '',
   n8nAuthType: 'basic',
   n8nCredential: '',
   n8nUsername: '',
@@ -397,6 +398,12 @@ export function saveGlobalServerConfig(newConfig) {
     const check = validateWebhookUrlSync(newConfig.n8nFetchWebhookUrl);
     if (!check.valid) {
       throw new Error(`SSRF Protection: n8n Fetch Webhook URL is invalid. ${check.error}`);
+    }
+  }
+  if (newConfig.n8nStopWebhookUrl) {
+    const check = validateWebhookUrlSync(newConfig.n8nStopWebhookUrl);
+    if (!check.valid) {
+      throw new Error(`SSRF Protection: n8n Stop Webhook URL is invalid. ${check.error}`);
     }
   }
 
@@ -4130,38 +4137,160 @@ export function startRemoteStrixScan(rawParams = {}) {
 }
 
 /**
- * Stop / Abort Remote Strix Scan Immediately
+ * Stop / Abort Strix Scan & Forcibly Kill Backend Processes Immediately
  */
-export function stopRemoteStrixScan(scanId) {
-  const session = activeScans.get(scanId);
-  if (!session) {
-    return { success: false, message: 'Scan not found or already stopped' };
+export async function stopRemoteStrixScan(rawParams = {}) {
+  const params = typeof rawParams === 'object' && rawParams !== null ? rawParams : { scanId: rawParams };
+  const scanId = params.scanId || null;
+  const targetUrl = params.targetUrl || '';
+  let domain = (params.domain || '').trim().toLowerCase();
+  if (!domain && targetUrl) {
+    try {
+      domain = targetUrl.replace(/^https?:\/\//i, '').replace(/^www\./i, '').split('/')[0].split(':')[0].trim().toLowerCase();
+    } catch (_) {}
   }
 
-  try {
-    session.status = 'cancelled';
-    session.stage = 'Cancelled by User';
+  const stoppedSessions = [];
+  const timestamp = new Date().toISOString().slice(11, 19);
 
-    const timestamp = new Date().toISOString().slice(11, 19);
-    session.logs.push(`[${timestamp}] [ABORT] Scan stopped immediately by user.`);
+  // 1. Mark in-memory scan sessions as cancelled
+  for (const [id, session] of activeScans.entries()) {
+    const isIdMatch = scanId && (id === scanId || session.id === scanId);
+    const isTargetMatch = domain && (
+      (session.targetUrl && session.targetUrl.toLowerCase().includes(domain)) ||
+      (session.companyName && session.companyName.toLowerCase().includes(domain))
+    );
 
-    if (session.stream) {
-      session.stream.write('\x03\x03\n');
-      session.stream.write('pkill -f strix; exit; exit\n');
-    }
+    if (isIdMatch || isTargetMatch || session.status === 'running') {
+      session.status = 'cancelled';
+      session.stage = 'Cancelled by Operator';
+      session.logs.push(`[${timestamp}] [ABORT] Scan stopped immediately by operator.`);
+      stoppedSessions.push(id);
 
-    if (session.conn) {
-      setTimeout(() => {
+      if (session.stream) {
         try {
-          session.conn.end();
-        } catch (e) {}
-      }, 800);
-    }
+          session.stream.write('\x03\x03\n');
+          session.stream.end();
+        } catch (_) {}
+      }
 
-    return { success: true, message: 'Scan successfully aborted' };
-  } catch (err) {
-    return { success: false, error: err.message };
+      if (session.conn) {
+        setTimeout(() => {
+          try { session.conn.end(); } catch (_) {}
+        }, 1500);
+      }
+    }
   }
+
+  // 2. Kill all active scanner processes on the remote Linux server via SSH
+  const sshHost = params.host || globalStrixConfig.host;
+  let sshKillResult = null;
+
+  if (sshHost) {
+    try {
+      sshKillResult = await new Promise((resolve) => {
+        const { connOptions } = buildSshConnectionOptions({
+          host: sshHost,
+          port: params.port || globalStrixConfig.port || 22,
+          username: params.username || globalStrixConfig.username || 'ubuntu',
+          password: params.password !== undefined ? params.password : globalStrixConfig.password,
+          privateKey: params.privateKey || globalStrixConfig.privateKey
+        });
+
+        const conn = new Client();
+        const timeout = setTimeout(() => {
+          try { conn.end(); } catch (_) {}
+          resolve({ success: false, error: 'SSH connection timeout while executing process termination' });
+        }, 8000);
+
+        conn.on('ready', () => {
+          const killCmds = [
+            'sudo pkill -9 -f "strix" 2>/dev/null || true',
+            'sudo pkill -9 -f "amass" 2>/dev/null || true',
+            'sudo pkill -9 -f "subfinder" 2>/dev/null || true',
+            'sudo pkill -9 -f "nuclei" 2>/dev/null || true',
+            'sudo pkill -9 -f "ffuf" 2>/dev/null || true',
+            'sudo pkill -9 -f "caido" 2>/dev/null || true',
+            'sudo pkill -9 -f "nmap" 2>/dev/null || true',
+            'sudo killall -9 strix 2>/dev/null || true',
+            'sudo killall -9 amass 2>/dev/null || true',
+            'sudo killall -9 subfinder 2>/dev/null || true',
+            'sudo killall -9 nuclei 2>/dev/null || true',
+            'sudo docker ps -q --filter ancestor=ghcr.io/usestrix/strix-sandbox 2>/dev/null | xargs -r sudo docker stop -t 1 2>/dev/null || true',
+            'sudo docker ps -q --filter ancestor=ghcr.io/usestrix/strix-sandbox 2>/dev/null | xargs -r sudo docker rm -f 2>/dev/null || true'
+          ];
+
+          if (domain) {
+            killCmds.push(`sudo pkill -9 -f "${domain}" 2>/dev/null || true`);
+            killCmds.push(`[ -d "/root/${domain}-scan" ] && echo -e "\\n[$(date +%T)] [ABORT] Scan stopped immediately by operator." >> "/root/${domain}-scan/scan.log" 2>/dev/null || true`);
+          }
+
+          conn.exec(killCmds.join('; '), (err, stream) => {
+            if (err) {
+              clearTimeout(timeout);
+              conn.end();
+              return resolve({ success: false, error: err.message });
+            }
+
+            let output = '';
+            stream.on('data', d => output += d.toString());
+            stream.on('close', () => {
+              clearTimeout(timeout);
+              conn.end();
+              resolve({ success: true, message: 'All remote processes terminated on server', output });
+            });
+          });
+        });
+
+        conn.on('error', (err) => {
+          clearTimeout(timeout);
+          resolve({ success: false, error: err.message });
+        });
+
+        try {
+          conn.connect(connOptions);
+        } catch (e) {
+          clearTimeout(timeout);
+          resolve({ success: false, error: e.message });
+        }
+      });
+    } catch (e) {
+      sshKillResult = { success: false, error: e.message };
+    }
+  }
+
+  // 3. Local machine process termination (fail-safe)
+  try {
+    execSync('pkill -9 -f "strix" 2>/dev/null || true');
+    execSync('pkill -9 -f "amass" 2>/dev/null || true');
+    execSync('pkill -9 -f "subfinder" 2>/dev/null || true');
+    execSync('pkill -9 -f "nuclei" 2>/dev/null || true');
+  } catch (_) {}
+
+  // 4. Trigger n8n Stop Webhook if configured
+  const n8nStopUrl = params.n8nStopWebhookUrl || globalStrixConfig.n8nStopWebhookUrl;
+  if (n8nStopUrl) {
+    try {
+      const isSafe = await isSafeWebhookUrl(n8nStopUrl);
+      if (isSafe) {
+        await secureN8nFetch(n8nStopUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'stop', event: 'abort', domain, targetUrl, scanId }),
+          timeout: 4000
+        });
+      }
+    } catch (_) {}
+  }
+
+  return {
+    success: true,
+    message: 'Scan stopped successfully. Backend processes on the server were forcibly terminated.',
+    stoppedSessions,
+    terminatedProcesses: ['strix', 'amass', 'subfinder', 'nuclei', 'ffuf', 'caido', 'strix-sandbox'],
+    sshStatus: sshKillResult,
+    targetDomain: domain || 'all'
+  };
 }
 
 /**

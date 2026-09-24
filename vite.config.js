@@ -1398,10 +1398,10 @@ function strixBackendPlugin() {
 
         let body = '';
         req.on('data', chunk => { body += chunk; });
-        req.on('end', () => {
+        req.on('end', async () => {
           try {
-            const { scanId } = JSON.parse(body);
-            const result = stopRemoteStrixScan(scanId);
+            const parsedBody = body ? JSON.parse(body) : {};
+            const result = await stopRemoteStrixScan(parsedBody);
             res.setHeader('Content-Type', 'application/json');
             res.statusCode = 200;
             res.end(JSON.stringify(result));
