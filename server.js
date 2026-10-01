@@ -1651,4 +1651,38 @@ server.listen(PORT, HOST, () => {
   console.log(`🚀  Listening on http://${HOST}:${PORT}`);
   console.log(`📁  Serving static assets from: ${DIST_DIR}`);
   console.log(`====================================================`);
+  startSupabaseKeepAlive();
 });
+
+// Supabase Inactivity Keep-Alive Heartbeat (Prevents Free-Tier 7-Day Auto-Pause)
+function startSupabaseKeepAlive() {
+  const pingSupabase = async () => {
+    try {
+      loadEnvVariables();
+      const url = process.env.SUPABASE_URL;
+      const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
+      if (!url || !key || !url.startsWith('https://')) return;
+
+      const res = await fetch(`${url}/rest/v1/vapt_scans?select=id&limit=1`, {
+        headers: {
+          'apikey': key,
+          'Authorization': `Bearer ${key}`
+        }
+      });
+      if (res.ok) {
+        console.log(`[SUPABASE KEEP-ALIVE] Ping successful at ${new Date().toISOString()} (HTTP ${res.status}). Database active.`);
+      } else {
+        console.warn(`[SUPABASE KEEP-ALIVE] Ping returned HTTP ${res.status}: ${res.statusText}`);
+      }
+    } catch (err) {
+      console.warn(`[SUPABASE KEEP-ALIVE] Ping error: ${err.message}`);
+    }
+  };
+
+  // Ping after 2 seconds on startup, then every 12 hours (well within Supabase's 7-day threshold)
+  setTimeout(pingSupabase, 2000);
+  const TWELVE_HOURS = 12 * 60 * 60 * 1000;
+  const timer = setInterval(pingSupabase, TWELVE_HOURS);
+  if (timer.unref) timer.unref();
+}
+
