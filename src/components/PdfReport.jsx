@@ -24,9 +24,10 @@ import {
   Code, 
   FileCode, 
   Info,
-  CheckSquare
+  CheckSquare,
+  Copy
 } from 'lucide-react';
-import { exportReportToPdf } from '../utils/pdfExport';
+import { exportReportToPdf, exportReportToHtml, generateReportMarkdown } from '../utils/pdfExport';
 import { askLlmWithRag } from '../utils/llmEngine';
 import { sortVulnerabilities } from '../utils/severityUtils';
 import { paginateBlocks, A4_CONSTANTS } from '../utils/pdfPaginationEngine';
@@ -174,6 +175,8 @@ export default function PdfReport({
   const [reportType, setReportType] = useState('detailed'); // 'detailed' | 'simple'
   const [isExporting, setIsExporting] = useState(false);
   const [exportSuccess, setExportSuccess] = useState(false);
+  const [exportHtmlSuccess, setExportHtmlSuccess] = useState(false);
+  const [copiedText, setCopiedText] = useState(false);
   const [isGeneratingAiSummary, setIsGeneratingAiSummary] = useState(false);
   const [customAiSummary, setCustomAiSummary] = useState(null);
 
@@ -695,6 +698,35 @@ Format with clean markdown bullet points and bold headers. Keep the text punchy,
     window.print();
   };
 
+  const handleExportHtml = () => {
+    try {
+      const sanitizedName = (displayCompanyName || displayTargetDomain || 'Target_System').replace(/[^a-zA-Z0-9]/g, '_');
+      const filename = `Sennovate_VAPT_${reportType === 'simple' ? 'Simple' : 'Detailed'}_Report_${sanitizedName}.html`;
+      exportReportToHtml('vapt-pdf-report-root', filename);
+      setExportHtmlSuccess(true);
+      setTimeout(() => setExportHtmlSuccess(false), 3000);
+    } catch (e) {
+      console.error('HTML export error:', e);
+    }
+  };
+
+  const handleCopyMarkdown = () => {
+    try {
+      const text = generateReportMarkdown({
+        companyName: displayCompanyName,
+        targetUrl,
+        metadata,
+        vulnerabilities: sortedVulns,
+        executiveSummary: customAiSummary
+      });
+      navigator.clipboard.writeText(text);
+      setCopiedText(true);
+      setTimeout(() => setCopiedText(false), 2500);
+    } catch (e) {
+      console.error('Copy markdown error:', e);
+    }
+  };
+
   if (!vulnerabilities || vulnerabilities.length === 0) {
     return (
       <div className="space-y-6 max-w-7xl mx-auto pb-12">
@@ -1179,11 +1211,38 @@ Format with clean markdown bullet points and bold headers. Keep the text punchy,
           )}
 
           <button
+            onClick={handleExportHtml}
+            title="Download editable HTML report that can be opened and formatted in Microsoft Word, Google Docs, or text editors"
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold bg-[#001127] text-[#80B7F1] border border-[#002B66] hover:bg-[#002B66] transition-colors font-heading"
+          >
+            {exportHtmlSuccess ? (
+              <Check className="w-3.5 h-3.5 text-emerald-400" />
+            ) : (
+              <FileCode className="w-3.5 h-3.5 text-[#006FE3]" />
+            )}
+            <span>{exportHtmlSuccess ? "Document Exported!" : "Editable Document (.html)"}</span>
+          </button>
+
+          <button
+            onClick={handleCopyMarkdown}
+            title="Copy full findings breakdown and executive summary to clipboard"
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold bg-[#001127] text-slate-200 border border-[#002B66] hover:bg-[#002B66] transition-colors font-heading"
+          >
+            {copiedText ? (
+              <Check className="w-3.5 h-3.5 text-emerald-400" />
+            ) : (
+              <Copy className="w-3.5 h-3.5 text-slate-300" />
+            )}
+            <span>{copiedText ? "Copied to Clipboard!" : "Copy Report Text"}</span>
+          </button>
+
+          <button
             onClick={handlePrint}
+            title="Open browser print dialog to print or save vector PDF directly"
             className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold bg-[#001127] text-slate-200 border border-[#002B66] hover:bg-[#002B66] transition-colors font-heading"
           >
             <Printer className="w-3.5 h-3.5" />
-            <span>Print Report</span>
+            <span>Print / Save PDF</span>
           </button>
 
           <button
@@ -1198,7 +1257,7 @@ Format with clean markdown bullet points and bold headers. Keep the text punchy,
             ) : (
               <Download className="w-3.5 h-3.5" />
             )}
-            <span>{isExporting ? "Exporting Deliverable..." : exportSuccess ? "Report Downloaded!" : `Download ${reportType === 'simple' ? 'Simple' : 'Detailed'} PDF`}</span>
+            <span>{isExporting ? "Generating Vector PDF..." : exportSuccess ? "PDF Downloaded!" : `Download Vector PDF (${reportType === 'simple' ? 'Simple' : 'Detailed'})`}</span>
           </button>
         </div>
       </div>

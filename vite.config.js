@@ -2,6 +2,7 @@ import './src/server/loadEnv.js';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import crypto from 'crypto';
+import { execSync } from 'child_process';
 import {
   testSshConnection,
   startRemoteStrixScan,
@@ -478,6 +479,96 @@ function strixBackendPlugin() {
             res.setHeader('Content-Type', 'application/json');
             res.statusCode = 400;
             res.end(JSON.stringify({ success: false, error: e.message }));
+          }
+        });
+      });
+
+      // 1.8. Native Vector PDF Generation Route (Produces 100% Selectable/Searchable Vector Text PDF via Headless Chrome)
+      server.middlewares.use('/api/reports/generate-pdf', (req, res) => {
+        const session = getAuthenticatedSession(req);
+        if (!session) {
+          res.setHeader('Content-Type', 'application/json');
+          res.statusCode = 401;
+          return res.end(JSON.stringify({ error: 'Unauthorized: Valid session required.' }));
+        }
+        if (req.method !== 'POST') {
+          res.statusCode = 405;
+          return res.end(JSON.stringify({ error: 'Method Not Allowed' }));
+        }
+
+        let body = '';
+        req.on('data', chunk => { body += chunk; });
+        req.on('end', () => {
+          try {
+            const payload = JSON.parse(body || '{}');
+            const htmlContent = payload.html || '';
+            const filename = (payload.filename || 'Sennovate_VAPT_Report.pdf').replace(/[^a-zA-Z0-9._-]/g, '_');
+
+            if (!htmlContent) {
+              applyCorsHeaders(req, res);
+              res.setHeader('Content-Type', 'application/json');
+              res.statusCode = 400;
+              return res.end(JSON.stringify({ error: 'Missing HTML content' }));
+            }
+
+            const chromeCandidates = [
+              '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+              '/Applications/Chromium.app/Contents/MacOS/Chromium',
+              '/Applications/Brave Browser.app/Contents/MacOS/Brave Browser',
+              '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge',
+              '/usr/bin/google-chrome',
+              '/usr/bin/google-chrome-stable',
+              '/usr/bin/chromium',
+              '/usr/bin/chromium-browser'
+            ];
+            let chromePath = chromeCandidates.find(p => fs.existsSync(p));
+            if (!chromePath) {
+              try {
+                const whichOut = execSync('which google-chrome || which chromium || which chrome', { stdio: ['pipe', 'pipe', 'ignore'] }).toString().trim();
+                if (whichOut) chromePath = whichOut.split('\n')[0];
+              } catch (_) {}
+            }
+
+            if (!chromePath) {
+              applyCorsHeaders(req, res);
+              res.setHeader('Content-Type', 'application/json');
+              res.statusCode = 500;
+              return res.end(JSON.stringify({ error: 'Headless Chrome engine not found on server' }));
+            }
+
+            const tempId = `report_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
+            const tempDir = path.resolve(process.cwd(), 'scratch');
+            if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
+            const tempHtml = path.join(tempDir, `${tempId}.html`);
+            const tempPdf = path.join(tempDir, `${tempId}.pdf`);
+
+            fs.writeFileSync(tempHtml, htmlContent, 'utf8');
+
+            execSync(`"${chromePath}" --headless --disable-gpu --no-pdf-header-footer --run-all-compositor-stages-before-draw --print-to-pdf="${tempPdf}" "${tempHtml}"`, {
+              timeout: 45000,
+              stdio: ['ignore', 'pipe', 'pipe']
+            });
+
+            if (fs.existsSync(tempPdf)) {
+              const pdfBuf = fs.readFileSync(tempPdf);
+              try { fs.unlinkSync(tempHtml); } catch (_) {}
+              try { fs.unlinkSync(tempPdf); } catch (_) {}
+
+              applyCorsHeaders(req, res);
+              res.setHeader('Content-Type', 'application/pdf');
+              res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+              res.setHeader('Content-Length', pdfBuf.length);
+              res.statusCode = 200;
+              return res.end(pdfBuf);
+            } else {
+              throw new Error('PDF output file was not created');
+            }
+          } catch (err) {
+            console.error('Error generating native vector PDF in Vite:', err.message);
+            applyCorsHeaders(req, res);
+            res.setHeader('Content-Type', 'application/json');
+            res.statusCode = 500;
+            return res.end(JSON.stringify({ error: 'PDF generation failed: ' + err.message }));
           }
         });
       });

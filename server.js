@@ -3,6 +3,7 @@ import http from 'http';
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
+import { execSync } from 'child_process';
 import { fileURLToPath } from 'url';
 import { 
   testSshConnection, 
@@ -936,6 +937,90 @@ const server = http.createServer(async (req, res) => {
     res.setHeader('Content-Type', 'application/json');
     res.statusCode = ok ? 200 : 500;
     return res.end(JSON.stringify({ success: ok, count: scansList.length }));
+  }
+
+  // 3.5. Native Vector PDF Generation Route (Produces 100% Selectable/Searchable Vector Text PDF via Headless Chrome)
+  if (pathname === '/api/reports/generate-pdf') {
+    const session = getAuthenticatedSession(req);
+    if (!session) {
+      res.setHeader('Content-Type', 'application/json');
+      res.statusCode = 401;
+      return res.end(JSON.stringify({ error: 'Unauthorized: Valid session required.' }));
+    }
+    if (req.method !== 'POST') {
+      res.statusCode = 405;
+      return res.end(JSON.stringify({ error: 'Method Not Allowed' }));
+    }
+
+    try {
+      const payload = await parseJsonBody(req);
+      const htmlContent = payload.html || '';
+      const filename = (payload.filename || 'Sennovate_VAPT_Report.pdf').replace(/[^a-zA-Z0-9._-]/g, '_');
+
+      if (!htmlContent) {
+        res.setHeader('Content-Type', 'application/json');
+        res.statusCode = 400;
+        return res.end(JSON.stringify({ error: 'Missing HTML content' }));
+      }
+
+      // Locate Chrome/Chromium executable
+      const chromeCandidates = [
+        '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+        '/Applications/Chromium.app/Contents/MacOS/Chromium',
+        '/Applications/Brave Browser.app/Contents/MacOS/Brave Browser',
+        '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge',
+        '/usr/bin/google-chrome',
+        '/usr/bin/google-chrome-stable',
+        '/usr/bin/chromium',
+        '/usr/bin/chromium-browser'
+      ];
+      let chromePath = chromeCandidates.find(p => fs.existsSync(p));
+      if (!chromePath) {
+        try {
+          const whichOut = execSync('which google-chrome || which chromium || which chrome', { stdio: ['pipe', 'pipe', 'ignore'] }).toString().trim();
+          if (whichOut) chromePath = whichOut.split('\n')[0];
+        } catch (_) {}
+      }
+
+      if (!chromePath) {
+        res.setHeader('Content-Type', 'application/json');
+        res.statusCode = 500;
+        return res.end(JSON.stringify({ error: 'Headless Chrome engine not found on server' }));
+      }
+
+      const tempId = `report_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
+      const tempDir = path.resolve(process.cwd(), 'scratch');
+      if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
+      const tempHtml = path.join(tempDir, `${tempId}.html`);
+      const tempPdf = path.join(tempDir, `${tempId}.pdf`);
+
+      fs.writeFileSync(tempHtml, htmlContent, 'utf8');
+
+      // Execute headless Chrome print-to-pdf
+      execSync(`"${chromePath}" --headless --disable-gpu --no-pdf-header-footer --run-all-compositor-stages-before-draw --print-to-pdf="${tempPdf}" "${tempHtml}"`, {
+        timeout: 45000,
+        stdio: ['ignore', 'pipe', 'pipe']
+      });
+
+      if (fs.existsSync(tempPdf)) {
+        const pdfBuf = fs.readFileSync(tempPdf);
+        try { fs.unlinkSync(tempHtml); } catch (_) {}
+        try { fs.unlinkSync(tempPdf); } catch (_) {}
+
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+        res.setHeader('Content-Length', pdfBuf.length);
+        res.statusCode = 200;
+        return res.end(pdfBuf);
+      } else {
+        throw new Error('PDF output file was not created');
+      }
+    } catch (err) {
+      console.error('Error generating native vector PDF:', err.message);
+      res.setHeader('Content-Type', 'application/json');
+      res.statusCode = 500;
+      return res.end(JSON.stringify({ error: 'PDF generation failed: ' + err.message }));
+    }
   }
 
   // 4. LLM Proxy Route (Protected with Session Auth & Strict SSRF Defense)
