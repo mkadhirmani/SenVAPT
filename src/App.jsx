@@ -366,7 +366,7 @@ export default function App() {
 
       return {
         targetUrl: scan.targetUrl,
-        companyName: scan.companyName,
+        companyName: sanitizeCompanyName(scan.companyName, scan.targetUrl),
         logs: preservedLogs,
         discoveredFindings: resolvedVulns,
         scanStats: {
@@ -449,7 +449,7 @@ export default function App() {
     setScannerState(prev => ({
       ...prev,
       targetUrl: enrichedScan.targetUrl || prev.targetUrl,
-      companyName: enrichedScan.companyName || prev.companyName,
+      companyName: sanitizeCompanyName(enrichedScan.companyName || prev.companyName, enrichedScan.targetUrl || prev.targetUrl),
       logs: enrichedScan.logs || prev.logs,
       discoveredFindings: resolvedVulns,
       scanStats: {
@@ -477,8 +477,9 @@ export default function App() {
       `🛡️ VAPT Scan Complete: ${enrichedScan.companyName || 'Target'}`,
       `Audit completed successfully! ${resolvedVulns.length} verified vulnerabilities ingested and executive report is ready.`
     );
+    const displayCompName = sanitizeCompanyName(enrichedScan.companyName, enrichedScan.targetUrl);
     setScanToast({
-      companyName: enrichedScan.companyName || 'Target',
+      companyName: displayCompName,
       targetUrl: enrichedScan.targetUrl,
       vulnCount: resolvedVulns.length,
       id: enrichedScan.id,
@@ -696,7 +697,10 @@ export default function App() {
   const currentMetadata = activeScan ? {
     ...(activeScan.metadata || SCAN_METADATA),
     targetUrl: activeScan.targetUrl || (activeScan.metadata?.targetUrl || ""),
-    companyName: activeScan.companyName || (activeScan.metadata?.companyName || "Target Organization"),
+    companyName: sanitizeCompanyName(
+      activeScan.companyName || (activeScan.metadata?.companyName || ""),
+      activeScan.targetUrl || (activeScan.metadata?.targetUrl || "")
+    ),
     createdBy: activeScan.createdBy || (currentUser?.username || 'admin'),
     scannedBy: activeScan.scannedBy || activeScan.createdBy || (currentUser?.username || 'user'),
     scannedByName: activeScan.scannedByName || (currentUser?.role === 'admin' ? 'Administrator' : 'User'),

@@ -138,14 +138,15 @@ export function extractDomainInfo(rawInput, fallbackPreferredName = '') {
 
   const brandName = formatBrandCapitalization(brandPart);
   const brandSlug = brandPart.toLowerCase();
-  const companyName = `${brandName} Inc`;
+  const companyName = rootDomain; // Fetch only the domain name (e.g., "sennovate.com")
 
   return {
     cleanDomain: str,
     rootDomain,
+    domainName: rootDomain,
+    companyName: rootDomain,
     brandName,
     brandSlug,
-    companyName,
     subdomain: subdomainPart,
     fullHost: str
   };
@@ -153,49 +154,45 @@ export function extractDomainInfo(rawInput, fallbackPreferredName = '') {
 
 /**
  * Sanitize corporate / organization name against target domain
- * Detects and corrects errors where a subdomain (e.g. "Plus") was used as the company name ("Plus Inc")
- * instead of the root organization name ("Sennovate Inc").
+ * Strictly extracts and returns ONLY the apex/root domain name (e.g. "sennovate.com"
+ * from "https://plus.sennovate.com"), stripping away any subdomain prefixes ("plus.")
+ * and synthetic suffixes ("Plus Inc").
  *
  * @param {string} currentCompanyName - Current company name candidate
  * @param {string} targetUrlOrDomain - Target URL or domain of the scan
- * @returns {string} Sanitized, accurate company name
+ * @returns {string} Sanitized domain name for company display
  */
 export function sanitizeCompanyName(currentCompanyName, targetUrlOrDomain) {
-  const domainInfo = extractDomainInfo(targetUrlOrDomain);
-  const rawCurrent = String(currentCompanyName || '').trim();
-  const lowerCurrent = rawCurrent.toLowerCase();
-
-  // 1. If company name is missing or generic placeholder, return proper brand from domain
-  if (!rawCurrent || GENERIC_COMPANY_NAMES.has(lowerCurrent)) {
-    return domainInfo.companyName;
-  }
-
-  // 2. Detect if company name mistakenly reflects a subdomain prefix
-  // e.g. domain is "sennovate.com", subdomain is "plus", but companyName is "Plus Inc" or "plus INC" or "Plus"
-  if (domainInfo.subdomain && domainInfo.brandName) {
-    const subParts = domainInfo.subdomain.split('.').map(s => s.toLowerCase());
-    const isSubdomainName = subParts.some(sub => {
-      // Subdomain matches start of companyName e.g. "plus inc", "plus", "plus corporation"
-      return lowerCurrent === sub ||
-             lowerCurrent === `${sub} inc` ||
-             lowerCurrent === `${sub} inc.` ||
-             lowerCurrent.startsWith(`${sub} `);
-    });
-
-    if (isSubdomainName) {
-      // Replace mistakenly inferred subdomain brand with true apex domain brand
-      return domainInfo.companyName;
+  // 1. If targetUrlOrDomain is provided, fetch ONLY the root domain name from it
+  if (targetUrlOrDomain && typeof targetUrlOrDomain === 'string' && targetUrlOrDomain.trim()) {
+    const domainInfo = extractDomainInfo(targetUrlOrDomain);
+    if (domainInfo && domainInfo.rootDomain && domainInfo.rootDomain !== 'target.com') {
+      return domainInfo.rootDomain;
     }
   }
 
-  // 3. Detect "senvapt" or "scan" as brand when domain has true brand like "sennovate"
-  if (lowerCurrent.includes('senvapt') && domainInfo.brandName === 'Sennovate') {
-    return domainInfo.companyName;
+  // 2. If currentCompanyName itself contains a domain or URL, extract root domain from it
+  if (currentCompanyName && typeof currentCompanyName === 'string' && currentCompanyName.trim()) {
+    const raw = currentCompanyName.trim();
+    if (raw.includes('.') || raw.startsWith('http')) {
+      const domainInfo = extractDomainInfo(raw);
+      if (domainInfo && domainInfo.rootDomain && domainInfo.rootDomain !== 'target.com') {
+        return domainInfo.rootDomain;
+      }
+    }
   }
 
-  // 4. If current company name is just the raw domain or brand slug (e.g. "sennovate" or "sennovate.com"), format properly
-  if (lowerCurrent === domainInfo.brandSlug || lowerCurrent === domainInfo.rootDomain.toLowerCase() || lowerCurrent === domainInfo.cleanDomain.toLowerCase()) {
-    return domainInfo.companyName;
+  // 3. Fallback to targetUrlOrDomain if present
+  if (targetUrlOrDomain) {
+    const domainInfo = extractDomainInfo(targetUrlOrDomain);
+    if (domainInfo && domainInfo.rootDomain) {
+      return domainInfo.rootDomain;
+    }
+  }
+
+  const rawCurrent = String(currentCompanyName || '').trim();
+  if (!rawCurrent || GENERIC_COMPANY_NAMES.has(rawCurrent.toLowerCase())) {
+    return 'target.com';
   }
 
   return rawCurrent;

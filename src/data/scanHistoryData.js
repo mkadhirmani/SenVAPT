@@ -2,6 +2,7 @@ import { SCAN_METADATA, VULNERABILITIES } from './scanData.js';
 import { getAuthHeaders } from '../utils/auth.js';
 import { supabase, formatScanForSupabase, formatScanFromSupabase, isSupabaseConfigured } from '../utils/supabaseClient.js';
 import { sortVulnerabilities } from '../utils/severityUtils.js';
+import { sanitizeCompanyName } from '../utils/domainUtils.js';
 
 export const SAMPLE_BETA_VULNERABILITIES = sortVulnerabilities([
   {
@@ -507,7 +508,19 @@ export async function syncScanHistoryWithServer() {
     console.warn('Note syncing scan history from backend server:', e);
   }
 
-  const merged = Array.from(scanMap.values()).filter(s => {
+  const merged = Array.from(scanMap.values()).map(s => {
+    if (!s) return null;
+    const effTarget = s.targetUrl || s.metadata?.targetUrl || '';
+    const cleanCompany = sanitizeCompanyName(s.companyName || s.metadata?.companyName || '', effTarget);
+    return {
+      ...s,
+      companyName: cleanCompany,
+      metadata: {
+        ...(s.metadata || {}),
+        companyName: cleanCompany
+      }
+    };
+  }).filter(s => {
     if (!s) return false;
     if (MOCK_SCAN_IDS.has(s.id)) return false;
     const cName = (s.companyName || '').toLowerCase().trim();

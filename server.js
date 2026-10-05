@@ -33,6 +33,7 @@ import {
   formatScanForSupabase,
   getActiveSupabaseConfig
 } from './src/utils/supabaseClient.js';
+import { sanitizeCompanyName } from './src/utils/domainUtils.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -102,8 +103,21 @@ function getServerScanHistory() {
   try {
     if (fs.existsSync(SCANS_CACHE_FILE)) {
       const data = JSON.parse(fs.readFileSync(SCANS_CACHE_FILE, 'utf-8'));
-      if (Array.isArray(data) && data.length > 0) return data;
-      if (data && Array.isArray(data.scans) && data.scans.length > 0) return data.scans;
+      const list = Array.isArray(data) ? data : (data && Array.isArray(data.scans) ? data.scans : []);
+      if (list.length > 0) {
+        return list.map(s => {
+          const tUrl = s.targetUrl || s.metadata?.targetUrl || '';
+          const cName = sanitizeCompanyName(s.companyName || s.metadata?.companyName || '', tUrl);
+          return {
+            ...s,
+            companyName: cName,
+            metadata: {
+              ...(s.metadata || {}),
+              companyName: cName
+            }
+          };
+        });
+      }
     }
   } catch (e) {
     console.warn('Note reading server scan history:', e.message);
@@ -113,7 +127,19 @@ function getServerScanHistory() {
 
 function saveServerScanHistory(scans) {
   try {
-    fs.writeFileSync(SCANS_CACHE_FILE, JSON.stringify(scans, null, 2), 'utf-8');
+    const sanitized = Array.isArray(scans) ? scans.map(s => {
+      const tUrl = s.targetUrl || s.metadata?.targetUrl || '';
+      const cName = sanitizeCompanyName(s.companyName || s.metadata?.companyName || '', tUrl);
+      return {
+        ...s,
+        companyName: cName,
+        metadata: {
+          ...(s.metadata || {}),
+          companyName: cName
+        }
+      };
+    }) : scans;
+    fs.writeFileSync(SCANS_CACHE_FILE, JSON.stringify(sanitized, null, 2), 'utf-8');
     return true;
   } catch (e) {
     console.error('Error saving server scan history:', e.message);
