@@ -30,6 +30,7 @@ import { exportReportToPdf } from '../utils/pdfExport';
 import { askLlmWithRag } from '../utils/llmEngine';
 import { sortVulnerabilities } from '../utils/severityUtils';
 import { paginateBlocks, A4_CONSTANTS } from '../utils/pdfPaginationEngine';
+import { extractDomainInfo, sanitizeCompanyName, getDisplayDomain } from '../utils/domainUtils';
 
 function cleanText(text) {
   if (!text || typeof text !== 'string') return '';
@@ -186,7 +187,20 @@ export default function PdfReport({
   const lowVulns = sortedVulns.filter(v => v.severity === 'LOW');
   const topVuln = sortedVulns[0] || null;
 
-  const targetUrl = metadata.targetUrl || (sortedVulns[0]?.target ? new URL(sortedVulns[0].target).origin : "https://target-system.internal");
+  const rawTarget = metadata.targetUrl || (sortedVulns[0]?.target ? new URL(sortedVulns[0].target).origin : "https://target-system.internal");
+  const domainInfo = useMemo(() => {
+    return extractDomainInfo(rawTarget, companyName);
+  }, [rawTarget, companyName]);
+
+  const displayCompanyName = useMemo(() => {
+    return sanitizeCompanyName(companyName, rawTarget);
+  }, [companyName, rawTarget]);
+
+  const displayTargetDomain = useMemo(() => {
+    return domainInfo.rootDomain || getDisplayDomain(rawTarget);
+  }, [domainInfo, rawTarget]);
+
+  const targetUrl = rawTarget;
   const overallRiskScore = metadata.overallRiskScore || topVuln?.cvss || 6.8;
   const overallRiskLevel = metadata.overallRiskLevel || (overallRiskScore >= 8.5 ? 'CRITICAL' : (overallRiskScore >= 7.0 ? 'HIGH' : 'ELEVATED'));
 
@@ -246,7 +260,8 @@ export default function PdfReport({
         execBlocks.push({
           id: 'exec-intro-text',
           type: 'exec-intro',
-          companyName,
+          companyName: displayCompanyName,
+          targetDomain: displayTargetDomain,
           targetUrl,
           sortedVulnsCount: sortedVulns.length,
           breakdownText: formatSeverityBreakdown(sortedVulns),
@@ -288,7 +303,7 @@ export default function PdfReport({
           type: 'exec-roadmap-grid',
           topVuln,
           targetUrl,
-          companyName,
+          companyName: displayCompanyName,
           estimatedHeight: 130
         });
       }
@@ -631,7 +646,7 @@ export default function PdfReport({
   const handleGenerateAiSummary = async () => {
     setIsGeneratingAiSummary(true);
     try {
-      const prompt = `You are a Principal Security Consultant creating an executive penetration testing deliverable for ${companyName} (Target: ${targetUrl}).
+      const prompt = `You are a Principal Security Consultant creating an executive penetration testing deliverable for ${displayCompanyName} (Target Domain: ${displayTargetDomain}, Primary Target: ${targetUrl}).
 Generate a concise, crisp, perfectly proportioned Executive Summary and Threat Alignment that fits Page 2 of a standard A4 deliverable without awkward cutoffs or overflow:
 1. Executive Threat Overview (2 concise paragraphs evaluating overall posture, highest risk attack vectors, and business impact).
 2. Key Risk Breakdown (concise bulleted breakdown of confirmed Critical, High, and Medium vulnerabilities with exact mechanics).
@@ -643,7 +658,7 @@ Format with clean markdown bullet points and bold headers. Keep the text punchy,
 
       const res = await askLlmWithRag({
         userMessage: prompt,
-        companyName,
+        companyName: displayCompanyName,
         targetUrl,
         vulnerabilities: sortedVulns
       });
@@ -661,7 +676,7 @@ Format with clean markdown bullet points and bold headers. Keep the text punchy,
   const handleDownloadPdf = async () => {
     setIsExporting(true);
     try {
-      const sanitizedName = (companyName || 'Target_System').replace(/[^a-zA-Z0-9]/g, '_');
+      const sanitizedName = (displayCompanyName || displayTargetDomain || 'Target_System').replace(/[^a-zA-Z0-9]/g, '_');
       const filename = reportType === 'simple'
         ? `Sennovate_VAPT_Simple_Report_${sanitizedName}.pdf`
         : `Sennovate_VAPT_Detailed_Report_${sanitizedName}.pdf`;
@@ -980,10 +995,10 @@ Format with clean markdown bullet points and bold headers. Keep the text punchy,
       }
 
       case 'exec-intro': {
-        const { companyName, targetUrl, sortedVulnsCount, breakdownText, overallRiskLevel, overallRiskScore } = block;
+        const { companyName, targetUrl, targetDomain, sortedVulnsCount, breakdownText, overallRiskLevel, overallRiskScore } = block;
         return (
           <div key={block.id || idx} className="space-y-2 text-[12.5px] text-slate-800 leading-relaxed font-sans break-words">
-            <p>Sennovate Autonomous Security Engine conducted an external penetration testing assessment against <strong>{companyName}</strong> (primary target: <code>{targetUrl}</code>). The scope encompassed the external web perimeter, exposed application services, and integrated API endpoints.</p>
+            <p>Sennovate Autonomous Security Engine conducted an external penetration testing assessment against <strong>{companyName}</strong> (primary target domain: <code>{targetDomain || targetUrl}</code>). The scope encompassed the external web perimeter, exposed application services, and integrated API endpoints.</p>
             <p>The assessment identified <strong>{sortedVulnsCount} confirmed security vulnerabilities</strong> ({breakdownText}). The overall cybersecurity posture is evaluated at <strong>{overallRiskLevel} Risk ({overallRiskScore}/10 CVSS)</strong>, requiring targeted remediation to safeguard corporate data assets.</p>
           </div>
         );
@@ -1114,7 +1129,7 @@ Format with clean markdown bullet points and bold headers. Keep the text punchy,
               </span>
             </h2>
             <p className="text-xs text-slate-400">
-              Target: <span className="font-mono text-[#80B7F1]">{targetUrl}</span> &bull; {sortedVulns.length} Confirmed Vulnerabilities
+              Target: <span className="font-mono text-[#80B7F1]">{displayCompanyName} ({displayTargetDomain})</span> &bull; {sortedVulns.length} Confirmed Vulnerabilities
             </p>
           </div>
         </div>
@@ -1284,8 +1299,15 @@ Format with clean markdown bullet points and bold headers. Keep the text punchy,
 
                   <div className="space-y-1">
                     <div className="text-xs font-mono text-slate-500 font-bold uppercase tracking-widest">PREPARED EXCLUSIVELY FOR:</div>
-                    <h1 className="text-2xl sm:text-3xl font-black text-slate-950 tracking-tight leading-tight break-words">{companyName}</h1>
-                    <p className="text-[12.5px] text-slate-700 font-medium leading-relaxed break-words max-w-3xl">
+                    <h1 className="text-2xl sm:text-3xl font-black text-slate-950 tracking-tight leading-tight break-words">{displayCompanyName}</h1>
+                    <div className="text-xs font-mono text-cyan-800 font-semibold flex items-center gap-1.5 pt-0.5">
+                      <span>Target Domain:</span>
+                      <span className="underline decoration-cyan-400 font-bold">{displayTargetDomain}</span>
+                      {domainInfo.subdomain && (
+                        <span className="text-slate-500 text-[11px] font-normal">({domainInfo.subdomain}.{domainInfo.rootDomain})</span>
+                      )}
+                    </div>
+                    <p className="text-[12.5px] text-slate-700 font-medium leading-relaxed break-words max-w-3xl pt-0.5">
                       Comprehensive autonomous penetration testing deliverable detailing perimeter vulnerability reconnaissance, live exploit verification, attack chain mapping, and prioritized risk mitigation roadmap.
                     </p>
                   </div>
@@ -1293,8 +1315,11 @@ Format with clean markdown bullet points and bold headers. Keep the text punchy,
                   {/* Core Assessment Metrics (6-KPI Grid) */}
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 p-3 rounded-xl bg-slate-50 border border-slate-200 font-mono text-xs">
                     <div className="p-1">
-                      <span className="text-slate-500 text-[10px] block font-bold uppercase tracking-wider">PRIMARY TARGET URI</span>
-                      <span className="font-extrabold text-slate-900 break-all block text-[12.5px]">{targetUrl}</span>
+                      <span className="text-slate-500 text-[10px] block font-bold uppercase tracking-wider">PRIMARY TARGET DOMAIN</span>
+                      <span className="font-extrabold text-slate-900 break-all block text-[12.5px]">{displayTargetDomain}</span>
+                      {targetUrl && targetUrl !== `https://${displayTargetDomain}` && targetUrl !== displayTargetDomain && (
+                        <span className="text-slate-500 text-[10px] break-all block truncate mt-0.5" title={targetUrl}>{targetUrl}</span>
+                      )}
                     </div>
                     <div className="p-1">
                       <span className="text-slate-500 text-[10px] block font-bold uppercase tracking-wider">OVERALL RISK POSTURE</span>
@@ -1416,7 +1441,7 @@ Format with clean markdown bullet points and bold headers. Keep the text punchy,
                   <ShieldCheck className="w-4 h-4 text-cyan-600 flex-shrink-0" />
                   {headerTitle}
                 </span>
-                <span className="truncate max-w-[220px] flex-shrink-0">Target: {companyName}</span>
+                <span className="truncate max-w-[220px] flex-shrink-0">Target: {displayCompanyName}</span>
               </div>
 
               {/* Dynamic Page Flow Content Container */}

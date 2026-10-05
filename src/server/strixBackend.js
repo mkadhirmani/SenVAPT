@@ -9,6 +9,7 @@ import { execSync, execFileSync } from 'child_process';
 import { Client } from 'ssh2';
 import { supabase, formatScanForSupabase } from '../utils/supabaseClient.js';
 import { sortVulnerabilities } from '../utils/severityUtils.js';
+import { sanitizeCompanyName, extractDomainInfo } from '../utils/domainUtils.js';
 
 /**
  * Helper to determine if an IP address belongs to private/loopback/link-local/metadata ranges (SSRF Protection)
@@ -907,10 +908,7 @@ export function listLocalScanFolders() {
             }
 
             if (targetUrl) {
-              try {
-                const host = new URL(targetUrl).hostname.replace('www.', '').split('.')[0];
-                companyName = host.charAt(0).toUpperCase() + host.slice(1) + ' Inc';
-              } catch (e) {}
+              companyName = sanitizeCompanyName(companyName, targetUrl);
             }
 
             candidates.push({
@@ -1153,14 +1151,7 @@ export function parseLocalStrixFolder(folderPath) {
   }
 
   // Derive corporate name from target URL
-  let detectedCompanyName = 'Target Organization';
-  try {
-    const host = actualTargetUrl.replace(/^https?:\/\//i, '').replace(/^www\./i, '').split('/')[0].split(':')[0].trim();
-    const brand = host.split('.')[0];
-    if (brand && brand.toLowerCase() !== 'target') {
-      detectedCompanyName = brand.charAt(0).toUpperCase() + brand.slice(1) + ' Inc';
-    }
-  } catch (_) {}
+  let detectedCompanyName = sanitizeCompanyName('Target Organization', actualTargetUrl);
 
   const parsedVulns = extractFindingsFromAllSources(raw, actualTargetUrl);
 
@@ -2252,13 +2243,7 @@ export async function fetchN8nScanResultsProxy(payload) {
     // If targetUrl in parsed is default, override with detected target domain from Strix log
     if (resolvedResult.targetDomain && (!parsed.targetUrl || parsed.targetUrl === 'https://target.com')) {
       parsed.targetUrl = resolvedResult.targetDomain.startsWith('http') ? resolvedResult.targetDomain : `https://${resolvedResult.targetDomain}`;
-      try {
-        const host = parsed.targetUrl.replace(/^https?:\/\//i, '').replace(/^www\./i, '').split('/')[0].split(':')[0].trim();
-        const brand = host.split('.')[0];
-        if (brand && brand.toLowerCase() !== 'target') {
-          parsed.companyName = brand.charAt(0).toUpperCase() + brand.slice(1) + ' Inc';
-        }
-      } catch (_) {}
+      parsed.companyName = sanitizeCompanyName(parsed.companyName, parsed.targetUrl);
     }
 
     if (resolvedResult.tokens > 0 && (!parsed.tokens || parsed.tokens === 0)) {
@@ -3189,17 +3174,7 @@ print("===END_JSON===")
               findings: parsedVulns.filter(v => (v.target && v.target.includes(host)) || (v.endpoint && v.endpoint.includes(host))).length
             }));
 
-            let actualCompanyName = config.companyName || 'Target Organization';
-            if (config.companyName && config.companyName !== 'Target Organization') {
-              actualCompanyName = config.companyName;
-            } else {
-              try {
-                const host = new URL(actualTargetUrl).hostname.replace('www.', '').split('.')[0];
-                if (host && host !== 'target') {
-                  actualCompanyName = host.charAt(0).toUpperCase() + host.slice(1) + ' Inc';
-                }
-              } catch (e) {}
-            }
+            let actualCompanyName = sanitizeCompanyName(config.companyName, actualTargetUrl);
 
             const folderName = raw.run_dir ? path.basename(raw.run_dir) : (runData.run_id || `scan-${Date.now()}`);
             const res = {
@@ -3469,13 +3444,7 @@ print("===END_ALL_JSON===")
               const lowCount = parsedVulns.filter(v => v.severity === 'LOW' || v.severity === 'INFO').length;
               const maxCvss = parsedVulns.length > 0 ? (parsedVulns[0]?.cvss || 5.5) : 0.0;
 
-              let actualCompanyName = 'Target Organization';
-              try {
-                const host = new URL(actualTargetUrl).hostname.replace('www.', '').split('.')[0];
-                if (host && host !== 'target') {
-                  actualCompanyName = host.charAt(0).toUpperCase() + host.slice(1) + ' Inc';
-                }
-              } catch (e) {}
+              let actualCompanyName = sanitizeCompanyName('', actualTargetUrl);
 
               const totalTokens = runData.llm_usage?.total_tokens || (runData.llm_usage?.input_tokens ? (runData.llm_usage.input_tokens + (runData.llm_usage.output_tokens || 0)) : 0);
               const inputTokens = runData.llm_usage?.input_tokens || 0;
@@ -3827,7 +3796,7 @@ export function startRemoteStrixScan(rawParams = {}) {
 
     const id = params.scanId || `scan-${Date.now()}`;
     const targetUrl = params.targetUrl;
-    const companyName = params.companyName || 'Target Organization';
+    const companyName = sanitizeCompanyName(params.companyName, targetUrl);
 
     // 1. Enterprise n8n Webhook Mode (Preferred & Highly Available)
     if (mode === 'n8n' || (!params.host && (params.n8nWebhookUrl || globalStrixConfig.n8nWebhookUrl))) {
@@ -4451,12 +4420,19 @@ stale_thresh_ms = ${staleThresholdMs || 0}
 
 possible_dirs = []
 if domain:
-    possible_dirs.extend([
-        f"/root/{domain}-scan",
-        f"/root/{domain.split('.')[0]}-scan",
-        f"/home/ubuntu/{domain}-scan",
-        f"/home/ubuntu/{domain.split('.')[0]}-scan"
-    ])
+    parts = [p for p in domain.split('.') if p]
+    root_dom = '.'.join(parts[-2:]) if len(parts) >= 2 else domain
+    brand_sub = parts[0]
+    brand_root = parts[-2] if len(parts) >= 2 else parts[0]
+    candidates = []
+    for cand in [domain, root_dom, brand_root, brand_sub]:
+        if cand and cand not in candidates:
+            candidates.append(cand)
+    for c in candidates:
+        possible_dirs.extend([
+            f"/root/{c}-scan",
+            f"/home/ubuntu/{c}-scan"
+        ])
 possible_dirs.extend(glob.glob("/root/*-scan"))
 possible_dirs.extend(glob.glob("/home/ubuntu/*-scan"))
 possible_dirs.extend(["/root", "/home/ubuntu", "/tmp"])

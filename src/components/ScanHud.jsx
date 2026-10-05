@@ -40,6 +40,7 @@ import {
 } from '../utils/strixApi';
 import { checkUserPermission } from '../utils/auth';
 import { saveScanToSupabase } from '../utils/supabaseClient';
+import { extractDomainInfo, sanitizeCompanyName, getDisplayDomain } from '../utils/domainUtils';
 
 export default function ScanHud({ 
   isScanning, 
@@ -418,14 +419,9 @@ export default function ScanHud({
 
     let derivedCompany = '';
     try {
-      let hostname = url.replace(/^https?:\/\//i, '').split('/')[0].split('?')[0].split(':')[0].trim();
-      if (hostname.startsWith('www.')) hostname = hostname.slice(4);
-      if (hostname) {
-        const parts = hostname.split('.');
-        if (parts.length > 0 && parts[0]) {
-          const brand = parts[0].charAt(0).toUpperCase() + parts[0].slice(1);
-          derivedCompany = `${brand} Inc`;
-        }
+      if (url.trim()) {
+        const info = extractDomainInfo(url);
+        derivedCompany = info.companyName;
       }
     } catch (err) {}
 
@@ -544,17 +540,7 @@ export default function ScanHud({
           else detectedTarget = results.targetUrl || resolvedFolder;
         }
 
-        let inferredCompany = results.companyName;
-        if (!inferredCompany || inferredCompany === 'Target' || inferredCompany === 'Target Organization' || inferredCompany === 'Security Audit Target') {
-          try {
-            const host = (detectedTarget || resolvedFolder).replace(/^https?:\/\//i, '').replace(/^www\./i, '').split('/')[0].split(':')[0].trim();
-            const brand = host.split('.')[0];
-            if (brand && brand.toLowerCase() !== 'target') {
-              inferredCompany = brand.charAt(0).toUpperCase() + brand.slice(1) + ' Inc';
-            }
-          } catch (_) {}
-        }
-        if (!inferredCompany) inferredCompany = 'Security Audit Target';
+        let inferredCompany = sanitizeCompanyName(results.companyName, detectedTarget || resolvedFolder);
 
         const newScan = {
           id: actualScanId,
@@ -711,17 +697,7 @@ export default function ScanHud({
           else detectedTarget = results.targetUrl || rawPath;
         }
 
-        let inferredCompany = results.companyName;
-        if (!inferredCompany || inferredCompany === 'Target' || inferredCompany === 'Target Organization' || inferredCompany === 'Security Audit Target') {
-          try {
-            const host = (detectedTarget || rawPath).replace(/^https?:\/\//i, '').replace(/^www\./i, '').split('/')[0].split(':')[0].trim();
-            const brand = host.split('.')[0];
-            if (brand && brand.toLowerCase() !== 'target') {
-              inferredCompany = brand.charAt(0).toUpperCase() + brand.slice(1) + ' Inc';
-            }
-          } catch (_) {}
-        }
-        if (!inferredCompany) inferredCompany = 'Security Audit Target';
+        let inferredCompany = sanitizeCompanyName(results.companyName, detectedTarget || rawPath);
 
         const newScan = {
           id: results.folderName || `scan-${Date.now()}`,
@@ -851,17 +827,7 @@ export default function ScanHud({
           else detectedTarget = results.targetUrl || file.name.replace(/\.zip$/i, '');
         }
 
-        let inferredCompany = results.companyName;
-        if (!inferredCompany || inferredCompany === 'Target' || inferredCompany === 'Target Organization' || inferredCompany === 'Security Audit Target') {
-          try {
-            const host = (detectedTarget || file.name).replace(/^https?:\/\//i, '').replace(/^www\./i, '').split('/')[0].split(':')[0].trim();
-            const brand = host.split('.')[0];
-            if (brand && brand.toLowerCase() !== 'target') {
-              inferredCompany = brand.charAt(0).toUpperCase() + brand.slice(1) + ' Inc';
-            }
-          } catch (_) {}
-        }
-        if (!inferredCompany) inferredCompany = 'Security Audit Target';
+        let inferredCompany = sanitizeCompanyName(results.companyName, detectedTarget || file.name);
 
         const runFolderName = (results.folderName && !results.folderName.endsWith('.zip')) ? results.folderName : `scan-${Date.now()}`;
         const dom = (detectedTarget || inferredCompany || targetUrl || '').trim().replace(/^https?:\/\//i, '').replace(/^www\./i, '').split('/')[0].split(':')[0].toLowerCase();
@@ -1224,18 +1190,7 @@ export default function ScanHud({
       });
 
       // Infer company name directly from the detected target
-      let inferredCompany = '';
-      try {
-        const host = detectedTarget.replace(/^https?:\/\//i, '').replace(/^www\./i, '').split('/')[0].split(':')[0].trim();
-        const brand = host.split('.')[0];
-        if (brand && brand.toLowerCase() !== 'target') {
-          inferredCompany = brand.charAt(0).toUpperCase() + brand.slice(1) + ' Inc';
-        }
-      } catch (_) {}
-
-      if (!inferredCompany || inferredCompany === 'Target' || inferredCompany === 'Target Organization') {
-        inferredCompany = 'Security Audit Target';
-      }
+      let inferredCompany = sanitizeCompanyName('', detectedTarget || folderName);
 
       const newScan = {
         id: folderName || `scan-${Date.now()}`,
@@ -1349,8 +1304,10 @@ export default function ScanHud({
       setScanError(null);
       userScrolledUpRef.current = false;
 
-      let cleanDomain = targetUrl.trim().replace(/^https?:\/\//i, '').replace(/^www\./i, '').split('/')[0].split('?')[0].split('#')[0].split(':')[0].trim().toLowerCase();
+      const domainInfo = extractDomainInfo(targetUrl);
+      let cleanDomain = domainInfo.rootDomain || targetUrl.trim().toLowerCase();
       if (!cleanDomain) cleanDomain = 'example.com';
+      const effCompanyName = sanitizeCompanyName(companyName, targetUrl);
 
       const effCred = serverConfig.n8nCredential || (serverConfig.n8nUsername && serverConfig.n8nPassword ? `${serverConfig.n8nUsername}:${serverConfig.n8nPassword}` : (serverConfig.n8nUsername || serverConfig.n8nPassword || ''));
       const startTime = Date.now();
@@ -1364,8 +1321,8 @@ export default function ScanHud({
         discoveredFindings: [],
         activeScanId: n8nScanId,
         outputFolderPath: '',
-        targetUrl: targetUrl,
-        companyName: companyName,
+        targetUrl: targetUrl.trim() || `https://${cleanDomain}`,
+        companyName: effCompanyName,
         logs: [
           `[INIT] Triggering Autonomous Penetration Testing Scan via n8n Gateway...`,
           `[TARGET DOMAIN] ${cleanDomain}`,
@@ -1567,13 +1524,18 @@ export default function ScanHud({
             const riskScore = results.riskScore || (critCount > 0 ? 9.2 : highCount > 0 ? 8.2 : medCount > 0 ? 6.5 : 4.0);
 
             const effectiveFolderName = results.folderName || (results.outputFolderPath ? results.outputFolderPath.split('/').filter(Boolean).pop() : `scan-${Date.now()}`);
+            const domainInfo = extractDomainInfo(targetUrl || results.targetUrl);
+            const effectiveTarget = (targetUrl && !targetUrl.includes('target.com')) 
+              ? (targetUrl.startsWith('http') ? targetUrl : `https://${domainInfo.rootDomain}`) 
+              : (results.targetUrl || `https://${domainInfo.rootDomain}`);
+            const effectiveCompany = sanitizeCompanyName(companyName || results.companyName, effectiveTarget);
 
             const newScan = {
               id: effectiveFolderName,
               folderName: effectiveFolderName,
               outputFolderPath: results.outputFolderPath || results.extractedPath,
-              companyName: results.companyName || companyName,
-              targetUrl: results.targetUrl || targetUrl,
+              companyName: effectiveCompany,
+              targetUrl: effectiveTarget,
               timestamp: results.timestamp || new Date().toISOString().replace('T', ' ').slice(0, 16),
               duration: `${Math.floor(pollAttempts * 12 / 60) + 1} min`,
               riskLevel: riskLevel,
@@ -1601,8 +1563,8 @@ export default function ScanHud({
                 ...SCAN_METADATA,
                 ...results.metadata,
                 runId: effectiveFolderName,
-                targetUrl: results.targetUrl || targetUrl,
-                companyName: results.companyName || companyName,
+                targetUrl: effectiveTarget,
+                companyName: effectiveCompany,
                 remoteRunDir: results.outputFolderPath,
                 totalFindings: vulns.length,
                 highCount: highCount,
@@ -1622,8 +1584,8 @@ export default function ScanHud({
               discoveredFindings: vulns,
               scanFinished: true,
               outputFolderPath: results.outputFolderPath,
-              targetUrl: results.targetUrl || targetUrl,
-              companyName: results.companyName || companyName
+              targetUrl: effectiveTarget,
+              companyName: effectiveCompany
             });
 
             if (onSaveNewScan) {
@@ -1903,11 +1865,13 @@ export default function ScanHud({
 
             const finalLogs = (statusData.logs && statusData.logs.length > 0) ? statusData.logs : logs;
 
+            const sshEffectiveCompany = sanitizeCompanyName(companyName, targetUrl);
+
             const newScan = {
               id: actualScanId,
               folderName: actualScanId,
               outputFolderPath: resolvedRunFolder || '',
-              companyName: companyName,
+              companyName: sshEffectiveCompany,
               targetUrl: targetUrl,
               timestamp: new Date().toISOString().replace('T', ' ').slice(0, 16),
               duration: `${Math.max(1, Math.round((statusData.stats?.durationSec || 240) / 60))} min`,
@@ -1936,7 +1900,7 @@ export default function ScanHud({
                 ...fetchedMetadata,
                 runId: actualScanId,
                 targetUrl: targetUrl,
-                companyName: companyName,
+                companyName: sshEffectiveCompany,
                 remoteRunDir: resolvedRunFolder,
                 tokens: realTokens,
                 requests: realRequests,
@@ -1960,7 +1924,7 @@ export default function ScanHud({
               outputFolderPath: resolvedRunFolder,
               logs: finalLogs,
               targetUrl: targetUrl,
-              companyName: companyName,
+              companyName: sshEffectiveCompany,
               scanStats: {
                 requests: realRequests,
                 tokens: realTokens,

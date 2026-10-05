@@ -17,6 +17,7 @@ import { initializeKnowledgeBase } from '../utils/ragEngine';
 import { fetchLocalStrixFolder, listLocalScanFoldersApi } from '../utils/strixApi';
 import { saveScanToSupabase } from '../utils/supabaseClient';
 import { sortVulnerabilities } from '../utils/severityUtils';
+import { sanitizeCompanyName } from '../utils/domainUtils';
 
 export default function ScanDataLoader({ isOpen, onClose, onDataLoaded, currentTarget, theme = 'light' }) {
   const [folderInput, setFolderInput] = useState('');
@@ -305,15 +306,7 @@ export default function ScanDataLoader({ isOpen, onClose, onDataLoaded, currentT
       const medCount = parsedVulns.filter(v => v.severity === 'MEDIUM').length;
       const lowCount = parsedVulns.filter(v => v.severity === 'LOW').length;
 
-      let inferredCompany = '';
-      try {
-        const host = targetUrl.replace(/^https?:\/\//i, '').replace(/^www\./i, '').split('/')[0].split(':')[0].trim();
-        const brand = host.split('.')[0];
-        if (brand && brand.toLowerCase() !== 'target') {
-          inferredCompany = brand.charAt(0).toUpperCase() + brand.slice(1) + ' Inc';
-        }
-      } catch (_) {}
-      if (!inferredCompany) inferredCompany = 'Security Audit Target';
+      const inferredCompany = sanitizeCompanyName('', targetUrl);
 
       const newScanObj = {
         id: folderName,

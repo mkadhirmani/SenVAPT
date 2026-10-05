@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { sanitizeCompanyName } from './domainUtils.js';
 
 // Automatically load .env in Node.js execution environments
 if (typeof process !== 'undefined' && typeof window === 'undefined') {
@@ -355,7 +356,7 @@ export function formatScanFromSupabase(row) {
   const riskScore = row.risk_score !== undefined ? row.risk_score : (vulns.length > 0 ? (vulns[0]?.cvss || 5.5) : 4.0);
   const riskLevel = row.risk_level || (critCount > 0 ? 'CRITICAL' : (highCount > 0 ? 'HIGH' : (vulns.length > 0 ? 'ELEVATED' : 'LOW')));
   const targetUrl = row.target_url || row.targetUrl || 'https://target.com';
-  const companyName = row.company_name || row.companyName || 'Target Organization';
+  const companyName = sanitizeCompanyName(row.company_name || row.companyName || '', targetUrl);
   const folderName = row.folder_name || row.folderName || row.id;
 
   const cleanDomain = (targetUrl || companyName || '')

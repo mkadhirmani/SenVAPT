@@ -39,6 +39,7 @@ import { initializeKnowledgeBase } from './utils/ragEngine';
 import { fetchAllRemoteScans, fetchStrixServerConfig } from './utils/strixApi';
 import { fetchGlobalLlmConfig } from './utils/llmEngine';
 import { supabase, formatScanFromSupabase, formatUserFromSupabase } from './utils/supabaseClient.js';
+import { sanitizeCompanyName, extractDomainInfo } from './utils/domainUtils';
 import { Bot, MessageSquare, X, Sparkles, CheckCircle2, ShieldAlert, Bell } from 'lucide-react';
 
 function playNotificationChime() {
@@ -631,17 +632,7 @@ export default function App() {
     const lowCount = customVulns.filter(v => v.severity === 'LOW' || v.severity === 'INFO').length;
 
     let targetUrlVal = customMeta.targetUrl || extra.targetUrl || "https://custom-target.com/";
-    let companyNameVal = customMeta.companyName || extra.companyName || "";
-    if (!companyNameVal) {
-      try {
-        let hostname = targetUrlVal.replace(/^https?:\/\//, '').split('/')[0].split(':')[0];
-        if (hostname.startsWith('www.')) hostname = hostname.slice(4);
-        const nameParts = hostname.split('.');
-        companyNameVal = nameParts[0] ? (nameParts[0].charAt(0).toUpperCase() + nameParts[0].slice(1) + ' Inc') : "Custom Target";
-      } catch (e) {
-        companyNameVal = "Custom Scan Target";
-      }
-    }
+    let companyNameVal = sanitizeCompanyName(customMeta.companyName || extra.companyName, targetUrlVal);
 
     const resolvedId = customMeta.runId || extra.folderName || `scan-${Date.now()}`;
 
