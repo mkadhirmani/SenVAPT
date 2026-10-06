@@ -311,78 +311,129 @@ export default function PdfReport({
         });
       }
 
-      const execPages = paginateBlocks(execBlocks, {
-        usableHeight: A4_CONSTANTS.MAX_PAGE_CONTENT_HEIGHT_PX
-      });
-
-      execPages.forEach(ep => {
-        pages.push({
-          type: 'content',
-          title: 'Executive Threat Assessment',
-          blocks: ep.blocks
-        });
-      });
-
       // -----------------------------------------------------------------------
-      // DETAILED REPORT - SECTION 2: VULNERABILITY SUMMARY MATRIX
+      // DETAILED REPORT: CONTINUOUS-FLOW DELIVERABLE
+      // Executive Threat Assessment + Vulnerability Matrix + All Detailed Findings
+      // Flows seamlessly across pages till the end of each page like a book
       // -----------------------------------------------------------------------
-      const matrixBlocks = [
-        {
-          id: 'matrix-heading',
+      const allDetailedBlocks = [];
+
+      // SECTION 1: EXECUTIVE THREAT ASSESSMENT
+      if (customAiSummary) {
+        allDetailedBlocks.push({
+          id: 'exec-heading',
           type: 'section-heading',
-          title: '2. Vulnerability Summary Matrix & Audit Coverage',
+          title: '1. Executive Threat Assessment & AI Security Summary',
           isHeading: true,
           estimatedHeight: 40
-        },
-        {
-          id: 'matrix-table',
-          type: 'matrix-table',
-          rows: sortedVulns,
-          targetUrl,
-          estimatedHeight: 44 + (sortedVulns.length * 38)
-        },
-        {
-          id: 'matrix-guides',
-          type: 'matrix-guides-card',
-          estimatedHeight: 330
-        }
-      ];
-
-      const matrixPages = paginateBlocks(matrixBlocks, {
-        usableHeight: A4_CONSTANTS.MAX_PAGE_CONTENT_HEIGHT_PX
-      });
-
-      matrixPages.forEach(mp => {
-        pages.push({
-          type: 'content',
-          title: 'Vulnerability Matrix & Audit Coverage',
-          blocks: mp.blocks
         });
+        allDetailedBlocks.push({
+          id: 'exec-ai-summary',
+          type: 'ai-summary',
+          content: customAiSummary
+        });
+      } else {
+        allDetailedBlocks.push({
+          id: 'exec-heading',
+          type: 'section-heading',
+          title: '1. Executive Threat Assessment & Exposure Vector',
+          isHeading: true,
+          estimatedHeight: 40
+        });
+        allDetailedBlocks.push({
+          id: 'exec-intro',
+          type: 'exec-intro',
+          companyName: displayCompanyName,
+          targetUrl,
+          targetDomain: displayTargetDomain,
+          sortedVulnsCount: sortedVulns.length,
+          breakdownText: formatSeverityBreakdown(sortedVulns),
+          overallRiskLevel,
+          overallRiskScore,
+          estimatedHeight: 85
+        });
+        if (topVuln) {
+          allDetailedBlocks.push({
+            id: 'exec-top-vuln',
+            type: 'exec-top-vuln-card',
+            topVuln,
+            targetUrl,
+            overallRiskLevel,
+            overallRiskScore,
+            estimatedHeight: 90
+          });
+        }
+        allDetailedBlocks.push({
+          id: 'exec-risk-breakdown',
+          type: 'exec-risk-breakdown-grid',
+          critVulns,
+          highVulns,
+          medVulns,
+          lowVulns,
+          estimatedHeight: 160
+        });
+        allDetailedBlocks.push({
+          id: 'exec-business-impact',
+          type: 'exec-business-impact-card',
+          estimatedHeight: 85
+        });
+        allDetailedBlocks.push({
+          id: 'exec-roadmap',
+          type: 'exec-roadmap-grid',
+          topVuln,
+          targetUrl,
+          companyName: displayCompanyName,
+          estimatedHeight: 120
+        });
+      }
+
+      // SECTION 2: VULNERABILITY SUMMARY MATRIX & AUDIT COVERAGE
+      allDetailedBlocks.push({
+        id: 'matrix-heading',
+        type: 'section-heading',
+        title: '2. Vulnerability Summary Matrix & Audit Coverage',
+        isHeading: true,
+        estimatedHeight: 40
+      });
+      allDetailedBlocks.push({
+        id: 'matrix-table',
+        type: 'matrix-table',
+        rows: sortedVulns,
+        targetUrl,
+        estimatedHeight: 44 + (sortedVulns.length * 38)
+      });
+      allDetailedBlocks.push({
+        id: 'matrix-guides',
+        type: 'matrix-guides-card',
+        estimatedHeight: 310
       });
 
-      // -----------------------------------------------------------------------
-      // DETAILED REPORT - SECTION 3: DYNAMIC FINDING DELIVERABLES
-      // -----------------------------------------------------------------------
-      const findingBlocks = [];
+      // SECTION 3: DETAILED VULNERABILITY FINDINGS (CONTINUOUS-FLOW)
+      allDetailedBlocks.push({
+        id: 'findings-master-heading',
+        type: 'section-heading',
+        title: '3. Technical Vulnerability Advisories & Live Proof-of-Concepts',
+        isHeading: true,
+        estimatedHeight: 40
+      });
 
       sortedVulns.forEach((vuln, vIdx) => {
         const findingNum = vIdx + 1;
         const findingContext = { vuln, findingNum };
 
-        // 1. Finding Banner (Starts new finding section)
-        findingBlocks.push({
+        // 1. Finding Banner (Starts finding section, respects keep-with-next)
+        allDetailedBlocks.push({
           id: `finding-${vuln.id}-header`,
           type: 'finding-header',
           vuln,
           findingNum,
           targetUrl,
           finding: findingContext,
-          isKeepWithNext: true,
-          forcePageBreakBefore: vIdx > 0 // Start each detailed finding on a clean page unless very compact
+          isHeading: true
         });
 
-        // 2. Technical Analysis & Mechanism
-        findingBlocks.push({
+        // 2. Technical Analysis & Vulnerability Mechanism
+        allDetailedBlocks.push({
           id: `finding-${vuln.id}-tech-heading`,
           type: 'section-heading',
           title: 'Technical Analysis & Vulnerability Mechanism',
@@ -391,7 +442,7 @@ export default function PdfReport({
           finding: findingContext
         });
 
-        findingBlocks.push({
+        allDetailedBlocks.push({
           id: `finding-${vuln.id}-tech-analysis`,
           type: 'tech-analysis',
           vuln,
@@ -399,7 +450,7 @@ export default function PdfReport({
         });
 
         // 3. Security & Threat Impact Assessment
-        findingBlocks.push({
+        allDetailedBlocks.push({
           id: `finding-${vuln.id}-impact-heading`,
           type: 'section-heading',
           title: 'Security & Threat Impact Assessment',
@@ -409,7 +460,7 @@ export default function PdfReport({
           finding: findingContext
         });
 
-        findingBlocks.push({
+        allDetailedBlocks.push({
           id: `finding-${vuln.id}-impact`,
           type: 'threat-impact',
           vuln,
@@ -418,7 +469,7 @@ export default function PdfReport({
 
         // 4. Observed Technical Evidence (if present)
         if (vuln.evidence) {
-          findingBlocks.push({
+          allDetailedBlocks.push({
             id: `finding-${vuln.id}-evidence-heading`,
             type: 'section-heading',
             title: 'Observed Evidence (Raw Protocol HTTP Response)',
@@ -427,10 +478,11 @@ export default function PdfReport({
             finding: findingContext
           });
 
-          findingBlocks.push({
+          allDetailedBlocks.push({
             id: `finding-${vuln.id}-evidence`,
             type: 'evidence',
             codeText: vuln.evidence,
+            vuln,
             finding: findingContext
           });
         }
@@ -438,7 +490,7 @@ export default function PdfReport({
         // 5. Proof of Concept & Live Exploit Verification (if present)
         const hasPoc = Boolean(vuln.pocDescription || vuln.reproduction || vuln.pocScripts?.bash || vuln.pocScripts?.python || vuln.pocScripts?.javascript);
         if (hasPoc) {
-          findingBlocks.push({
+          allDetailedBlocks.push({
             id: `finding-${vuln.id}-poc-heading`,
             type: 'section-heading',
             title: 'Proof of Concept & Live Exploit Verification',
@@ -447,7 +499,7 @@ export default function PdfReport({
             finding: findingContext
           });
 
-          findingBlocks.push({
+          allDetailedBlocks.push({
             id: `finding-${vuln.id}-poc`,
             type: 'poc',
             vuln,
@@ -458,7 +510,7 @@ export default function PdfReport({
         }
 
         // 6. Step-by-Step Remediation Action Plan
-        findingBlocks.push({
+        allDetailedBlocks.push({
           id: `finding-${vuln.id}-remediation-heading`,
           type: 'section-heading',
           title: 'Step-by-Step Remediation Action Plan',
@@ -468,7 +520,7 @@ export default function PdfReport({
           finding: findingContext
         });
 
-        findingBlocks.push({
+        allDetailedBlocks.push({
           id: `finding-${vuln.id}-remediation`,
           type: 'remediation',
           vuln,
@@ -478,7 +530,7 @@ export default function PdfReport({
         });
 
         // 7. Verification Checklist & Scope Note
-        findingBlocks.push({
+        allDetailedBlocks.push({
           id: `finding-${vuln.id}-checklist`,
           type: 'checklist',
           vuln,
@@ -486,78 +538,65 @@ export default function PdfReport({
         });
       });
 
-      const paginatedFindings = paginateBlocks(findingBlocks, {
+      const paginatedDetailedPages = paginateBlocks(allDetailedBlocks, {
         usableHeight: A4_CONSTANTS.MAX_PAGE_CONTENT_HEIGHT_PX,
         minHeadingFollow: A4_CONSTANTS.MIN_HEADING_FOLLOW_SPACE_PX,
         minFindingStart: A4_CONSTANTS.MIN_FINDING_START_SPACE_PX
       });
 
-      paginatedFindings.forEach(fp => {
+      paginatedDetailedPages.forEach(dp => {
         pages.push({
           type: 'content',
-          findingContext: fp.findingContext,
-          blocks: fp.blocks
+          findingContext: dp.findingContext,
+          blocks: dp.blocks
         });
       });
 
     } else {
       // -----------------------------------------------------------------------
-      // SIMPLE REPORT: STREAMLINED COVER, MATRIX, & DYNAMIC FLOW FINDINGS
+      // SIMPLE REPORT: CONTINUOUS-FLOW DELIVERABLE
+      // Vulnerability Summary Matrix + Streamlined Findings
+      // Flows seamlessly across pages till the end of each page like a book
       // -----------------------------------------------------------------------
-      // Page 2: Summary Matrix
-      const simpleMatrixBlocks = [
-        {
-          id: 'simple-matrix-heading',
-          type: 'section-heading',
-          title: 'Confirmed Vulnerabilities Overview',
-          isHeading: true,
-          estimatedHeight: 40
-        },
-        {
-          id: 'simple-matrix-table',
-          type: 'matrix-table',
-          rows: sortedVulns,
-          targetUrl,
-          estimatedHeight: 44 + (sortedVulns.length * 38)
-        },
-        {
-          id: 'simple-matrix-guides',
-          type: 'matrix-guides-card',
-          estimatedHeight: 330
-        }
-      ];
+      const allSimpleBlocks = [];
 
-      const simpleMatrixPages = paginateBlocks(simpleMatrixBlocks, {
-        usableHeight: A4_CONSTANTS.MAX_PAGE_CONTENT_HEIGHT_PX
+      allSimpleBlocks.push({
+        id: 'simple-matrix-heading',
+        type: 'section-heading',
+        title: 'Confirmed Vulnerabilities Overview',
+        isHeading: true,
+        estimatedHeight: 40
       });
 
-      simpleMatrixPages.forEach(smp => {
-        pages.push({
-          type: 'content',
-          title: 'Vulnerability Summary Matrix',
-          blocks: smp.blocks
-        });
+      allSimpleBlocks.push({
+        id: 'simple-matrix-table',
+        type: 'matrix-table',
+        rows: sortedVulns,
+        targetUrl,
+        estimatedHeight: 44 + (sortedVulns.length * 38)
       });
 
-      // Streamlined Findings with Dynamic Flow
-      const simpleFindingBlocks = [];
+      allSimpleBlocks.push({
+        id: 'simple-matrix-guides',
+        type: 'matrix-guides-card',
+        estimatedHeight: 310
+      });
 
       sortedVulns.forEach((vuln, vIdx) => {
         const findingNum = vIdx + 1;
         const findingContext = { vuln, findingNum };
 
-        simpleFindingBlocks.push({
+        allSimpleBlocks.push({
           id: `simple-finding-${vuln.id}-header`,
           type: 'finding-header',
           vuln,
           findingNum,
           targetUrl,
           finding: findingContext,
-          isKeepWithNext: true,
-          forcePageBreakBefore: vIdx > 0
+          isHeading: true
         });
 
-        simpleFindingBlocks.push({
+        allSimpleBlocks.push({
           id: `simple-finding-${vuln.id}-desc-heading`,
           type: 'section-heading',
           title: 'Vulnerability Description & Risk Impact',
@@ -566,7 +605,7 @@ export default function PdfReport({
           finding: findingContext
         });
 
-        simpleFindingBlocks.push({
+        allSimpleBlocks.push({
           id: `simple-finding-${vuln.id}-desc-box`,
           type: 'tech-analysis',
           vuln,
@@ -574,7 +613,7 @@ export default function PdfReport({
         });
 
         if (vuln.evidence || vuln.reproduction) {
-          simpleFindingBlocks.push({
+          allSimpleBlocks.push({
             id: `simple-finding-${vuln.id}-ev-heading`,
             type: 'section-heading',
             title: 'Observed Evidence (Protocol Response)',
@@ -583,15 +622,16 @@ export default function PdfReport({
             finding: findingContext
           });
 
-          simpleFindingBlocks.push({
+          allSimpleBlocks.push({
             id: `simple-finding-${vuln.id}-evidence`,
             type: 'evidence',
             codeText: vuln.evidence || vuln.reproduction,
+            vuln,
             finding: findingContext
           });
         }
 
-        simpleFindingBlocks.push({
+        allSimpleBlocks.push({
           id: `simple-finding-${vuln.id}-rem-heading`,
           type: 'section-heading',
           title: 'Recommended Remediation Plan',
@@ -601,7 +641,7 @@ export default function PdfReport({
           finding: findingContext
         });
 
-        simpleFindingBlocks.push({
+        allSimpleBlocks.push({
           id: `simple-finding-${vuln.id}-remediation`,
           type: 'remediation',
           vuln,
@@ -611,13 +651,13 @@ export default function PdfReport({
         });
       });
 
-      const paginatedSimpleFindings = paginateBlocks(simpleFindingBlocks, {
+      const paginatedSimplePages = paginateBlocks(allSimpleBlocks, {
         usableHeight: A4_CONSTANTS.MAX_PAGE_CONTENT_HEIGHT_PX,
         minHeadingFollow: A4_CONSTANTS.MIN_HEADING_FOLLOW_SPACE_PX,
         minFindingStart: A4_CONSTANTS.MIN_FINDING_START_SPACE_PX
       });
 
-      paginatedSimpleFindings.forEach(sfp => {
+      paginatedSimplePages.forEach(sfp => {
         pages.push({
           type: 'content',
           findingContext: sfp.findingContext,
@@ -850,6 +890,12 @@ Format with clean markdown bullet points and bold headers. Keep the text punchy,
         const { pocDescription, codeText } = block;
         return (
           <div key={block.id || idx} className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-2 text-xs">
+            {block.isSplitPart && (
+              <div className="mb-2 pb-1.5 border-b border-slate-200 flex items-center justify-between text-[10px] font-mono text-slate-500">
+                <span className="text-cyan-700 font-bold uppercase tracking-wider">Proof of Concept &bull; Part {block.part} of {block.totalParts}</span>
+                <span>{block.part > 1 ? '(Continued from previous page)' : ''}</span>
+              </div>
+            )}
             {pocDescription && (
               <div className="text-slate-700 leading-relaxed whitespace-pre-line text-[12px] font-sans break-words">
                 {pocDescription}
@@ -920,7 +966,14 @@ Format with clean markdown bullet points and bold headers. Keep the text punchy,
       case 'matrix-table': {
         const { rows, targetUrl } = block;
         return (
-          <div key={block.id || idx} className="border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+          <div key={block.id || idx} className="space-y-1.5">
+            {block.isContinuation && (
+              <div className="text-[11px] font-mono text-slate-500 font-semibold italic flex items-center justify-between">
+                <span>Vulnerability Priority &amp; Remediation Matrix (Continued)</span>
+                <span>Page Part {block.part}</span>
+              </div>
+            )}
+            <div className="border border-slate-200 rounded-xl overflow-hidden shadow-sm">
             <table className="w-full text-xs text-left table-fixed">
               <thead className="bg-slate-100 font-mono text-slate-700 border-b border-slate-200">
                 <tr>
@@ -954,6 +1007,7 @@ Format with clean markdown bullet points and bold headers. Keep the text punchy,
                 ))}
               </tbody>
             </table>
+            </div>
           </div>
         );
       }
