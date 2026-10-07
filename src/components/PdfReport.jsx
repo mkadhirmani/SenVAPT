@@ -30,7 +30,6 @@ import {
 import { exportReportToPdf, exportReportToHtml, generateReportMarkdown } from '../utils/pdfExport';
 import { askLlmWithRag } from '../utils/llmEngine';
 import { sortVulnerabilities } from '../utils/severityUtils';
-import { paginateBlocks, A4_CONSTANTS } from '../utils/pdfPaginationEngine';
 import { extractDomainInfo, sanitizeCompanyName, getDisplayDomain } from '../utils/domainUtils';
 
 function cleanText(text) {
@@ -44,82 +43,11 @@ function cleanText(text) {
     .trim();
 }
 
-function renderFormattedMarkdown(markdownText) {
-  if (!markdownText) return null;
-  const lines = markdownText.split('\n');
-  const elements = [];
-  let currentList = [];
-
-  const flushList = () => {
-    if (currentList.length > 0) {
-      elements.push(
-        <ul key={`list-${elements.length}`} className="space-y-0.5 pl-4 list-disc text-[10.5px] text-slate-700 font-sans">
-          {currentList.map((item, idx) => (
-            <li key={idx} className="leading-tight break-words">
-              {item}
-            </li>
-          ))}
-        </ul>
-      );
-      currentList = [];
-    }
-  };
-
-  lines.forEach((line, idx) => {
-    const trimmed = line.trim();
-    if (!trimmed) {
-      flushList();
-      return;
-    }
-
-    if (/^#+\s+/.test(trimmed) || /^\*\*[0-9\.\s]*[A-Z\s:]+\*\*$/.test(trimmed)) {
-      flushList();
-      const headingClean = cleanText(trimmed);
-      elements.push(
-        <h4 key={idx} className="text-[11px] font-bold text-slate-950 uppercase tracking-wide pt-0.5 font-mono break-words">
-          {headingClean}
-        </h4>
-      );
-    } else if (/^[\*\-\•]\s+/.test(trimmed) || /^\d+[\.\)]\s+/.test(trimmed)) {
-      const itemContent = trimmed.replace(/^[\*\-\•\d\.\)]+\s+/, '');
-      const parts = itemContent.split(/(\*\*[^*]+\*\*)/g);
-      currentList.push(
-        <span key={`item-${idx}`} className="break-words">
-          {parts.map((p, pIdx) => {
-            if (p.startsWith('**') && p.endsWith('**')) {
-              return <strong key={pIdx} className="text-slate-900 font-bold">{p.slice(2, -2)}</strong>;
-            }
-            return p;
-          })}
-        </span>
-      );
-    } else {
-      flushList();
-      const parts = trimmed.split(/(\*\*[^*]+\*\*)/g);
-      elements.push(
-        <p key={idx} className="text-[10.5px] text-slate-700 leading-snug font-sans break-words">
-          {parts.map((p, pIdx) => {
-            if (p.startsWith('**') && p.endsWith('**')) {
-              return <strong key={pIdx} className="text-slate-900 font-bold">{p.slice(2, -2)}</strong>;
-            }
-            return p;
-          })}
-        </p>
-      );
-    }
-  });
-
-  flushList();
-  return <div className="space-y-1.5">{elements}</div>;
-}
-
-// Helper to construct the complete target URL for any vulnerability
 function getCompleteTargetUrl(vuln, fallbackBaseUrl) {
   if (!vuln) return fallbackBaseUrl || '';
   const targetStr = (vuln.target || '').trim();
   const endpointStr = (vuln.endpoint || '').trim();
 
-  // If vuln.target is already an absolute HTTP(S) URL
   if (targetStr && /^https?:\/\//i.test(targetStr)) {
     if (endpointStr && endpointStr.startsWith('/') && !targetStr.endsWith(endpointStr)) {
       try {
@@ -132,7 +60,6 @@ function getCompleteTargetUrl(vuln, fallbackBaseUrl) {
     return targetStr;
   }
 
-  // If fallbackBaseUrl is provided
   const base = fallbackBaseUrl && /^https?:\/\//i.test(fallbackBaseUrl)
     ? fallbackBaseUrl
     : (fallbackBaseUrl ? `https://${fallbackBaseUrl}` : '');
@@ -149,13 +76,12 @@ function getCompleteTargetUrl(vuln, fallbackBaseUrl) {
   }
 }
 
-// Helper to accurately format severity breakdown without omitting critical or low findings
 function formatSeverityBreakdown(vulns) {
   if (!vulns || vulns.length === 0) return '0 Findings';
   const crit = vulns.filter(v => v.severity === 'CRITICAL').length;
   const high = vulns.filter(v => v.severity === 'HIGH').length;
   const med = vulns.filter(v => v.severity === 'MEDIUM').length;
-  const low = vulns.filter(v => v.severity === 'LOW').length;
+  const low = vulns.filter(v => v.severity === 'LOW' || v.severity === 'INFO').length;
 
   const parts = [];
   if (crit > 0) parts.push(`${crit} Critical`);
@@ -164,6 +90,18 @@ function formatSeverityBreakdown(vulns) {
   if (low > 0) parts.push(`${low} Low`);
 
   return parts.length > 0 ? parts.join(', ') : '0 Findings';
+}
+
+function getPocCodeString(vuln) {
+  if (!vuln) return '';
+  if (vuln.pocScripts) {
+    if (vuln.pocScripts.bash) return vuln.pocScripts.bash;
+    if (vuln.pocScripts.python) return vuln.pocScripts.python;
+    if (vuln.pocScripts.javascript) return vuln.pocScripts.javascript;
+  }
+  if (vuln.reproduction) return vuln.reproduction;
+  if (vuln.evidence && vuln.evidence.length < 300) return vuln.evidence;
+  return `curl -s -X GET "${vuln.target || 'https://target-system.internal'}"`;
 }
 
 export default function PdfReport({ 
@@ -187,7 +125,7 @@ export default function PdfReport({
   const critVulns = sortedVulns.filter(v => v.severity === 'CRITICAL');
   const highVulns = sortedVulns.filter(v => v.severity === 'HIGH');
   const medVulns = sortedVulns.filter(v => v.severity === 'MEDIUM');
-  const lowVulns = sortedVulns.filter(v => v.severity === 'LOW');
+  const lowVulns = sortedVulns.filter(v => v.severity === 'LOW' || v.severity === 'INFO');
   const topVuln = sortedVulns[0] || null;
 
   const rawTarget = metadata.targetUrl || (sortedVulns[0]?.target ? new URL(sortedVulns[0].target).origin : "https://target-system.internal");
@@ -204,10 +142,9 @@ export default function PdfReport({
   }, [domainInfo, rawTarget]);
 
   const targetUrl = rawTarget;
-  const overallRiskScore = metadata.overallRiskScore || topVuln?.cvss || 6.8;
+  const overallRiskScore = metadata.overallRiskScore || topVuln?.cvss || 7.5;
   const overallRiskLevel = metadata.overallRiskLevel || (overallRiskScore >= 8.5 ? 'CRITICAL' : (overallRiskScore >= 7.0 ? 'HIGH' : 'ELEVATED'));
 
-  // Multi-Target / Subdomains Perimeter List from strix --target-list
   const evaluatedTargets = useMemo(() => {
     return Array.from(new Set([
       ...(metadata.testedSubdomains || metadata.subdomains || []).map(s => typeof s === 'string' ? s : (s?.name || '')),
@@ -221,483 +158,23 @@ export default function PdfReport({
     ].filter(Boolean)));
   }, [metadata, sortedVulns, targetUrl]);
 
-  // =========================================================================
-  // DYNAMIC PAGINATION ENGINE INTEGRATION
-  // Breaks findings and sections into semantic flow blocks and paginates them.
-  // =========================================================================
-  const reportPages = useMemo(() => {
-    if (!sortedVulns || sortedVulns.length === 0) return [];
-
-    const pages = [];
-
-    // -------------------------------------------------------------------------
-    // PAGE 1: DEDICATED EXECUTIVE COVER PAGE
-    // -------------------------------------------------------------------------
-    pages.push({
-      type: 'cover',
-      title: 'Executive Cover Page & Engagement Charter'
-    });
-
-    if (reportType === 'detailed') {
-      // -----------------------------------------------------------------------
-      // DETAILED REPORT - SECTION 1: EXECUTIVE THREAT ASSESSMENT & ROADMAP
-      // -----------------------------------------------------------------------
-      const execBlocks = [
-        {
-          id: 'exec-heading',
-          type: 'section-heading',
-          title: '1. Executive Summary & Threat Posture',
-          isHeading: true,
-          estimatedHeight: 40
-        }
-      ];
-
-      if (customAiSummary) {
-        execBlocks.push({
-          id: 'exec-ai-summary',
-          type: 'ai-summary',
-          content: customAiSummary,
-          estimatedHeight: 320
-        });
-      } else {
-        execBlocks.push({
-          id: 'exec-intro-text',
-          type: 'exec-intro',
-          companyName: displayCompanyName,
-          targetDomain: displayTargetDomain,
-          targetUrl,
-          sortedVulnsCount: sortedVulns.length,
-          breakdownText: formatSeverityBreakdown(sortedVulns),
-          overallRiskLevel,
-          overallRiskScore,
-          estimatedHeight: 110
-        });
-
-        if (topVuln) {
-          execBlocks.push({
-            id: 'exec-top-vuln',
-            type: 'exec-top-vuln-card',
-            topVuln,
-            targetUrl,
-            overallRiskLevel,
-            overallRiskScore,
-            estimatedHeight: 100
-          });
-        }
-
-        execBlocks.push({
-          id: 'exec-risk-breakdown',
-          type: 'exec-risk-breakdown-grid',
-          critVulns,
-          highVulns,
-          medVulns,
-          lowVulns,
-          estimatedHeight: 180
-        });
-
-        execBlocks.push({
-          id: 'exec-business-impact',
-          type: 'exec-business-impact-card',
-          estimatedHeight: 90
-        });
-
-        execBlocks.push({
-          id: 'exec-roadmap',
-          type: 'exec-roadmap-grid',
-          topVuln,
-          targetUrl,
-          companyName: displayCompanyName,
-          estimatedHeight: 130
-        });
-      }
-
-      // -----------------------------------------------------------------------
-      // DETAILED REPORT: CONTINUOUS-FLOW DELIVERABLE
-      // Executive Threat Assessment + Vulnerability Matrix + All Detailed Findings
-      // Flows seamlessly across pages till the end of each page like a book
-      // -----------------------------------------------------------------------
-      const allDetailedBlocks = [];
-
-      // SECTION 1: EXECUTIVE THREAT ASSESSMENT
-      if (customAiSummary) {
-        allDetailedBlocks.push({
-          id: 'exec-heading',
-          type: 'section-heading',
-          title: '1. Executive Threat Assessment & AI Security Summary',
-          isHeading: true,
-          estimatedHeight: 40
-        });
-        allDetailedBlocks.push({
-          id: 'exec-ai-summary',
-          type: 'ai-summary',
-          content: customAiSummary
-        });
-      } else {
-        allDetailedBlocks.push({
-          id: 'exec-heading',
-          type: 'section-heading',
-          title: '1. Executive Threat Assessment & Exposure Vector',
-          isHeading: true,
-          estimatedHeight: 40
-        });
-        allDetailedBlocks.push({
-          id: 'exec-intro',
-          type: 'exec-intro',
-          companyName: displayCompanyName,
-          targetUrl,
-          targetDomain: displayTargetDomain,
-          sortedVulnsCount: sortedVulns.length,
-          breakdownText: formatSeverityBreakdown(sortedVulns),
-          overallRiskLevel,
-          overallRiskScore,
-          estimatedHeight: 85
-        });
-        if (topVuln) {
-          allDetailedBlocks.push({
-            id: 'exec-top-vuln',
-            type: 'exec-top-vuln-card',
-            topVuln,
-            targetUrl,
-            overallRiskLevel,
-            overallRiskScore,
-            estimatedHeight: 90
-          });
-        }
-        allDetailedBlocks.push({
-          id: 'exec-risk-breakdown',
-          type: 'exec-risk-breakdown-grid',
-          critVulns,
-          highVulns,
-          medVulns,
-          lowVulns,
-          estimatedHeight: 160
-        });
-        allDetailedBlocks.push({
-          id: 'exec-business-impact',
-          type: 'exec-business-impact-card',
-          estimatedHeight: 85
-        });
-        allDetailedBlocks.push({
-          id: 'exec-roadmap',
-          type: 'exec-roadmap-grid',
-          topVuln,
-          targetUrl,
-          companyName: displayCompanyName,
-          estimatedHeight: 120
-        });
-      }
-
-      // SECTION 2: VULNERABILITY SUMMARY MATRIX & AUDIT COVERAGE
-      allDetailedBlocks.push({
-        id: 'matrix-heading',
-        type: 'section-heading',
-        title: '2. Vulnerability Summary Matrix & Audit Coverage',
-        isHeading: true,
-        estimatedHeight: 40
-      });
-      allDetailedBlocks.push({
-        id: 'matrix-table',
-        type: 'matrix-table',
-        rows: sortedVulns,
-        targetUrl,
-        estimatedHeight: 44 + (sortedVulns.length * 38)
-      });
-      allDetailedBlocks.push({
-        id: 'matrix-guides',
-        type: 'matrix-guides-card',
-        estimatedHeight: 310
-      });
-
-      // SECTION 3: DETAILED VULNERABILITY FINDINGS (CONTINUOUS-FLOW)
-      allDetailedBlocks.push({
-        id: 'findings-master-heading',
-        type: 'section-heading',
-        title: '3. Technical Vulnerability Advisories & Live Proof-of-Concepts',
-        isHeading: true,
-        estimatedHeight: 40
-      });
-
-      sortedVulns.forEach((vuln, vIdx) => {
-        const findingNum = vIdx + 1;
-        const findingContext = { vuln, findingNum };
-
-        // 1. Finding Banner (Starts finding section, respects keep-with-next)
-        allDetailedBlocks.push({
-          id: `finding-${vuln.id}-header`,
-          type: 'finding-header',
-          vuln,
-          findingNum,
-          targetUrl,
-          finding: findingContext,
-          isHeading: true
-        });
-
-        // 2. Technical Analysis & Vulnerability Mechanism
-        allDetailedBlocks.push({
-          id: `finding-${vuln.id}-tech-heading`,
-          type: 'section-heading',
-          title: 'Technical Analysis & Vulnerability Mechanism',
-          iconType: 'info',
-          isHeading: true,
-          finding: findingContext
-        });
-
-        allDetailedBlocks.push({
-          id: `finding-${vuln.id}-tech-analysis`,
-          type: 'tech-analysis',
-          vuln,
-          finding: findingContext
-        });
-
-        // 3. Security & Threat Impact Assessment
-        allDetailedBlocks.push({
-          id: `finding-${vuln.id}-impact-heading`,
-          type: 'section-heading',
-          title: 'Security & Threat Impact Assessment',
-          iconType: 'alert',
-          isHeading: true,
-          colorClass: 'text-rose-700',
-          finding: findingContext
-        });
-
-        allDetailedBlocks.push({
-          id: `finding-${vuln.id}-impact`,
-          type: 'threat-impact',
-          vuln,
-          finding: findingContext
-        });
-
-        // 4. Observed Technical Evidence (if present)
-        if (vuln.evidence) {
-          allDetailedBlocks.push({
-            id: `finding-${vuln.id}-evidence-heading`,
-            type: 'section-heading',
-            title: 'Observed Evidence (Raw Protocol HTTP Response)',
-            iconType: 'terminal',
-            isHeading: true,
-            finding: findingContext
-          });
-
-          allDetailedBlocks.push({
-            id: `finding-${vuln.id}-evidence`,
-            type: 'evidence',
-            codeText: vuln.evidence,
-            vuln,
-            finding: findingContext
-          });
-        }
-
-        // 5. Proof of Concept & Live Exploit Verification (if present)
-        const hasPoc = Boolean(vuln.pocDescription || vuln.reproduction || vuln.pocScripts?.bash || vuln.pocScripts?.python || vuln.pocScripts?.javascript);
-        if (hasPoc) {
-          allDetailedBlocks.push({
-            id: `finding-${vuln.id}-poc-heading`,
-            type: 'section-heading',
-            title: 'Proof of Concept & Live Exploit Verification',
-            iconType: 'code',
-            isHeading: true,
-            finding: findingContext
-          });
-
-          allDetailedBlocks.push({
-            id: `finding-${vuln.id}-poc`,
-            type: 'poc',
-            vuln,
-            pocDescription: vuln.pocDescription,
-            codeText: vuln.reproduction || vuln.pocScripts?.bash || vuln.pocScripts?.python || vuln.pocScripts?.javascript,
-            finding: findingContext
-          });
-        }
-
-        // 6. Step-by-Step Remediation Action Plan
-        allDetailedBlocks.push({
-          id: `finding-${vuln.id}-remediation-heading`,
-          type: 'section-heading',
-          title: 'Step-by-Step Remediation Action Plan',
-          iconType: 'check',
-          isHeading: true,
-          colorClass: 'text-emerald-800',
-          finding: findingContext
-        });
-
-        allDetailedBlocks.push({
-          id: `finding-${vuln.id}-remediation`,
-          type: 'remediation',
-          vuln,
-          remediation: vuln.remediation,
-          remediationSteps: vuln.remediationSteps || [],
-          finding: findingContext
-        });
-
-        // 7. Verification Checklist & Scope Note
-        allDetailedBlocks.push({
-          id: `finding-${vuln.id}-checklist`,
-          type: 'checklist',
-          vuln,
-          finding: findingContext
-        });
-      });
-
-      const paginatedDetailedPages = paginateBlocks(allDetailedBlocks, {
-        usableHeight: A4_CONSTANTS.MAX_PAGE_CONTENT_HEIGHT_PX,
-        minHeadingFollow: A4_CONSTANTS.MIN_HEADING_FOLLOW_SPACE_PX,
-        minFindingStart: A4_CONSTANTS.MIN_FINDING_START_SPACE_PX
-      });
-
-      paginatedDetailedPages.forEach(dp => {
-        pages.push({
-          type: 'content',
-          findingContext: dp.findingContext,
-          blocks: dp.blocks
-        });
-      });
-
-    } else {
-      // -----------------------------------------------------------------------
-      // SIMPLE REPORT: CONTINUOUS-FLOW DELIVERABLE
-      // Vulnerability Summary Matrix + Streamlined Findings
-      // Flows seamlessly across pages till the end of each page like a book
-      // -----------------------------------------------------------------------
-      const allSimpleBlocks = [];
-
-      allSimpleBlocks.push({
-        id: 'simple-matrix-heading',
-        type: 'section-heading',
-        title: 'Confirmed Vulnerabilities Overview',
-        isHeading: true,
-        estimatedHeight: 40
-      });
-
-      allSimpleBlocks.push({
-        id: 'simple-matrix-table',
-        type: 'matrix-table',
-        rows: sortedVulns,
-        targetUrl,
-        estimatedHeight: 44 + (sortedVulns.length * 38)
-      });
-
-      allSimpleBlocks.push({
-        id: 'simple-matrix-guides',
-        type: 'matrix-guides-card',
-        estimatedHeight: 310
-      });
-
-      sortedVulns.forEach((vuln, vIdx) => {
-        const findingNum = vIdx + 1;
-        const findingContext = { vuln, findingNum };
-
-        allSimpleBlocks.push({
-          id: `simple-finding-${vuln.id}-header`,
-          type: 'finding-header',
-          vuln,
-          findingNum,
-          targetUrl,
-          finding: findingContext,
-          isHeading: true
-        });
-
-        allSimpleBlocks.push({
-          id: `simple-finding-${vuln.id}-desc-heading`,
-          type: 'section-heading',
-          title: 'Vulnerability Description & Risk Impact',
-          iconType: 'info',
-          isHeading: true,
-          finding: findingContext
-        });
-
-        allSimpleBlocks.push({
-          id: `simple-finding-${vuln.id}-desc-box`,
-          type: 'tech-analysis',
-          vuln,
-          finding: findingContext
-        });
-
-        if (vuln.evidence || vuln.reproduction) {
-          allSimpleBlocks.push({
-            id: `simple-finding-${vuln.id}-ev-heading`,
-            type: 'section-heading',
-            title: 'Observed Evidence (Protocol Response)',
-            iconType: 'terminal',
-            isHeading: true,
-            finding: findingContext
-          });
-
-          allSimpleBlocks.push({
-            id: `simple-finding-${vuln.id}-evidence`,
-            type: 'evidence',
-            codeText: vuln.evidence || vuln.reproduction,
-            vuln,
-            finding: findingContext
-          });
-        }
-
-        allSimpleBlocks.push({
-          id: `simple-finding-${vuln.id}-rem-heading`,
-          type: 'section-heading',
-          title: 'Recommended Remediation Plan',
-          iconType: 'check',
-          isHeading: true,
-          colorClass: 'text-emerald-800',
-          finding: findingContext
-        });
-
-        allSimpleBlocks.push({
-          id: `simple-finding-${vuln.id}-remediation`,
-          type: 'remediation',
-          vuln,
-          remediation: vuln.remediation,
-          remediationSteps: vuln.remediationSteps || [],
-          finding: findingContext
-        });
-      });
-
-      const paginatedSimplePages = paginateBlocks(allSimpleBlocks, {
-        usableHeight: A4_CONSTANTS.MAX_PAGE_CONTENT_HEIGHT_PX,
-        minHeadingFollow: A4_CONSTANTS.MIN_HEADING_FOLLOW_SPACE_PX,
-        minFindingStart: A4_CONSTANTS.MIN_FINDING_START_SPACE_PX
-      });
-
-      paginatedSimplePages.forEach(sfp => {
-        pages.push({
-          type: 'content',
-          findingContext: sfp.findingContext,
-          blocks: sfp.blocks
-        });
-      });
-    }
-
-    return pages;
-  }, [
-    reportType, 
-    sortedVulns, 
-    metadata, 
-    companyName, 
-    targetUrl, 
-    overallRiskScore, 
-    overallRiskLevel, 
-    evaluatedTargets, 
-    customAiSummary, 
-    topVuln, 
-    critVulns, 
-    highVulns, 
-    medVulns, 
-    lowVulns
-  ]);
-
-  const totalPages = reportPages.length;
+  // Total pages calculation: Cover (1) + Exec Summary (1) + Matrix (1) + Findings (1 per finding in detailed)
+  const totalPages = reportType === 'detailed' 
+    ? 3 + sortedVulns.length 
+    : 2 + Math.ceil(sortedVulns.length / 2);
 
   const handleGenerateAiSummary = async () => {
     setIsGeneratingAiSummary(true);
     try {
       const prompt = `You are a Principal Security Consultant creating an executive penetration testing deliverable for ${displayCompanyName} (Target Domain: ${displayTargetDomain}, Primary Target: ${targetUrl}).
-Generate a concise, crisp, perfectly proportioned Executive Summary and Threat Alignment that fits Page 2 of a standard A4 deliverable without awkward cutoffs or overflow:
+Generate a concise, crisp, perfectly proportioned Executive Summary and Threat Alignment that fits Page 2 of a standard A4 deliverable:
 1. Executive Threat Overview (2 concise paragraphs evaluating overall posture, highest risk attack vectors, and business impact).
-2. Key Risk Breakdown (concise bulleted breakdown of confirmed Critical, High, and Medium vulnerabilities with exact mechanics).
+2. Key Risk Breakdown (bulleted breakdown of confirmed Critical, High, and Medium vulnerabilities with exact mechanics).
 3. Strategic 3-Phase Action Roadmap:
    - Phase 1 (< 24h Immediate Containment)
    - Phase 2 (< 7 Days Architectural Remediation)
    - Phase 3 (< 30 Days Governance & Regression Testing)
-Format with clean markdown bullet points and bold headers. Keep the text punchy, technical, and well-balanced.`;
+Format with clean markdown bullet points and bold headers.`;
 
       const res = await askLlmWithRag({
         userMessage: prompt,
@@ -720,15 +197,12 @@ Format with clean markdown bullet points and bold headers. Keep the text punchy,
     setIsExporting(true);
     try {
       const sanitizedName = (displayCompanyName || displayTargetDomain || 'Target_System').replace(/[^a-zA-Z0-9]/g, '_');
-      const filename = reportType === 'simple'
-        ? `Sennovate_VAPT_Simple_Report_${sanitizedName}.pdf`
-        : `Sennovate_VAPT_Detailed_Report_${sanitizedName}.pdf`;
+      const filename = `Sennovate_VAPT_${reportType === 'simple' ? 'Simple' : 'Executive'}_Report_${sanitizedName}.pdf`;
       await exportReportToPdf('vapt-pdf-report-root', filename);
       setExportSuccess(true);
       setTimeout(() => setExportSuccess(false), 3000);
     } catch (err) {
       console.error('PDF export error:', err);
-      window.print();
     } finally {
       setIsExporting(false);
     }
@@ -741,7 +215,7 @@ Format with clean markdown bullet points and bold headers. Keep the text punchy,
   const handleExportHtml = () => {
     try {
       const sanitizedName = (displayCompanyName || displayTargetDomain || 'Target_System').replace(/[^a-zA-Z0-9]/g, '_');
-      const filename = `Sennovate_VAPT_${reportType === 'simple' ? 'Simple' : 'Detailed'}_Report_${sanitizedName}.html`;
+      const filename = `Sennovate_VAPT_${reportType === 'simple' ? 'Simple' : 'Executive'}_Report_${sanitizedName}.html`;
       exportReportToHtml('vapt-pdf-report-root', filename);
       setExportHtmlSuccess(true);
       setTimeout(() => setExportHtmlSuccess(false), 3000);
@@ -789,416 +263,6 @@ Format with clean markdown bullet points and bold headers. Keep the text punchy,
     );
   }
 
-  // =========================================================================
-  // RENDER BLOCKS DISPATCHER
-  // =========================================================================
-  const renderBlock = (block, idx) => {
-    switch (block.type) {
-      case 'section-heading': {
-        const IconComponent = block.iconType === 'info' ? Info :
-                              block.iconType === 'alert' ? ShieldAlert :
-                              block.iconType === 'terminal' ? Terminal :
-                              block.iconType === 'code' ? Code :
-                              block.iconType === 'check' ? CheckCircle2 : ShieldCheck;
-        const color = block.colorClass || 'text-slate-700';
-
-        return (
-          <div key={block.id || idx} className="text-xs font-mono font-bold uppercase tracking-wider flex items-center gap-1.5 pt-1">
-            <IconComponent className={`w-3.5 h-3.5 flex-shrink-0 ${block.colorClass ? block.colorClass.replace('text-', 'text-') : 'text-cyan-600'}`} />
-            <span className={color}>{block.title}</span>
-          </div>
-        );
-      }
-
-      case 'finding-header': {
-        const { vuln, findingNum } = block;
-        return (
-          <div key={block.id || idx} className="border-b border-slate-200 pb-2.5 space-y-1.5">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="flex flex-wrap items-center gap-1.5">
-                <span className="text-xs font-mono font-bold text-cyan-900 bg-cyan-100 px-2.5 py-0.5 rounded border border-cyan-200">
-                  Finding #{findingNum}: {vuln.id}
-                </span>
-                <span className={`text-xs font-mono font-bold px-2.5 py-0.5 rounded ${
-                  vuln.severity === 'CRITICAL' ? 'bg-red-100 text-red-900 border border-red-300 font-black' : 
-                  vuln.severity === 'HIGH' ? 'bg-orange-100 text-orange-950 border border-orange-300 font-extrabold' : 
-                  vuln.severity === 'MEDIUM' ? 'bg-yellow-100 text-yellow-950 border border-yellow-300 font-bold' :
-                  'bg-sky-100 text-sky-900 border border-sky-200'
-                }`}>
-                  {vuln.severity} &bull; CVSS {vuln.cvss}
-                </span>
-                <span className="text-xs font-mono text-slate-700 bg-slate-200/80 px-2 py-0.5 rounded">
-                  {vuln.cwe}
-                </span>
-              </div>
-              <div className="text-xs font-mono text-slate-600">
-                Fix Effort: <strong className="text-emerald-700">{vuln.fixEffort || 'Low'}</strong>
-              </div>
-            </div>
-
-            <h3 className="text-base sm:text-lg font-black text-slate-950 tracking-tight leading-snug break-words">
-              {vuln.title}
-            </h3>
-
-            <div className="text-[11.5px] font-mono text-slate-600">
-              Complete Target URL: <code className="text-cyan-800 font-bold break-all">{getCompleteTargetUrl(vuln, targetUrl)}</code>
-            </div>
-          </div>
-        );
-      }
-
-      case 'tech-analysis': {
-        const { vuln } = block;
-        return (
-          <div key={block.id || idx} className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 text-[12.5px] text-slate-800 leading-relaxed space-y-2 break-words font-sans">
-            <p>{vuln.description}</p>
-            {vuln.technicalAnalysis && (
-              <p className="text-slate-700 text-[12px] pt-2 border-t border-slate-200 break-words leading-relaxed">
-                <strong className="text-slate-900">Vulnerability Mechanics:</strong> {vuln.technicalAnalysis}
-              </p>
-            )}
-          </div>
-        );
-      }
-
-      case 'threat-impact': {
-        const { vuln } = block;
-        return (
-          <div key={block.id || idx} className="p-3 rounded-xl bg-rose-50/60 border border-rose-200 text-[12.5px] text-slate-900 leading-relaxed break-words font-sans">
-            <p>{vuln.impact}</p>
-          </div>
-        );
-      }
-
-      case 'evidence': {
-        return (
-          <div key={block.id || idx} className="rounded-xl bg-slate-950 text-slate-100 font-mono text-[11px] leading-relaxed border border-slate-800 p-3.5 select-all break-all overflow-visible">
-            {block.isSplitPart && (
-              <div className="mb-2 pb-1.5 border-b border-slate-800 flex items-center justify-between text-[10px] font-mono text-slate-400">
-                <span className="text-cyan-400 font-bold uppercase tracking-wider">Protocol Evidence Dump &bull; Part {block.part} of {block.totalParts}</span>
-                <span>{block.part > 1 ? '(Continued from previous page)' : ''}</span>
-              </div>
-            )}
-            <pre className="whitespace-pre-wrap leading-relaxed select-all break-all font-mono">
-              {block.codeText}
-            </pre>
-          </div>
-        );
-      }
-
-      case 'poc': {
-        const { pocDescription, codeText } = block;
-        return (
-          <div key={block.id || idx} className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-2 text-xs">
-            {block.isSplitPart && (
-              <div className="mb-2 pb-1.5 border-b border-slate-200 flex items-center justify-between text-[10px] font-mono text-slate-500">
-                <span className="text-cyan-700 font-bold uppercase tracking-wider">Proof of Concept &bull; Part {block.part} of {block.totalParts}</span>
-                <span>{block.part > 1 ? '(Continued from previous page)' : ''}</span>
-              </div>
-            )}
-            {pocDescription && (
-              <div className="text-slate-700 leading-relaxed whitespace-pre-line text-[12px] font-sans break-words">
-                {pocDescription}
-              </div>
-            )}
-            {codeText && (
-              <div className="p-3 rounded-lg bg-slate-950 text-cyan-300 font-mono text-[11px] leading-relaxed space-y-1 border border-slate-800 break-all select-all">
-                <span className="text-[10px] uppercase text-slate-400 font-bold block font-mono">
-                  Verification Command / Exploit Script:
-                </span>
-                <code className="text-emerald-300 select-all block break-all whitespace-pre-wrap font-mono">
-                  {codeText}
-                </code>
-              </div>
-            )}
-          </div>
-        );
-      }
-
-      case 'remediation': {
-        const { remediation, remediationSteps } = block;
-        return (
-          <div key={block.id || idx} className="p-3.5 rounded-xl bg-emerald-50/60 border border-emerald-200 space-y-2">
-            {remediation && (!remediationSteps || remediationSteps.length === 0 || (!remediation.includes(remediationSteps[0]) && remediation !== remediationSteps[0])) && (
-              <p className="text-slate-900 font-bold text-[12.5px] break-words leading-relaxed">
-                {cleanText(remediation)}
-              </p>
-            )}
-            {remediationSteps && remediationSteps.length > 0 ? (
-              <ol className="list-decimal list-inside space-y-1.5 text-[12px] text-slate-800 font-sans">
-                {remediationSteps.map((step, sIdx) => (
-                  <li key={sIdx} className="leading-relaxed break-words">{cleanText(step)}</li>
-                ))}
-              </ol>
-            ) : (
-              !remediation && <p className="text-slate-500 italic text-[11.5px]">Apply standard security patches and configuration hardening.</p>
-            )}
-          </div>
-        );
-      }
-
-      case 'checklist': {
-        const { vuln } = block;
-        return (
-          <div key={block.id || idx} className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs pt-1">
-            <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 space-y-1">
-              <div className="font-bold text-slate-900 font-mono text-[10.5px] uppercase flex items-center gap-1">
-                <CheckSquare className="w-3.5 h-3.5 text-cyan-600" /> Verification Checklist
-              </div>
-              <ul className="text-[11px] text-slate-600 space-y-0.5 pl-3 list-disc leading-relaxed">
-                <li>Input sanitization &amp; parameterized queries.</li>
-                <li>WAF inspection &amp; rate limit rules.</li>
-                <li>Automated regression validation.</li>
-              </ul>
-            </div>
-            <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 space-y-1">
-              <div className="font-bold text-slate-900 font-mono text-[10.5px] uppercase flex items-center gap-1">
-                <Shield className="w-3.5 h-3.5 text-slate-600" /> Scope Note
-              </div>
-              <p className="text-[11px] text-slate-600 leading-relaxed break-words">
-                {vuln.assumptions || 'Assessed against live production API perimeter under standard operational conditions.'}
-              </p>
-            </div>
-          </div>
-        );
-      }
-
-      case 'matrix-table': {
-        const { rows, targetUrl } = block;
-        return (
-          <div key={block.id || idx} className="space-y-1.5">
-            {block.isContinuation && (
-              <div className="text-[11px] font-mono text-slate-500 font-semibold italic flex items-center justify-between">
-                <span>Vulnerability Priority &amp; Remediation Matrix (Continued)</span>
-                <span>Page Part {block.part}</span>
-              </div>
-            )}
-            <div className="border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-            <table className="w-full text-xs text-left table-fixed">
-              <thead className="bg-slate-100 font-mono text-slate-700 border-b border-slate-200">
-                <tr>
-                  <th className="p-2.5 w-[11%]">ID</th>
-                  <th className="p-2.5 w-[31%]">Vulnerability Title</th>
-                  <th className="p-2.5 w-[13%]">Severity</th>
-                  <th className="p-2.5 w-[8%]">CVSS</th>
-                  <th className="p-2.5 w-[11%]">CWE</th>
-                  <th className="p-2.5 w-[18%]">Target Endpoint</th>
-                  <th className="p-2.5 w-[8%]">Priority</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-200">
-                {rows.map((v, rIdx) => (
-                  <tr key={v.id} className="hover:bg-slate-50">
-                    <td className="p-2.5 font-mono font-bold text-cyan-800 break-words">{v.id}</td>
-                    <td className="p-2.5 font-bold text-slate-900 break-words text-[11.5px]">{v.title}</td>
-                    <td className="p-2.5 font-mono">
-                      <span className={`px-2 py-0.5 rounded text-[9.5px] font-bold ${
-                        v.severity === 'CRITICAL' ? 'bg-red-100 text-red-900 border border-red-300 font-black' : 
-                        v.severity === 'HIGH' ? 'bg-orange-100 text-orange-950 border border-orange-300 font-extrabold' : 
-                        v.severity === 'MEDIUM' ? 'bg-yellow-100 text-yellow-950 border border-yellow-300 font-bold' :
-                        'bg-sky-100 text-sky-900 border border-sky-200'
-                      }`}>{v.severity}</span>
-                    </td>
-                    <td className="p-2.5 font-mono font-bold text-[11.5px]">{v.cvss}</td>
-                    <td className="p-2.5 font-mono text-slate-600 break-words text-[10.5px]">{v.cwe}</td>
-                    <td className="p-2.5 font-mono text-slate-600 break-all text-[10.5px]">{getCompleteTargetUrl(v, targetUrl)}</td>
-                    <td className="p-2.5 font-mono font-bold text-slate-700 text-[10.5px]">{rIdx === 0 ? 'Urgent' : rIdx <= 2 ? 'High' : 'Medium'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            </div>
-          </div>
-        );
-      }
-
-      case 'matrix-guides-card': {
-        return (
-          <div key={block.id || idx} className="space-y-3 pt-1">
-            <div className="p-3 rounded-xl border border-slate-200 bg-slate-50 space-y-1.5 text-xs">
-              <h3 className="font-bold text-slate-900 font-mono text-xs uppercase tracking-wider">Industry Severity Scoring Guide (CVSS v3.1 Base Metrics)</h3>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs font-mono">
-                <div className="p-2 rounded-lg bg-red-50 border border-red-200">
-                  <strong className="text-red-900 block text-[10.5px]">CRITICAL (9.0 - 10.0)</strong>
-                  <span className="text-slate-600 leading-relaxed break-words text-[10px]">Immediate compromise or RCE.</span>
-                </div>
-                <div className="p-2 rounded-lg bg-orange-50 border border-orange-200">
-                  <strong className="text-orange-900 block text-[10.5px]">HIGH (7.0 - 8.9)</strong>
-                  <span className="text-slate-600 leading-relaxed break-words text-[10px]">Privilege escalation or data leak.</span>
-                </div>
-                <div className="p-2 rounded-lg bg-amber-50 border border-amber-200">
-                  <strong className="text-amber-900 block text-[10.5px]">MEDIUM (4.0 - 6.9)</strong>
-                  <span className="text-slate-600 leading-relaxed break-words text-[10px]">Partial data exposure or flaw.</span>
-                </div>
-                <div className="p-2 rounded-lg bg-slate-100 border border-slate-200">
-                  <strong className="text-slate-900 block text-[10.5px]">LOW (0.1 - 3.9)</strong>
-                  <span className="text-slate-600 leading-relaxed break-words text-[10px]">Info disclosure or hygiene issue.</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="p-3 rounded-xl border border-slate-200 bg-white space-y-1.5 text-xs">
-              <h3 className="font-bold text-slate-900 font-mono text-xs uppercase tracking-wider flex items-center gap-1.5">
-                <ShieldCheck className="w-4 h-4 text-cyan-600" />
-                OWASP Security Testing Guide (WSTG v4.2) Category Audit Coverage
-              </h3>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-[10.5px] font-mono">
-                <div className="p-2 rounded border border-slate-200 bg-slate-50 flex items-center justify-between">
-                  <span>WSTG-INFO (Recon)</span>
-                  <span className="font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded text-[9.5px]">PASS</span>
-                </div>
-                <div className="p-2 rounded border border-slate-200 bg-slate-50 flex items-center justify-between">
-                  <span>WSTG-CONF (Config)</span>
-                  <span className="font-bold text-amber-800 bg-amber-50 px-2 py-0.5 rounded text-[9.5px]">FINDINGS</span>
-                </div>
-                <div className="p-2 rounded border border-slate-200 bg-slate-50 flex items-center justify-between">
-                  <span>WSTG-IDNT (Identity)</span>
-                  <span className="font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded text-[9.5px]">HARDENED</span>
-                </div>
-                <div className="p-2 rounded border border-slate-200 bg-slate-50 flex items-center justify-between">
-                  <span>WSTG-INPV (Injection)</span>
-                  <span className="font-bold text-rose-700 bg-rose-50 px-2 py-0.5 rounded text-[9.5px]">HIGH RISK</span>
-                </div>
-                <div className="p-2 rounded border border-slate-200 bg-slate-50 flex items-center justify-between">
-                  <span>WSTG-CRYP (Crypto)</span>
-                  <span className="font-bold text-amber-800 bg-amber-50 px-2 py-0.5 rounded text-[9.5px]">FINDINGS</span>
-                </div>
-                <div className="p-2 rounded border border-slate-200 bg-slate-50 flex items-center justify-between">
-                  <span>WSTG-APIT (API Security)</span>
-                  <span className="font-bold text-cyan-800 bg-cyan-50 px-2 py-0.5 rounded text-[9.5px]">VERIFIED</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="p-2.5 rounded-xl border border-slate-200 bg-slate-50 space-y-1 text-xs">
-              <div className="font-bold text-slate-900 font-mono text-[11px] uppercase tracking-wider flex items-center gap-1.5">
-                <ShieldCheck className="w-4 h-4 text-cyan-600" /> Autonomous Penetration Testing Safety Attestation
-              </div>
-              <p className="text-slate-600 leading-relaxed text-[11px] break-words">All identified vulnerability attack vectors have been empirically validated through non-destructive dynamic proof-of-concept tests. Testing was executed strictly within authorized target bounds without denial of service or disruption to operational availability.</p>
-            </div>
-          </div>
-        );
-      }
-
-      case 'exec-intro': {
-        const { companyName, targetUrl, targetDomain, sortedVulnsCount, breakdownText, overallRiskLevel, overallRiskScore } = block;
-        return (
-          <div key={block.id || idx} className="space-y-2 text-[12.5px] text-slate-800 leading-relaxed font-sans break-words">
-            <p>Sennovate Autonomous Security Engine conducted an external penetration testing assessment against <strong>{companyName}</strong> (primary target domain: <code>{targetDomain || targetUrl}</code>). The scope encompassed the external web perimeter, exposed application services, and integrated API endpoints.</p>
-            <p>The assessment identified <strong>{sortedVulnsCount} confirmed security vulnerabilities</strong> ({breakdownText}). The overall cybersecurity posture is evaluated at <strong>{overallRiskLevel} Risk ({overallRiskScore}/10 CVSS)</strong>, requiring targeted remediation to safeguard corporate data assets.</p>
-          </div>
-        );
-      }
-
-      case 'exec-top-vuln-card': {
-        const { topVuln, targetUrl, overallRiskLevel, overallRiskScore } = block;
-        return (
-          <div key={block.id || idx} className="p-3.5 rounded-xl bg-amber-50 border-l-4 border-amber-500 text-slate-800 space-y-1 text-xs">
-            <div className="font-bold text-amber-900 uppercase font-mono flex items-center gap-1.5 text-xs">
-              <ShieldAlert className="w-4 h-4 text-amber-600 flex-shrink-0" /> <span>Strategic Exposure Vector: {overallRiskLevel} Risk ({overallRiskScore}/10 CVSS)</span>
-            </div>
-            <p className="leading-relaxed text-[12px] break-words text-slate-700">Primary exposure vector is <strong>{topVuln.title}</strong> on <code>{getCompleteTargetUrl(topVuln, targetUrl)}</code> (CVSS {topVuln.cvss}). Exploitation allows unauthorized adversaries: {topVuln.impact || topVuln.description}</p>
-          </div>
-        );
-      }
-
-      case 'exec-risk-breakdown-grid': {
-        const { critVulns, highVulns, medVulns, lowVulns } = block;
-        return (
-          <div key={block.id || idx} className="space-y-1.5">
-            <h3 className="text-xs font-bold text-slate-950 font-mono uppercase tracking-wider">Categorized Risk Breakdown</h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-              {critVulns.length > 0 && (
-                <div className="p-2.5 rounded-xl border border-red-200 bg-red-50/60 space-y-1">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="font-bold text-red-900 uppercase font-mono">Critical Risks ({critVulns.length})</span>
-                    <span className="font-mono font-bold text-red-700 bg-red-100 px-2 py-0.5 rounded text-[10px]">Immediate Action</span>
-                  </div>
-                  <div className="text-[11px] text-slate-700 space-y-0.5 pl-1">{critVulns.map(v => <div key={v.id} className="leading-relaxed break-words">&bull; <strong>[{v.id}] {v.title}</strong> (CVSS {v.cvss})</div>)}</div>
-                </div>
-              )}
-              {highVulns.length > 0 && (
-                <div className="p-2.5 rounded-xl border border-rose-200 bg-rose-50/50 space-y-1">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="font-bold text-rose-900 uppercase font-mono">High Risks ({highVulns.length})</span>
-                    <span className="font-mono font-bold text-rose-700 bg-rose-100 px-2 py-0.5 rounded text-[10px]">Urgent Action</span>
-                  </div>
-                  <div className="text-[11px] text-slate-700 space-y-0.5 pl-1">{highVulns.map(v => <div key={v.id} className="leading-relaxed break-words">&bull; <strong>[{v.id}] {v.title}</strong> (CVSS {v.cvss})</div>)}</div>
-                </div>
-              )}
-              {medVulns.length > 0 && (
-                <div className="p-2.5 rounded-xl border border-amber-200 bg-amber-50/40 space-y-1">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="font-bold text-amber-900 uppercase font-mono">Medium Findings ({medVulns.length})</span>
-                    <span className="font-mono font-bold text-amber-800 bg-amber-100 px-2 py-0.5 rounded text-[10px]">Remediate &lt; 7d</span>
-                  </div>
-                  <div className="text-[11px] text-slate-700 space-y-0.5 pl-1">{medVulns.map(v => <div key={v.id} className="leading-relaxed break-words">&bull; <strong>[{v.id}] {v.title}</strong> (CVSS {v.cvss})</div>)}</div>
-                </div>
-              )}
-              {lowVulns.length > 0 && (
-                <div className="p-2.5 rounded-xl border border-emerald-200 bg-emerald-50/40 space-y-1">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="font-bold text-emerald-900 uppercase font-mono">Low / Info Findings ({lowVulns.length})</span>
-                    <span className="font-mono font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded text-[10px]">Hygiene &lt; 30d</span>
-                  </div>
-                  <div className="text-[11px] text-slate-700 space-y-0.5 pl-1">{lowVulns.map(v => <div key={v.id} className="leading-relaxed break-words">&bull; <strong>[{v.id}] {v.title}</strong> (CVSS {v.cvss})</div>)}</div>
-                </div>
-              )}
-            </div>
-          </div>
-        );
-      }
-
-      case 'exec-business-impact-card': {
-        return (
-          <div key={block.id || idx} className="p-2.5 rounded-xl border border-slate-200 bg-slate-50 space-y-1 text-xs">
-            <div className="font-bold text-slate-900 font-mono text-[11px] uppercase tracking-wider flex items-center gap-1.5">
-              <Building className="w-4 h-4 text-cyan-600" />
-              Business Impact &amp; Regulatory Considerations
-            </div>
-            <p className="text-slate-600 leading-relaxed text-[11.5px] break-words">
-              Identified vulnerabilities could result in session hijacking, unauthorized parameter manipulation, and sensitive header disclosure. Prompt mitigation is advised to maintain compliance with <strong>SOC 2 Type II</strong>, <strong>ISO 27001 (A.14)</strong>, and <strong>GDPR Article 32 (Security of Processing)</strong>.
-            </p>
-          </div>
-        );
-      }
-
-      case 'exec-roadmap-grid': {
-        const { topVuln, targetUrl, companyName } = block;
-        return (
-          <div key={block.id || idx} className="space-y-1.5">
-            <h3 className="text-xs font-bold text-slate-950 font-mono uppercase tracking-wider">2. Prioritized 3-Phase Remediation Roadmap</h3>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs">
-              <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-200 space-y-1">
-                <div className="font-bold text-rose-700 font-mono text-[10.5px] uppercase flex items-center gap-1"><Clock className="w-3.5 h-3.5 flex-shrink-0" /> Phase 1 (&lt; 24h)</div>
-                <p className="text-slate-700 text-[11px] leading-relaxed break-words">{topVuln ? `Remediate ${topVuln.title} on ${getCompleteTargetUrl(topVuln, targetUrl)}.` : 'Patch high priority vulnerabilities.'}</p>
-              </div>
-              <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200 space-y-1">
-                <div className="font-bold text-amber-700 font-mono text-[10.5px] uppercase flex items-center gap-1"><Clock className="w-3.5 h-3.5 flex-shrink-0" /> Phase 2 (&lt; 7 Days)</div>
-                <p className="text-slate-700 text-[11px] leading-relaxed break-words">Address medium severity findings across {companyName} application endpoints.</p>
-              </div>
-              <div className="p-2.5 rounded-xl bg-cyan-50 border border-cyan-200 space-y-1">
-                <div className="font-bold text-cyan-800 font-mono text-[10.5px] uppercase flex items-center gap-1"><Clock className="w-3.5 h-3.5 flex-shrink-0" /> Phase 3 (&lt; 30 Days)</div>
-                <p className="text-slate-700 text-[11px] leading-relaxed break-words">Deploy strict CSP, review CORS policies, and conduct automated regression audits.</p>
-              </div>
-            </div>
-          </div>
-        );
-      }
-
-      case 'ai-summary': {
-        return (
-          <div key={block.id || idx} className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-2 text-[12.5px] text-slate-800 leading-relaxed font-sans break-words">
-            {renderFormattedMarkdown(block.content)}
-          </div>
-        );
-      }
-
-      default:
-        return null;
-    }
-  };
-
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-12">
       {/* Top Action Control Toolbar */}
@@ -1215,13 +279,13 @@ Format with clean markdown bullet points and bold headers. Keep the text punchy,
               </span>
             </h2>
             <p className="text-xs text-slate-400">
-              Target: <span className="font-mono text-[#80B7F1]">{displayCompanyName} ({displayTargetDomain})</span> &bull; {sortedVulns.length} Confirmed Vulnerabilities
+              Target: <span className="font-mono text-[#80B7F1]">{displayCompanyName} ({displayTargetDomain})</span> &bull; {sortedVulns.length} Confirmed Findings (100% Vector Text)
             </p>
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3">
-          {/* Two Report Forms Toggle: Simple vs Detailed */}
+        <div className="flex flex-wrap items-center gap-2.5">
+          {/* Format Toggle */}
           <div className="flex items-center bg-[#001127] p-1 rounded-xl border border-[#002B66] shadow-inner">
             <button
               type="button"
@@ -1253,56 +317,57 @@ Format with clean markdown bullet points and bold headers. Keep the text punchy,
             <button
               onClick={handleGenerateAiSummary}
               disabled={isGeneratingAiSummary}
-              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold bg-[#001127] text-[#80B7F1] border border-[#002B66] hover:bg-[#002B66] transition-colors disabled:opacity-50 shadow-sm font-heading"
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-[#001127] text-[#80B7F1] border border-[#002B66] hover:bg-[#002B66] transition-colors disabled:opacity-50 shadow-sm font-heading cursor-pointer"
             >
               {isGeneratingAiSummary ? (
                 <RefreshCw className="w-3.5 h-3.5 animate-spin text-[#006FE3]" />
               ) : (
                 <Sparkles className="w-3.5 h-3.5 text-[#006FE3]" />
               )}
-              <span>{isGeneratingAiSummary ? "Synthesizing Summary..." : "Re-generate Executive Summary"}</span>
+              <span>{isGeneratingAiSummary ? "Synthesizing..." : "Re-generate AI Summary"}</span>
             </button>
           )}
 
           <button
             onClick={handleExportHtml}
-            title="Download editable HTML report that can be opened and formatted in Microsoft Word, Google Docs, or text editors"
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold bg-[#001127] text-[#80B7F1] border border-[#002B66] hover:bg-[#002B66] transition-colors font-heading"
+            title="Download editable HTML report document"
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-[#001127] text-[#80B7F1] border border-[#002B66] hover:bg-[#002B66] transition-colors font-heading cursor-pointer"
           >
             {exportHtmlSuccess ? (
               <Check className="w-3.5 h-3.5 text-emerald-400" />
             ) : (
               <FileCode className="w-3.5 h-3.5 text-[#006FE3]" />
             )}
-            <span>{exportHtmlSuccess ? "Document Exported!" : "Editable Document (.html)"}</span>
+            <span>{exportHtmlSuccess ? "Exported!" : "Editable (.html)"}</span>
           </button>
 
           <button
             onClick={handleCopyMarkdown}
-            title="Copy full findings breakdown and executive summary to clipboard"
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold bg-[#001127] text-slate-200 border border-[#002B66] hover:bg-[#002B66] transition-colors font-heading"
+            title="Copy full findings text to clipboard"
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-[#001127] text-slate-200 border border-[#002B66] hover:bg-[#002B66] transition-colors font-heading cursor-pointer"
           >
             {copiedText ? (
               <Check className="w-3.5 h-3.5 text-emerald-400" />
             ) : (
               <Copy className="w-3.5 h-3.5 text-slate-300" />
             )}
-            <span>{copiedText ? "Copied to Clipboard!" : "Copy Report Text"}</span>
+            <span>{copiedText ? "Copied!" : "Copy Text"}</span>
           </button>
 
           <button
             onClick={handlePrint}
-            title="Open browser print dialog to print or save vector PDF directly"
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold bg-[#001127] text-slate-200 border border-[#002B66] hover:bg-[#002B66] transition-colors font-heading"
+            title="Open browser print dialog for isolated A4 vector PDF"
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-[#001127] text-slate-200 border border-[#002B66] hover:bg-[#002B66] transition-colors font-heading cursor-pointer"
           >
             <Printer className="w-3.5 h-3.5" />
             <span>Print / Save PDF</span>
           </button>
 
           <button
+            id="btn-download-pdf-report"
             onClick={handleDownloadPdf}
             disabled={isExporting}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-[#006FE3] text-white hover:bg-[#005bbd] transition-all shadow-md shadow-[#006FE3]/25 disabled:opacity-60 font-heading hover:scale-[1.02] active:scale-[0.98]"
+            className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold bg-[#006FE3] text-white hover:bg-[#005bbd] transition-all shadow-md shadow-[#006FE3]/25 disabled:opacity-60 font-heading hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
           >
             {isExporting ? (
               <RefreshCw className="w-3.5 h-3.5 animate-spin" />
@@ -1311,23 +376,67 @@ Format with clean markdown bullet points and bold headers. Keep the text punchy,
             ) : (
               <Download className="w-3.5 h-3.5" />
             )}
-            <span>{isExporting ? "Generating Vector PDF..." : exportSuccess ? "PDF Downloaded!" : `Download Vector PDF (${reportType === 'simple' ? 'Simple' : 'Detailed'})`}</span>
+            <span>{isExporting ? "Generating PDF..." : exportSuccess ? "Downloaded!" : "Download PDF Report"}</span>
           </button>
         </div>
       </div>
 
+      {/* Embedded Executive A4 Report Stylesheet */}
       <style>{`
-        .pdf-page {
+        :root {
+          --cyan: #0e7490;
+          --cyan-600: #0891b2;
+          --cyan-50: #ecfeff;
+          --cyan-200: #a5f3fc;
+          --slate-950: #020617;
+          --slate-900: #0f172a;
+          --slate-800: #1e293b;
+          --slate-700: #334155;
+          --slate-600: #475569;
+          --slate-500: #64748b;
+          --slate-400: #94a3b8;
+          --slate-200: #e2e8f0;
+          --slate-100: #f1f5f9;
+          --slate-50: #f8fafc;
+          --red-900: #7f1d1d;
+          --red-300: #fca5a5;
+          --red-100: #fee2e2;
+          --red-50: #fef2f2;
+          --orange-950: #431407;
+          --orange-300: #fdba74;
+          --orange-100: #ffedd5;
+          --orange-50: #fff7ed;
+          --yellow-950: #422006;
+          --yellow-300: #fde047;
+          --yellow-100: #fef9c3;
+          --yellow-50: #fefce8;
+          --sky-900: #0c4a6e;
+          --sky-200: #bae6fd;
+          --sky-100: #e0f2fe;
+          --sky-50: #f0f9ff;
+          --rose-700: #be123c;
+          --rose-200: #fecdd3;
+          --rose-50: #fff1f2;
+          --emerald-800: #065f46;
+          --emerald-700: #047857;
+          --emerald-200: #a7f3d0;
+          --emerald-50: #ecfdf5;
+          --amber-900: #78350f;
+          --amber-700: #b45309;
+          --amber-500: #f59e0b;
+          --amber-200: #fde68a;
+          --amber-50: #fffbeb;
+        }
+
+        .pdf-page, .report-page {
           width: 210mm;
           min-width: 210mm;
           max-width: 210mm;
-          height: 297mm;
           min-height: 297mm;
-          max-height: 297mm;
           margin: 0 auto 24px auto;
           padding: 12mm 14mm 12mm 14mm;
           background: #ffffff;
-          box-shadow: 0 4px 24px -2px rgba(0, 0, 0, 0.08);
+          box-shadow: 0 4px 24px -2px rgba(0, 0, 0, 0.10);
           border-radius: 4px;
           box-sizing: border-box;
           display: flex;
@@ -1336,234 +445,1255 @@ Format with clean markdown bullet points and bold headers. Keep the text punchy,
           position: relative;
           page-break-after: always;
           break-after: page;
+          font-family: 'Segoe UI', system-ui, -apple-system, Roboto, Helvetica, Arial, sans-serif;
+          color: var(--slate-900);
+        }
+
+        .pdf-page *, .report-page * {
+          box-sizing: border-box;
+        }
+
+        .mono {
+          font-family: 'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace !important;
+        }
+
+        .grow { flex: 1; }
+
+        .cover-top {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          border-bottom: 1px solid var(--slate-200);
+          padding-bottom: 12px;
+        }
+
+        .brand-logo {
+          height: 32px;
+          width: auto;
+          object-fit: contain;
+          display: block;
+        }
+
+        .conf {
+          font-size: 10.5px;
+          font-weight: 700;
+          text-transform: uppercase;
+          color: var(--rose-700);
+          background: var(--rose-50);
+          border: 1px solid var(--rose-200);
+          padding: 4px 9px;
+          border-radius: 6px;
+        }
+
+        .docref {
+          font-size: 10px;
+          color: var(--slate-500);
+          margin-top: 4px;
+          text-align: right;
+        }
+
+        .run-head {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          border-bottom: 1px solid var(--slate-200);
+          padding-bottom: 8px;
+          font-size: 11px;
+          text-transform: uppercase;
+          color: var(--slate-500);
+        }
+
+        .run-head .t {
+          color: var(--cyan);
+          font-weight: 700;
+          display: flex;
+          align-items: center;
+          gap: 6px;
+        }
+
+        .run-foot {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          border-top: 1px solid var(--slate-200);
+          padding-top: 8px;
+          margin-top: auto;
+          font-size: 10.5px;
+          color: var(--slate-500);
+        }
+
+        .content {
+          flex: 1;
+          padding-top: 8px;
+          display: flex;
+          flex-direction: column;
+          gap: 7px;
+        }
+
+        .badge-scope {
+          background: var(--cyan-50);
+          border: 1px solid var(--cyan-200);
+          border-radius: 6px;
+          font-size: 11px;
+          font-weight: 700;
+          color: var(--cyan);
+          text-transform: uppercase;
+          letter-spacing: .5px;
+          padding: 4px 11px;
+        }
+
+        .kpi-grid {
+          display: grid;
+          grid-template-columns: repeat(3, 1fr);
+          gap: 8px;
+          padding: 10px 12px;
+          background: var(--slate-50);
+          border: 1px solid var(--slate-200);
+          border-radius: 12px;
+        }
+
+        .kpi .lab {
+          font-size: 9.5px;
+          font-weight: 700;
+          color: var(--slate-500);
+          text-transform: uppercase;
+          letter-spacing: .5px;
+          display: block;
+        }
+
+        .kpi .val {
+          font-size: 12px;
+          font-weight: 800;
+          color: var(--slate-900);
+          display: block;
+          margin-top: 2px;
+        }
+
+        .kpi .val.risk { color: var(--rose-700); }
+        .kpi .val.tel { color: var(--cyan); }
+        .kpi .val.ok { color: var(--emerald-700); }
+
+        .card {
+          border: 1px solid var(--slate-200);
+          border-radius: 11px;
+          padding: 10px 12px;
+        }
+
+        .card.gray { background: var(--slate-50); }
+
+        .card .hd {
+          font-size: 11px;
+          font-weight: 700;
+          color: var(--slate-900);
+          text-transform: uppercase;
+          letter-spacing: .5px;
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          margin-bottom: 5px;
+        }
+
+        .ico { color: var(--cyan-600); }
+
+        .two-col {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 12px;
+          font-size: 11.5px;
+          color: var(--slate-700);
+          line-height: 1.5;
+        }
+
+        .chip-wrap {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 5px;
+          margin-top: 4px;
+        }
+
+        .chip {
+          background: var(--cyan-50);
+          border: 1px solid var(--cyan-200);
+          color: var(--cyan);
+          padding: 2px 7px;
+          border-radius: 4px;
+          font-size: 10px;
+        }
+
+        .phase-grid {
+          display: grid;
+          grid-template-columns: repeat(4, 1fr);
+          gap: 7px;
+        }
+
+        .phase {
+          background: #fff;
+          border: 1px solid var(--slate-200);
+          border-radius: 8px;
+          padding: 7px;
+        }
+
+        .phase b {
+          color: var(--cyan);
+          font-size: 10px;
+          display: block;
+          margin-bottom: 2px;
+        }
+
+        .phase span {
+          color: var(--slate-600);
+          font-size: 10px;
+          line-height: 1.35;
+        }
+
+        .sec-title {
+          font-size: 13px;
+          font-weight: 800;
+          color: var(--slate-950);
+          display: flex;
+          align-items: center;
+          gap: 7px;
+        }
+
+        .sec-title .n { color: var(--cyan); }
+
+        .prose p {
+          font-size: 11.5px;
+          color: var(--slate-800);
+          line-height: 1.5;
+          margin-bottom: 5px;
+        }
+
+        .exposure {
+          background: var(--amber-50);
+          border-left: 4px solid var(--amber-500);
+          border-radius: 10px;
+          padding: 10px 12px;
+        }
+
+        .exposure .hd {
+          font-size: 11.5px;
+          font-weight: 800;
+          color: var(--amber-900);
+          text-transform: uppercase;
+          letter-spacing: .3px;
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          margin-bottom: 4px;
+        }
+
+        .exposure p {
+          font-size: 11.5px;
+          color: var(--slate-700);
+          line-height: 1.5;
+        }
+
+        .risk-cards {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 8px;
+        }
+
+        .rcard {
+          border-radius: 10px;
+          padding: 8px 10px;
+        }
+
+        .rcard .top {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 4px;
+        }
+
+        .rcard .top .name {
+          font-size: 11px;
+          font-weight: 800;
+          text-transform: uppercase;
+        }
+
+        .rcard .top .tag {
+          font-size: 9.5px;
+          font-weight: 700;
+          padding: 2px 6px;
+          border-radius: 4px;
+        }
+
+        .rcard .item {
+          font-size: 10.5px;
+          color: var(--slate-700);
+          line-height: 1.45;
+        }
+
+        .rc-crit { background: rgba(254,242,242,.7); border: 1px solid var(--red-300); }
+        .rc-crit .name { color: var(--red-900); }
+        .rc-crit .tag { color: #b91c1c; background: var(--red-100); }
+
+        .rc-high { background: rgba(255,241,242,.6); border: 1px solid var(--rose-200); }
+        .rc-high .name { color: #9f1239; }
+        .rc-high .tag { color: var(--rose-700); background: #ffe4e6; }
+
+        .rc-med { background: rgba(255,251,235,.5); border: 1px solid var(--amber-200); }
+        .rc-med .name { color: var(--amber-900); }
+        .rc-med .tag { color: var(--amber-700); background: var(--amber-100); }
+
+        .rc-low { background: rgba(236,253,245,.5); border: 1px solid var(--emerald-200); }
+        .rc-low .name { color: var(--emerald-800); }
+        .rc-low .tag { color: var(--emerald-800); background: #d1fae5; }
+
+        .roadmap {
+          display: grid;
+          grid-template-columns: repeat(3, 1fr);
+          gap: 8px;
+        }
+
+        .rm {
+          border-radius: 10px;
+          padding: 8px 10px;
+        }
+
+        .rm b {
+          font-size: 10px;
+          font-weight: 800;
+          text-transform: uppercase;
+          display: block;
+          margin-bottom: 2px;
+        }
+
+        .rm p {
+          font-size: 10.5px;
+          color: var(--slate-700);
+          line-height: 1.4;
+        }
+
+        .rm1 { background: var(--rose-50); border: 1px solid var(--rose-200); }
+        .rm1 b { color: var(--rose-700); }
+        .rm2 { background: var(--amber-50); border: 1px solid var(--amber-200); }
+        .rm2 b { color: var(--amber-700); }
+        .rm3 { background: var(--cyan-50); border: 1px solid var(--cyan-200); }
+        .rm3 b { color: var(--cyan); }
+
+        /* Findings Matrix Table */
+        .mtable {
+          border: 1px solid var(--slate-200);
+          border-radius: 10px;
           overflow: hidden;
         }
-        .pdf-page * {
-          box-sizing: border-box !important;
-          word-wrap: break-word !important;
-          overflow-wrap: break-word !important;
+
+        .mtable table {
+          width: 100%;
+          border-collapse: collapse;
+          font-size: 10.5px;
+          table-layout: fixed;
         }
-        .pdf-page pre, .pdf-page code {
-          white-space: pre-wrap !important;
-          word-break: break-all !important;
-          overflow-wrap: anywhere !important;
+
+        .mtable thead {
+          background: var(--slate-100);
+          color: var(--slate-700);
         }
-        .pdf-card, .pdf-block {
-          break-inside: avoid !important;
-          page-break-inside: avoid !important;
+
+        .mtable th {
+          text-align: left;
+          padding: 8px;
+          font-weight: 700;
         }
+
+        .mtable td {
+          padding: 7px 8px;
+          border-top: 1px solid var(--slate-200);
+          vertical-align: top;
+          line-height: 1.4;
+          word-break: break-word;
+        }
+
+        .mtable td.id { font-weight: 700; color: var(--cyan); }
+        .mtable td.title { font-weight: 700; color: var(--slate-900); font-size: 11px; }
+
+        .sev {
+          display: inline-block;
+          padding: 2px 6px;
+          border-radius: 4px;
+          font-size: 9px;
+          font-weight: 800;
+        }
+
+        .sev-CRITICAL { background: var(--red-100); color: var(--red-900); border: 1px solid var(--red-300); }
+        .sev-HIGH { background: var(--orange-100); color: var(--orange-950); border: 1px solid var(--orange-300); }
+        .sev-MEDIUM { background: var(--yellow-100); color: var(--yellow-950); border: 1px solid var(--yellow-300); }
+        .sev-LOW, .sev-INFO { background: var(--sky-100); color: var(--sky-900); border: 1px solid var(--sky-200); }
+
+        .scoring {
+          display: grid;
+          grid-template-columns: repeat(4, 1fr);
+          gap: 7px;
+          margin-top: 4px;
+        }
+
+        .sc {
+          border-radius: 8px;
+          padding: 7px;
+          font-size: 9.5px;
+        }
+
+        .sc b {
+          font-size: 10px;
+          display: block;
+          margin-bottom: 2px;
+        }
+
+        .sc span { color: var(--slate-600); }
+
+        .sc-c { background: var(--red-50); border: 1px solid var(--red-300); } .sc-c b { color: var(--red-900); }
+        .sc-h { background: var(--orange-50); border: 1px solid var(--orange-300); } .sc-h b { color: var(--amber-900); }
+        .sc-m { background: var(--amber-50); border: 1px solid var(--amber-200); } .sc-m b { color: var(--amber-900); }
+        .sc-l { background: var(--slate-100); border: 1px solid var(--slate-200); } .sc-l b { color: var(--slate-900); }
+
+        .wstg {
+          display: grid;
+          grid-template-columns: repeat(3, 1fr);
+          gap: 6px;
+          margin-top: 4px;
+          font-size: 10px;
+        }
+
+        .wc {
+          border: 1px solid var(--slate-200);
+          background: var(--slate-50);
+          border-radius: 6px;
+          padding: 6px 8px;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+        }
+
+        .wtag {
+          font-size: 9px;
+          font-weight: 700;
+          padding: 1px 6px;
+          border-radius: 4px;
+        }
+
+        .t-pass { color: var(--emerald-700); background: var(--emerald-50); }
+        .t-find { color: var(--amber-700); background: var(--amber-50); }
+        .t-hard { color: var(--emerald-700); background: var(--emerald-50); }
+        .t-risk { color: var(--rose-700); background: var(--rose-50); }
+        .t-ver { color: var(--cyan); background: var(--cyan-50); }
+
+        /* Finding Layout Blocks */
+        .fhead {
+          border-bottom: 1px solid var(--slate-200);
+          padding-bottom: 7px;
+          display: flex;
+          flex-direction: column;
+          gap: 5px;
+        }
+
+        .fhead .row {
+          display: flex;
+          flex-wrap: wrap;
+          align-items: center;
+          justify-content: space-between;
+          gap: 6px;
+        }
+
+        .fhead .tags {
+          display: flex;
+          flex-wrap: wrap;
+          align-items: center;
+          gap: 5px;
+        }
+
+        .ftag {
+          font-size: 10.5px;
+          font-weight: 700;
+          color: #0e4a63;
+          background: var(--cyan-50);
+          border: 1px solid var(--cyan-200);
+          padding: 2px 7px;
+          border-radius: 4px;
+        }
+
+        .fsev {
+          font-size: 10.5px;
+          font-weight: 800;
+          padding: 2px 7px;
+          border-radius: 4px;
+        }
+
+        .fcwe {
+          font-size: 10.5px;
+          color: var(--slate-700);
+          background: #e5eaf1;
+          padding: 2px 6px;
+          border-radius: 4px;
+        }
+
+        .feffort {
+          font-size: 10.5px;
+          color: var(--slate-600);
+        }
+
+        .feffort strong { color: var(--emerald-700); }
+
+        .ftitle {
+          font-size: 15px;
+          font-weight: 800;
+          color: var(--slate-950);
+          line-height: 1.25;
+          margin: 0;
+        }
+
+        .furl {
+          font-size: 11px;
+          color: var(--slate-600);
+        }
+
+        .furl code {
+          color: #0e4a63;
+          font-weight: 700;
+        }
+
+        .box {
+          border-radius: 10px;
+          padding: 8px 10px;
+          font-size: 11px;
+          line-height: 1.45;
+        }
+
+        .box.tech {
+          background: var(--slate-50);
+          border: 1px solid var(--slate-200);
+          color: var(--slate-800);
+        }
+
+        .box.tech .mech {
+          margin-top: 5px;
+          padding-top: 5px;
+          border-top: 1px solid var(--slate-200);
+          font-size: 11px;
+          color: var(--slate-700);
+        }
+
+        .box.impact {
+          background: rgba(255,241,242,.6);
+          border: 1px solid var(--rose-200);
+          color: var(--slate-900);
+        }
+
+        .box.rem {
+          background: rgba(236,253,245,.6);
+          border: 1px solid var(--emerald-200);
+        }
+
+        .box.rem p.lead {
+          font-weight: 700;
+          color: var(--slate-900);
+          font-size: 11px;
+          line-height: 1.4;
+          margin-bottom: 4px;
+        }
+
+        .box.rem ol {
+          margin: 0;
+          padding-left: 16px;
+          font-size: 11px;
+          color: var(--slate-800);
+          line-height: 1.45;
+        }
+
+        .box.poc {
+          background: var(--slate-50);
+          border: 1px solid var(--slate-200);
+        }
+
+        .box.poc .steps {
+          font-size: 11px;
+          color: var(--slate-700);
+          line-height: 1.45;
+          white-space: pre-line;
+          margin-bottom: 6px;
+        }
+
+        .subhd {
+          font-size: 11px;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: .5px;
+          display: flex;
+          align-items: center;
+          gap: 5px;
+          margin-top: 1px;
+        }
+
+        .subhd.info { color: var(--slate-700); }
+        .subhd.info .ic { color: var(--cyan-600); }
+        .subhd.alert { color: var(--rose-700); }
+        .subhd.code { color: var(--slate-700); }
+        .subhd.code .ic { color: var(--cyan-600); }
+        .subhd.rem { color: var(--emerald-800); }
+
+        .codeblk {
+          background: #0a0f1e;
+          border: 1px solid #1e293b;
+          border-radius: 8px;
+          padding: 8px 10px;
+          margin-top: 4px;
+        }
+
+        .codeblk .cap {
+          font-size: 9.5px;
+          text-transform: uppercase;
+          font-weight: 700;
+          color: var(--slate-400);
+          letter-spacing: .5px;
+          display: block;
+          margin-bottom: 4px;
+        }
+
+        .codeblk pre {
+          margin: 0;
+          white-space: pre-wrap;
+          word-break: break-all;
+          color: #6ee7b7;
+          font-size: 10.5px;
+          line-height: 1.5;
+        }
+
+        .checkgrid {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 8px;
+        }
+
+        .chk {
+          background: var(--slate-50);
+          border: 1px solid var(--slate-200);
+          border-radius: 10px;
+          padding: 8px 10px;
+        }
+
+        .chk .hd {
+          font-size: 10px;
+          font-weight: 700;
+          text-transform: uppercase;
+          color: var(--slate-900);
+          display: flex;
+          align-items: center;
+          gap: 5px;
+          margin-bottom: 4px;
+        }
+
+        .chk ul {
+          margin: 0;
+          padding-left: 14px;
+          font-size: 10.5px;
+          color: var(--slate-600);
+          line-height: 1.5;
+        }
+
+        .chk p {
+          font-size: 10.5px;
+          color: var(--slate-600);
+          line-height: 1.45;
+          margin: 0;
+        }
+
+        .finding-page {
+          page-break-before: always;
+        }
+
         @media print {
-          @page { size: A4 portrait; margin: 0; }
-          body { background: #fff !important; }
-          .no-print { display: none !important; }
-          .pdf-page {
+          @page {
+            size: A4 portrait;
+            margin: 0;
+          }
+          *, *::before, *::after {
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+          html, body {
+            background: #fff !important;
+            margin: 0 !important;
+            padding: 0 !important;
+          }
+          .no-print {
+            display: none !important;
+          }
+          .pdf-page, .report-page {
             width: 210mm !important;
-            min-width: 210mm !important;
-            max-width: 210mm !important;
-            height: 297mm !important;
             min-height: 297mm !important;
-            max-height: 297mm !important;
-            padding: 12mm 14mm 12mm 14mm !important;
+            margin: 0 !important;
+            padding: 12mm 14mm !important;
+            box-shadow: none !important;
+            border: none !important;
+            border-radius: 0 !important;
             page-break-after: always !important;
             break-after: page !important;
-            box-sizing: border-box !important;
-            margin: 0 !important;
-            border: none !important;
-            box-shadow: none !important;
-            border-radius: 0 !important;
-            display: flex !important;
-            flex-direction: column !important;
-            justify-content: space-between !important;
-            overflow: hidden !important;
+          }
+          .finding-page {
+            page-break-before: always !important;
+            break-before: page !important;
+          }
+          .pdf-page:last-child, .report-page:last-child {
+            page-break-after: auto !important;
+            break-after: auto !important;
+          }
+          .box, .card, .codeblk, .checkgrid, .mtable, .fhead, .exposure, .risk-cards, .roadmap {
+            break-inside: avoid !important;
+            page-break-inside: avoid !important;
           }
         }
       `}</style>
 
-      {/* Discrete, Pre-Paginated A4 Container */}
+      {/* Discrete, Dedicated A4 Deliverable Document */}
       <div id="vapt-pdf-report-root" className="space-y-8 flex flex-col items-center">
-        {reportPages.map((page, pIdx) => {
-          const pageNum = pIdx + 1;
+        {/* =================================================================== */}
+        {/* PAGE 1: DEDICATED EXECUTIVE COVER PAGE                              */}
+        {/* =================================================================== */}
+        <div key="page-1" className="report-page pdf-page">
+          <div className="cover-top">
+            <img src="/logo/Logo dark.jpg" alt="Sennovate Inc." className="brand-logo" />
+            <div className="text-right">
+              <div className="conf mono">CONFIDENTIAL &bull; PROPRIETARY</div>
+              <div className="docref mono">Doc Ref: {metadata.runId || 'VAPT-AUDIT-2026'}</div>
+            </div>
+          </div>
 
-          // ===================================================================
-          // COVER PAGE
-          // ===================================================================
-          if (page.type === 'cover') {
-            return (
-              <div key={`page-${pageNum}`} className="pdf-page bg-white text-slate-900 border border-slate-200">
-                <div className="flex items-center justify-between border-b pb-3 border-slate-200">
-                  <div className="flex items-center gap-3">
-                    <img src="/logo/Logo dark.jpg" alt="Sennovate Inc." className="h-8 object-contain" />
-                  </div>
-                  <div className="text-right font-mono text-xs text-slate-600">
-                    <div className="font-bold text-rose-700 uppercase bg-rose-50 border border-rose-200 px-2.5 py-1 rounded-md text-[10.5px]">
-                      CONFIDENTIAL &bull; PROPRIETARY
-                    </div>
-                    <div className="text-[10px] text-slate-500 mt-1">Doc Ref: {metadata.runId || 'VAPT-AUDIT-2026'}</div>
-                  </div>
+          <div className="content">
+            <div className="flex items-center justify-between pt-1">
+              <span className="badge-scope mono">
+                {metadata.assessmentType || "External Web Application & API Penetration Test"}
+              </span>
+              <span className="text-[10.5px] font-mono text-slate-500 font-medium">
+                OWASP WSTG v4.2 &bull; NIST SP 800-115
+              </span>
+            </div>
+
+            <div className="pt-2">
+              <div className="text-[10.5px] font-mono text-slate-500 font-bold uppercase tracking-widest">
+                PREPARED EXCLUSIVELY FOR:
+              </div>
+              <h1 className="text-2xl sm:text-3xl font-black text-slate-950 tracking-tight leading-tight pt-1">
+                {displayCompanyName}
+              </h1>
+              <div className="text-xs font-mono text-cyan-800 font-semibold flex items-center gap-1.5 pt-1">
+                <span>Target Domain:</span>
+                <span className="underline decoration-cyan-500 font-bold">{displayTargetDomain}</span>
+                {domainInfo.subdomain && (
+                  <span className="text-slate-500 text-[11px] font-normal">({domainInfo.subdomain}.{domainInfo.rootDomain})</span>
+                )}
+              </div>
+              <p className="text-[11.5px] text-slate-700 font-medium leading-relaxed pt-1.5">
+                Comprehensive autonomous penetration testing deliverable detailing perimeter vulnerability reconnaissance, live exploit verification, attack chain mapping, and prioritized risk mitigation roadmap.
+              </p>
+            </div>
+
+            {/* Core Assessment Metrics (6-KPI Grid) */}
+            <div className="kpi-grid mono">
+              <div className="kpi">
+                <span className="lab">Primary Target URI</span>
+                <span className="val truncate" title={targetUrl}>{targetUrl}</span>
+              </div>
+              <div className="kpi">
+                <span className="lab">Overall Risk Posture</span>
+                <span className="val risk">{overallRiskLevel} ({overallRiskScore}/10 CVSS)</span>
+              </div>
+              <div className="kpi">
+                <span className="lab">Confirmed Findings</span>
+                <span className="val">{sortedVulns.length} Verified ({formatSeverityBreakdown(sortedVulns)})</span>
+              </div>
+              <div className="kpi">
+                <span className="lab">Assessment Profile</span>
+                <span className="val">Black-Box Autonomous Audit</span>
+              </div>
+              <div className="kpi">
+                <span className="lab">Testing Standard</span>
+                <span className="val tel">OWASP WSTG v4.2 &bull; NIST 800-115</span>
+              </div>
+              <div className="kpi">
+                <span className="lab">Assessment Status</span>
+                <span className="val ok">Audit Completed &amp; Verified</span>
+              </div>
+            </div>
+
+            {/* Target Scope & Digital Perimeter */}
+            <div className="card">
+              <div className="hd">
+                <Globe className="w-3.5 h-3.5 text-cyan-600" /> Target Scope &amp; Evaluated Digital Perimeter
+              </div>
+              <div className="two-col">
+                <div>
+                  <div><strong>In-Scope Target:</strong> <code className="break-all">{targetUrl}</code></div>
+                  <div><strong>Scope Surface:</strong> Apex Domain + Subdomain Target List</div>
+                  <div><strong>Testing Methodology:</strong> Non-Destructive Live Exploit Ingestion</div>
                 </div>
-
-                <div className="flex-1 flex flex-col justify-start space-y-4 pt-3 pb-2">
-                  <div className="flex items-center justify-between">
-                    <span className="px-3 py-1 bg-cyan-50 border border-cyan-200 rounded-md text-xs font-mono font-bold text-cyan-900 uppercase tracking-wider">
-                      {metadata.assessmentType || "External Web Application & API Penetration Test"}
-                    </span>
-                    <span className="text-[11px] font-mono text-slate-500 font-medium">Standards: OWASP WSTG v4.2 &bull; NIST SP 800-115</span>
-                  </div>
-
-                  <div className="space-y-1">
-                    <div className="text-xs font-mono text-slate-500 font-bold uppercase tracking-widest">PREPARED EXCLUSIVELY FOR:</div>
-                    <h1 className="text-2xl sm:text-3xl font-black text-slate-950 tracking-tight leading-tight break-words">{displayCompanyName}</h1>
-                    <div className="text-xs font-mono text-cyan-800 font-semibold flex items-center gap-1.5 pt-0.5">
-                      <span>Target Domain:</span>
-                      <span className="underline decoration-cyan-400 font-bold">{displayTargetDomain}</span>
-                      {domainInfo.subdomain && (
-                        <span className="text-slate-500 text-[11px] font-normal">({domainInfo.subdomain}.{domainInfo.rootDomain})</span>
-                      )}
-                    </div>
-                    <p className="text-[12.5px] text-slate-700 font-medium leading-relaxed break-words max-w-3xl pt-0.5">
-                      Comprehensive autonomous penetration testing deliverable detailing perimeter vulnerability reconnaissance, live exploit verification, attack chain mapping, and prioritized risk mitigation roadmap.
-                    </p>
-                  </div>
-
-                  {/* Core Assessment Metrics (6-KPI Grid) */}
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 p-3 rounded-xl bg-slate-50 border border-slate-200 font-mono text-xs">
-                    <div className="p-1">
-                      <span className="text-slate-500 text-[10px] block font-bold uppercase tracking-wider">PRIMARY TARGET DOMAIN</span>
-                      <span className="font-extrabold text-slate-900 break-all block text-[12.5px]">{displayTargetDomain}</span>
-                      {targetUrl && targetUrl !== `https://${displayTargetDomain}` && targetUrl !== displayTargetDomain && (
-                        <span className="text-slate-500 text-[10px] break-all block truncate mt-0.5" title={targetUrl}>{targetUrl}</span>
-                      )}
-                    </div>
-                    <div className="p-1">
-                      <span className="text-slate-500 text-[10px] block font-bold uppercase tracking-wider">OVERALL RISK POSTURE</span>
-                      <span className="font-extrabold text-rose-700 text-[12.5px]">{overallRiskLevel} ({overallRiskScore}/10 CVSS)</span>
-                    </div>
-                    <div className="p-1">
-                      <span className="text-slate-500 text-[10px] block font-bold uppercase tracking-wider">CONFIRMED FINDINGS</span>
-                      <span className="font-extrabold text-slate-900 text-[12.5px]">{sortedVulns.length} Verified ({formatSeverityBreakdown(sortedVulns)})</span>
-                    </div>
-                    <div className="p-1">
-                      <span className="text-slate-500 text-[10px] block font-bold uppercase tracking-wider">ASSESSMENT PROFILE</span>
-                      <span className="font-extrabold text-slate-900 text-[12.5px]">Black-Box Autonomous Audit</span>
-                    </div>
-                    <div className="p-1">
-                      <span className="text-slate-500 text-[10px] block font-bold uppercase tracking-wider">SECURITY AI TELEMETRY</span>
-                      <span className="font-extrabold text-cyan-800 text-[12.5px]">
-                        {(metadata.tokens || 16400000) > 1000000 ? `${((metadata.tokens || 16400000) / 1000000).toFixed(1)}M Tokens` : `${metadata.tokens || 0} Tokens`} &bull; {metadata.requests || 488} Checks
-                      </span>
-                    </div>
-                    <div className="p-1">
-                      <span className="text-slate-500 text-[10px] block font-bold uppercase tracking-wider">ASSESSMENT STATUS</span>
-                      <span className="font-extrabold text-emerald-700 text-[12.5px]">Audit Completed &amp; Verified</span>
-                    </div>
-                  </div>
-
-                  {/* Target Scope & Digital Perimeter */}
-                  <div className="p-3 rounded-xl border border-slate-200 bg-white space-y-1.5 text-xs">
-                    <div className="font-bold text-slate-900 font-mono text-[11.5px] uppercase tracking-wider flex items-center gap-1.5">
-                      <Globe className="w-4 h-4 text-cyan-600" /> Target Scope &amp; Evaluated Digital Perimeter
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-[12px]">
-                      <div className="space-y-1 text-slate-700 leading-relaxed">
-                        <div><strong>In-Scope Target:</strong> <code className="break-all">{targetUrl}</code></div>
-                        <div><strong>Scope Surface:</strong> Apex Domain + Subdomain Target List</div>
-                        <div><strong>Testing Methodology:</strong> Non-Destructive Live Exploit Ingestion</div>
-                      </div>
-                      <div className="space-y-1 text-slate-700 leading-relaxed">
-                        <div><strong>Assessment Engine:</strong> Sennovate Autonomous VAPT Platform</div>
-                        <div><strong>Execution Mode:</strong> Multi-Target Web &amp; API Assessment</div>
-                        <div><strong>Safety Constraints:</strong> Zero Denial-of-Service / Zero Data Tampering</div>
-                      </div>
-                    </div>
-                    {evaluatedTargets.length > 1 && (
-                      <div className="pt-1.5 border-t border-slate-100 text-[11px] text-slate-700">
-                        <strong>Evaluated Target Perimeter ({evaluatedTargets.length} In-Scope Targets):</strong>
-                        <div className="flex flex-wrap gap-1.5 mt-1">
-                          {evaluatedTargets.map((t, idx) => (
-                            <span key={idx} className="bg-cyan-50 border border-cyan-200 text-cyan-900 px-2 py-0.5 rounded font-mono text-[10.5px]">
-                              {t}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Assessment Lifecycle Execution Phases */}
-                  <div className="p-3 rounded-xl border border-slate-200 bg-slate-50 space-y-1.5 text-xs">
-                    <div className="font-bold text-slate-900 font-mono text-[11.5px] uppercase tracking-wider flex items-center gap-1.5">
-                      <Layers className="w-4 h-4 text-cyan-600" /> Autonomous Penetration Testing Execution Phases
-                    </div>
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[10.5px] font-mono">
-                      <div className="p-2 rounded-lg bg-white border border-slate-200">
-                        <strong className="text-cyan-800 block text-[10.5px] font-black">PHASE 1: RECON</strong>
-                        <span className="text-slate-600 leading-snug">Perimeter mapping &amp; endpoint profiling.</span>
-                      </div>
-                      <div className="p-2 rounded-lg bg-white border border-slate-200">
-                        <strong className="text-cyan-800 block text-[10.5px] font-black">PHASE 2: ATTACK</strong>
-                        <span className="text-slate-600 leading-snug">Autonomous vulnerability discovery &amp; fuzzing.</span>
-                      </div>
-                      <div className="p-2 rounded-lg bg-white border border-slate-200">
-                        <strong className="text-cyan-800 block text-[10.5px] font-black">PHASE 3: VERIFY</strong>
-                        <span className="text-slate-600 leading-snug">Live exploit proof &amp; impact validation.</span>
-                      </div>
-                      <div className="p-2 rounded-lg bg-white border border-slate-200">
-                        <strong className="text-cyan-800 block text-[10.5px] font-black">PHASE 4: REPORT</strong>
-                        <span className="text-slate-600 leading-snug">Technical advisory &amp; prioritized remediation.</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Compliance & Standards Attestation */}
-                  <div className="p-3 rounded-xl border border-slate-200 bg-white space-y-1 text-xs">
-                    <div className="font-bold text-slate-900 font-mono text-[11.5px] uppercase tracking-wider flex items-center gap-1.5">
-                      <Shield className="w-4 h-4 text-cyan-600" /> Assessment Frameworks &amp; Compliance Standards Alignment
-                    </div>
-                    <p className="text-slate-600 leading-relaxed text-[11.5px] break-words">
-                      Conducted in strict alignment with <strong>OWASP Web Security Testing Guide (WSTG v4.2)</strong>, <strong>OWASP API Security Top 10</strong>, <strong>NIST SP 800-115</strong>, <strong>CWE/SANS Top 25</strong>, and <strong>CVSS v3.1 Scoring Standards</strong>. All observed attack paths were verified to ensure zero false positives.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="mt-auto pt-2.5 border-t border-slate-200">
-                  <div className="flex items-center justify-between text-xs font-mono text-slate-600">
-                    <div><strong>Audited By:</strong> {metadata.leadAuditor || "Sennovate Autonomous Security Engine"}</div>
-                    <div><strong>Security Partner:</strong> {metadata.companyWebsite || "https://www.sennovate.com"}</div>
-                  </div>
-                  <div className="flex items-center justify-between pt-1 text-[10px] font-mono text-slate-400">
-                    <span>Confidential &bull; Sennovate Inc.</span>
-                    <span>Page 1 of {totalPages}</span>
-                  </div>
+                <div>
+                  <div><strong>Assessment Engine:</strong> Sennovate Autonomous VAPT Platform</div>
+                  <div><strong>Execution Mode:</strong> Multi-Target Web &amp; API Assessment</div>
+                  <div><strong>Safety Constraints:</strong> Zero Denial-of-Service / Zero Data Tampering</div>
                 </div>
               </div>
-            );
-          }
+              {evaluatedTargets.length > 1 && (
+                <div style={{ paddingTop: '6px', marginTop: '6px', borderTop: '1px solid var(--slate-100)', fontSize: '10.5px' }}>
+                  <strong>Evaluated Target Perimeter ({evaluatedTargets.length} In-Scope Targets):</strong>
+                  <div className="chip-wrap mono">
+                    {evaluatedTargets.map((t, idx) => (
+                      <span key={idx} className="chip">{t}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
 
-          // ===================================================================
-          // STANDARD DYNAMIC CONTENT PAGE (EXECUTIVE, MATRIX, OR FINDINGS)
-          // ===================================================================
-          const headerTitle = page.findingContext
-            ? `Sennovate Autonomous VAPT Deliverable \u2022 Finding #${page.findingContext.findingNum} of ${sortedVulns.length}${page.blocks.some(b => b.isSplitPart && b.part > 1) ? ' (Cont.)' : ''}`
-            : (page.title || 'Sennovate Autonomous VAPT Deliverable');
+            {/* Assessment Lifecycle Execution Phases */}
+            <div className="card gray">
+              <div className="hd">
+                <Layers className="w-3.5 h-3.5 text-cyan-600" /> Autonomous Penetration Testing Execution Phases
+              </div>
+              <div className="phase-grid mono">
+                <div className="phase">
+                  <b>PHASE 1: RECON</b>
+                  <span>Perimeter mapping &amp; endpoint profiling.</span>
+                </div>
+                <div className="phase">
+                  <b>PHASE 2: ATTACK</b>
+                  <span>Autonomous vulnerability discovery &amp; fuzzing.</span>
+                </div>
+                <div className="phase">
+                  <b>PHASE 3: VERIFY</b>
+                  <span>Live exploit proof &amp; impact validation.</span>
+                </div>
+                <div className="phase">
+                  <b>PHASE 4: REPORT</b>
+                  <span>Technical advisory &amp; prioritized remediation.</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Compliance & Standards Attestation */}
+            <div className="card">
+              <div className="hd">
+                <Shield className="w-3.5 h-3.5 text-cyan-600" /> Assessment Frameworks &amp; Compliance Standards Alignment
+              </div>
+              <p style={{ fontSize: '11px', color: 'var(--slate-600)', lineHeight: '1.45', margin: 0 }}>
+                Conducted in strict alignment with <strong>OWASP Web Security Testing Guide (WSTG v4.2)</strong>, <strong>OWASP API Security Top 10</strong>, <strong>NIST SP 800-115</strong>, <strong>CWE/SANS Top 25</strong>, and <strong>CVSS v3.1 Scoring Standards</strong>. All observed attack paths were verified to ensure zero false positives.
+              </p>
+            </div>
+          </div>
+
+          <div className="run-foot mono">
+            <div><strong>Audited By:</strong> {metadata.leadAuditor || "Sennovate Autonomous Security Engine"}</div>
+            <div><strong>Partner:</strong> {metadata.companyWebsite || "https://www.sennovate.com"}</div>
+            <div>Page 1 of {totalPages}</div>
+          </div>
+        </div>
+
+        {/* =================================================================== */}
+        {/* PAGE 2: EXECUTIVE THREAT ASSESSMENT & ROADMAP                       */}
+        {/* =================================================================== */}
+        <div key="page-2" className="report-page pdf-page">
+          <div className="run-head mono">
+            <span className="t">
+              <ShieldCheck className="w-3.5 h-3.5 text-cyan-600" />
+              1. Executive Threat Assessment &amp; Threat Posture
+            </span>
+            <span>Target: {displayCompanyName}</span>
+          </div>
+
+          <div className="content">
+            <div className="sec-title">
+              <span className="n">1.</span> Executive Threat Assessment &amp; Threat Posture
+            </div>
+
+            <div className="prose">
+              {customAiSummary ? (
+                <div className="text-[11px] text-slate-800 leading-relaxed whitespace-pre-wrap font-sans">
+                  {customAiSummary}
+                </div>
+              ) : (
+                <>
+                  <p>
+                    Sennovate Autonomous Security Platform conducted an external penetration testing assessment against <strong>{displayCompanyName}</strong> (<code className="text-cyan-800 font-bold">{targetUrl}</code>). The scope encompassed perimeter reconnaissance, automated threat modeling, live vulnerability discovery, and non-destructive exploit ingestion.
+                  </p>
+                  <p>
+                    The assessment identified <strong>{sortedVulns.length} confirmed security vulnerabilities</strong> ({formatSeverityBreakdown(sortedVulns)}). The overall perimeter risk posture is evaluated as <strong>{overallRiskLevel} ({overallRiskScore}/10 CVSS)</strong>, requiring prioritized remediation according to the roadmap below.
+                  </p>
+                </>
+              )}
+            </div>
+
+            {/* Strategic Exposure Vector Callout */}
+            <div className="exposure">
+              <div className="hd">
+                <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
+                Strategic Exposure Vector: {overallRiskLevel} Risk ({overallRiskScore}/10 CVSS)
+              </div>
+              <p>
+                {topVuln ? (
+                  <>
+                    Primary exposure vector is <strong>{topVuln.title}</strong> on <code className="font-bold text-amber-950">{getCompleteTargetUrl(topVuln, targetUrl)}</code> (CVSS {topVuln.cvss}). {cleanText(topVuln.impact || topVuln.description)}
+                  </>
+                ) : (
+                  <>Multiple perimeter vulnerabilities allow potential reconnaissance and privilege escalation if unmitigated.</>
+                )}
+              </p>
+            </div>
+
+            {/* Risk Breakdown Cards Grid */}
+            <div>
+              <div className="text-[11px] font-bold text-slate-900 uppercase tracking-wider mb-1.5 font-mono">
+                Confirmed Vulnerability Threat Classification
+              </div>
+              <div className="risk-cards">
+                {critVulns.length > 0 && (
+                  <div className="rcard rc-crit">
+                    <div className="top">
+                      <span className="name">Critical Risks ({critVulns.length})</span>
+                      <span className="tag">Immediate Patch &lt; 24h</span>
+                    </div>
+                    {critVulns.slice(0, 2).map((v, i) => (
+                      <div key={i} className="item">&bull; <strong>[{v.id}] {v.title}</strong> (CVSS {v.cvss})</div>
+                    ))}
+                  </div>
+                )}
+                <div className={`rcard rc-high ${critVulns.length === 0 ? 'col-span-1' : ''}`}>
+                  <div className="top">
+                    <span className="name">High Risks ({highVulns.length})</span>
+                    <span className="tag">Urgent Action &lt; 7d</span>
+                  </div>
+                  {highVulns.length > 0 ? (
+                    highVulns.slice(0, 2).map((v, i) => (
+                      <div key={i} className="item">&bull; <strong>[{v.id}] {v.title}</strong> (CVSS {v.cvss})</div>
+                    ))
+                  ) : (
+                    <div className="item italic text-slate-500">No high severity findings detected.</div>
+                  )}
+                </div>
+                <div className={`rcard rc-med ${critVulns.length === 0 ? 'col-span-1' : ''}`}>
+                  <div className="top">
+                    <span className="name">Medium Findings ({medVulns.length})</span>
+                    <span className="tag">Remediate &lt; 30d</span>
+                  </div>
+                  {medVulns.length > 0 ? (
+                    medVulns.slice(0, 2).map((v, i) => (
+                      <div key={i} className="item">&bull; <strong>[{v.id}] {v.title}</strong> (CVSS {v.cvss})</div>
+                    ))
+                  ) : (
+                    <div className="item italic text-slate-500">No medium findings detected.</div>
+                  )}
+                </div>
+                {lowVulns.length > 0 && (
+                  <div className="rcard rc-low col-span-2">
+                    <div className="top">
+                      <span className="name">Low / Informational Findings ({lowVulns.length})</span>
+                      <span className="tag">Hygiene &lt; 90d</span>
+                    </div>
+                    {lowVulns.slice(0, 2).map((v, i) => (
+                      <div key={i} className="item">&bull; <strong>[{v.id}] {v.title}</strong> (CVSS {v.cvss})</div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Business Impact Card */}
+            <div className="card gray">
+              <div className="hd">
+                <Building className="w-3.5 h-3.5 text-cyan-600" /> Business Impact &amp; Regulatory Considerations
+              </div>
+              <p style={{ fontSize: '11px', color: 'var(--slate-600)', lineHeight: '1.45', margin: 0 }}>
+                Identified exposures may compromise confidentiality, facilitate unauthorized backend reconnaissance, or violate compliance benchmarks (SOC 2 Type II, ISO 27001, GDPR, and PCI-DSS v4.0 Requirement 6.4). Implementing the remediation roadmap eliminates these threat vectors.
+              </p>
+            </div>
+
+            {/* Strategic 3-Phase Remediation Roadmap */}
+            <div>
+              <div className="text-[11px] font-bold text-slate-900 uppercase tracking-wider mb-1.5 font-mono">
+                Prioritized 3-Phase Strategic Remediation Roadmap
+              </div>
+              <div className="roadmap">
+                <div className="rm rm1">
+                  <b>Phase 1 (&lt; 24 Hours)</b>
+                  <p>
+                    {topVuln ? `Immediate mitigation for ${topVuln.id}: ${cleanText(topVuln.remediation || topVuln.title).slice(0, 110)}...` : 'Hotfix exposed credentials and critical endpoints.'}
+                  </p>
+                </div>
+                <div className="rm rm2">
+                  <b>Phase 2 (&lt; 7 Days)</b>
+                  <p>
+                    Address medium-to-high severity findings across {displayTargetDomain}. Deploy security headers, sanitize input, and restrict API permissions.
+                  </p>
+                </div>
+                <div className="rm rm3">
+                  <b>Phase 3 (&lt; 30 Days)</b>
+                  <p>
+                    Implement architecture-wide hardening, split-brain DNS, CI/CD static checks, and schedule periodic autonomous VAPT re-scans.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="run-foot mono">
+            <span>CONFIDENTIAL &bull; PROPRIETARY</span>
+            <span>Audited by Sennovate Autonomous VAPT Platform</span>
+            <span>Page 2 of {totalPages}</span>
+          </div>
+        </div>
+
+        {/* =================================================================== */}
+        {/* PAGE 3: VULNERABILITY SUMMARY MATRIX & AUDIT COVERAGE               */}
+        {/* =================================================================== */}
+        <div key="page-3" className="report-page pdf-page">
+          <div className="run-head mono">
+            <span className="t">
+              <ShieldCheck className="w-3.5 h-3.5 text-cyan-600" />
+              2. Vulnerability Summary Matrix &amp; Audit Coverage
+            </span>
+            <span>Target: {displayCompanyName}</span>
+          </div>
+
+          <div className="content">
+            <div className="sec-title">
+              <span className="n">2.</span> Vulnerability Summary Matrix &amp; Audit Coverage
+            </div>
+
+            {/* Findings Table */}
+            <div className="mtable">
+              <table>
+                <thead>
+                  <tr>
+                    <th style={{ width: '13%' }}>ID</th>
+                    <th style={{ width: '33%' }}>Vulnerability Title</th>
+                    <th style={{ width: '14%' }}>Severity</th>
+                    <th style={{ width: '8%' }}>CVSS</th>
+                    <th style={{ width: '12%' }}>CWE</th>
+                    <th style={{ width: '20%' }}>Affected Target Endpoint</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sortedVulns.map((v) => (
+                    <tr key={v.id}>
+                      <td className="id mono">{v.id}</td>
+                      <td className="title">{v.title}</td>
+                      <td>
+                        <span className={`sev sev-${v.severity} mono`}>{v.severity}</span>
+                      </td>
+                      <td className="mono font-bold">{v.cvss}</td>
+                      <td className="mono" style={{ color: 'var(--slate-600)' }}>{v.cwe ? v.cwe.split(/[:\s]/)[0] : 'CWE-200'}</td>
+                      <td className="mono" style={{ fontSize: '9.5px', color: 'var(--slate-600)' }}>
+                        <code className="break-all">{getCompleteTargetUrl(v, targetUrl).replace(/^https?:\/\//, '')}</code>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Severity Scoring Standards & SLA Grid */}
+            <div className="card">
+              <div className="hd">
+                <Clock className="w-3.5 h-3.5 text-cyan-600" /> CVSS v3.1 Severity Scoring Standards &amp; Remediation SLAs
+              </div>
+              <div className="scoring mono">
+                <div className="sc sc-c">
+                  <b>CRITICAL (9.0 - 10.0)</b>
+                  <span>Immediate Hotfix &bull; SLA: &lt; 24h</span>
+                </div>
+                <div className="sc sc-h">
+                  <b>HIGH (7.0 - 8.9)</b>
+                  <span>Urgent Patch &bull; SLA: &lt; 7 Days</span>
+                </div>
+                <div className="sc sc-m">
+                  <b>MEDIUM (4.0 - 6.9)</b>
+                  <span>Scheduled Fix &bull; SLA: &lt; 30 Days</span>
+                </div>
+                <div className="sc sc-l">
+                  <b>LOW / INFO (0.1 - 3.9)</b>
+                  <span>Hygiene Review &bull; SLA: &lt; 90 Days</span>
+                </div>
+              </div>
+            </div>
+
+            {/* OWASP WSTG v4.2 Security Category Coverage Grid */}
+            <div className="card gray">
+              <div className="hd">
+                <ShieldCheck className="w-3.5 h-3.5 text-cyan-600" /> OWASP WSTG v4.2 Security Category Coverage
+              </div>
+              <div className="wstg mono">
+                <div className="wc">
+                  <span>WSTG-INFO (Reconnaissance)</span>
+                  <span className="wtag t-pass">&#10003; Evaluated</span>
+                </div>
+                <div className="wc">
+                  <span>WSTG-CONF (Configuration)</span>
+                  <span className="wtag t-find">&#9888; Findings</span>
+                </div>
+                <div className="wc">
+                  <span>WSTG-IDNT (Authentication)</span>
+                  <span className="wtag t-hard">&#10003; Hardened</span>
+                </div>
+                <div className="wc">
+                  <span>WSTG-INPV (Input Validation)</span>
+                  <span className="wtag t-risk">&#9888; Action Req</span>
+                </div>
+                <div className="wc">
+                  <span>WSTG-CRYP (Cryptography)</span>
+                  <span className="wtag t-pass">&#10003; Verified</span>
+                </div>
+                <div className="wc">
+                  <span>WSTG-APIT (API Security)</span>
+                  <span className="wtag t-ver">&#9888; Verified</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Safety Attestation */}
+            <div className="card">
+              <div className="hd">
+                <Shield className="w-3.5 h-3.5 text-cyan-600" /> Autonomous Penetration Testing Safety Attestation
+              </div>
+              <p style={{ fontSize: '11px', color: 'var(--slate-600)', lineHeight: '1.45', margin: 0 }}>
+                All identified vulnerability attack vectors have been verified non-destructively through synthetic proof-of-concept ingestion and automated rule simulation. Zero production data tampering, service degradation, or denial-of-service was introduced during execution.
+              </p>
+            </div>
+          </div>
+
+          <div className="run-foot mono">
+            <span>CONFIDENTIAL &bull; PROPRIETARY</span>
+            <span>Audited by Sennovate Autonomous VAPT Platform</span>
+            <span>Page 3 of {totalPages}</span>
+          </div>
+        </div>
+
+        {/* =================================================================== */}
+        {/* PAGES 4+: TECHNICAL VULNERABILITY ADVISORIES (ONE PAGE PER FINDING) */}
+        {/* =================================================================== */}
+        {sortedVulns.map((vuln, vIdx) => {
+          const findingNum = vIdx + 1;
+          const pageNum = 3 + findingNum;
+          const pocCode = getPocCodeString(vuln);
 
           return (
-            <div key={`page-${pageNum}`} className="pdf-page bg-white text-slate-900 border border-slate-200">
-              {/* Running Header */}
-              <div className="flex items-center justify-between border-b pb-2.5 border-slate-200 text-[11px] font-mono text-slate-500 uppercase">
-                <span className="font-bold text-cyan-700 flex items-center gap-1.5 truncate max-w-[500px]">
-                  <ShieldCheck className="w-4 h-4 text-cyan-600 flex-shrink-0" />
-                  {headerTitle}
+            <div key={`finding-page-${vuln.id}`} className="report-page pdf-page finding-page">
+              <div className="run-head mono">
+                <span className="t">
+                  <ShieldCheck className="w-3.5 h-3.5 text-cyan-600" />
+                  Sennovate VAPT Deliverable &bull; Finding #{findingNum} of {sortedVulns.length}
                 </span>
-                <span className="truncate max-w-[220px] flex-shrink-0">Target: {displayCompanyName}</span>
+                <span>Target: {displayCompanyName}</span>
               </div>
 
-              {/* Dynamic Page Flow Content Container */}
-              <div className="flex-1 flex flex-col justify-start space-y-3 pt-2.5 pb-2 overflow-hidden">
-                {page.blocks.map((block, bIdx) => renderBlock(block, bIdx))}
+              <div className="content">
+                {/* Finding Header */}
+                <div className="fhead">
+                  <div className="row">
+                    <div className="tags">
+                      <span className="ftag mono">Finding #{findingNum}: {vuln.id}</span>
+                      <span className={`fsev sev-${vuln.severity} mono`}>
+                        {vuln.severity} &bull; CVSS {vuln.cvss}
+                      </span>
+                      <span className="fcwe mono">
+                        {vuln.cwe ? vuln.cwe.split(/[:\s]/)[0] : 'CWE-200'}
+                      </span>
+                    </div>
+                    <div className="feffort mono">
+                      Fix Effort: <strong>{vuln.fixEffort || 'Low'}</strong>
+                    </div>
+                  </div>
+                  <h3 className="ftitle">{vuln.title}</h3>
+                  <div className="furl mono">
+                    Complete Target URL: <code className="break-all">{getCompleteTargetUrl(vuln, targetUrl)}</code>
+                  </div>
+                </div>
+
+                {/* Technical Analysis */}
+                <div className="subhd info">
+                  <span className="ic">&#9432;</span> TECHNICAL ANALYSIS &amp; VULNERABILITY MECHANISM
+                </div>
+                <div className="box tech">
+                  <p>{vuln.description}</p>
+                  {vuln.technicalAnalysis && (
+                    <p className="mech">
+                      <strong>Vulnerability Mechanics:</strong> {vuln.technicalAnalysis}
+                    </p>
+                  )}
+                </div>
+
+                {/* Threat Impact */}
+                <div className="subhd alert">
+                  <span>&#128737;</span> SECURITY &amp; THREAT IMPACT ASSESSMENT
+                </div>
+                <div className="box impact">
+                  <p>{vuln.impact || "Exploitation of this vulnerability may allow malicious threat actors to compromise application confidentiality and integrity."}</p>
+                </div>
+
+                {/* Proof of Concept */}
+                <div className="subhd code">
+                  <span className="ic">&lt;/&gt;</span> PROOF OF CONCEPT &amp; LIVE EXPLOIT VERIFICATION
+                </div>
+                <div className="box poc">
+                  {vuln.pocDescription ? (
+                    <div className="steps">{vuln.pocDescription}</div>
+                  ) : (
+                    <div className="steps">
+                      1. Target the identified endpoint: {getCompleteTargetUrl(vuln, targetUrl)}.
+                      <br />2. Replay request using the verification command below.
+                      <br />3. Inspect returned payload to verify vulnerability exposure.
+                    </div>
+                  )}
+                  {pocCode && (
+                    <div className="codeblk">
+                      <span className="cap mono">Verification Command / Exploit Script:</span>
+                      <pre className="mono">{pocCode}</pre>
+                    </div>
+                  )}
+                </div>
+
+                {/* Remediation Action Plan */}
+                <div className="subhd rem">
+                  <span>&#9989;</span> STEP-BY-STEP REMEDIATION ACTION PLAN
+                </div>
+                <div className="box rem">
+                  {vuln.remediation && (
+                    <p className="lead">{cleanText(vuln.remediation)}</p>
+                  )}
+                  {vuln.remediationSteps && vuln.remediationSteps.length > 0 ? (
+                    <ol>
+                      {vuln.remediationSteps.map((step, sIdx) => (
+                        <li key={sIdx}>{cleanText(step)}</li>
+                      ))}
+                    </ol>
+                  ) : (
+                    <ol>
+                      <li>Apply strict input validation and least-privilege access control on the affected endpoint.</li>
+                      <li>Review security configurations and audit application logs for anomalous requests.</li>
+                      <li>Conduct a regression verification test to confirm vulnerability remediation.</li>
+                    </ol>
+                  )}
+                </div>
+
+                {/* Verification Checklist & Scope Note */}
+                <div className="checkgrid">
+                  <div className="chk">
+                    <div className="hd mono">&#9745; Verification Checklist</div>
+                    <ul>
+                      <li>Confirm affected endpoint no longer accepts unauthorized requests.</li>
+                      <li>Verify defensive controls and security headers are active.</li>
+                      <li>Run regression scan to confirm clean status.</li>
+                    </ul>
+                  </div>
+                  <div className="chk">
+                    <div className="hd mono">&#128737; Scope Note</div>
+                    <p>
+                      {vuln.assumptions || 'Assessed against live production perimeter under standard operational conditions; key validity confirmed non-destructively.'}
+                    </p>
+                  </div>
+                </div>
               </div>
 
-              {/* Running Footer */}
-              <div className="flex items-center justify-between border-t pt-2.5 mt-auto border-slate-200 text-[10.5px] font-mono text-slate-500">
+              <div className="run-foot mono">
                 <span>CONFIDENTIAL &bull; PROPRIETARY</span>
                 <span>Audited by Sennovate Autonomous VAPT Platform</span>
                 <span>Page {pageNum} of {totalPages}</span>

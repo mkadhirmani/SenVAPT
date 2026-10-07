@@ -68,6 +68,43 @@ function cloneContainerWithInlinedImages(element) {
   return clone;
 }
 
+export function printIsolatedReport(htmlContent) {
+  try {
+    const iframe = document.createElement('iframe');
+    iframe.id = 'vapt-print-isolated-iframe';
+    iframe.style.position = 'fixed';
+    iframe.style.top = '-9999px';
+    iframe.style.left = '-9999px';
+    iframe.style.width = '210mm';
+    iframe.style.height = '297mm';
+    iframe.style.border = 'none';
+    iframe.style.zIndex = '-9999';
+    document.body.appendChild(iframe);
+
+    const doc = iframe.contentDocument || iframe.contentWindow.document;
+    doc.open();
+    doc.write(htmlContent);
+    doc.close();
+
+    setTimeout(() => {
+      try {
+        iframe.contentWindow.focus();
+        iframe.contentWindow.print();
+      } catch (err) {
+        console.warn('Iframe print note, falling back to window print:', err);
+        window.print();
+      } finally {
+        setTimeout(() => {
+          try { iframe.remove(); } catch (_) {}
+        }, 60000);
+      }
+    }, 600);
+  } catch (e) {
+    console.error('Error invoking isolated print iframe:', e);
+    window.print();
+  }
+}
+
 /**
  * Builds a 100% self-contained, standalone HTML document formatted for A4 vector PDF
  * and direct editing in Microsoft Word, Google Docs, or modern web browsers.
@@ -94,6 +131,52 @@ export function buildStandaloneReportHtml(elementId = 'vapt-pdf-report-root', ti
     /* Captured Tailwind & Application Styles */
     ${activeStyles}
 
+    /* Core Color Tokens & Report Typography */
+    :root {
+      --cyan: #0e7490;
+      --cyan-600: #0891b2;
+      --cyan-50: #ecfeff;
+      --cyan-200: #a5f3fc;
+      --slate-950: #020617;
+      --slate-900: #0f172a;
+      --slate-800: #1e293b;
+      --slate-700: #334155;
+      --slate-600: #475569;
+      --slate-500: #64748b;
+      --slate-400: #94a3b8;
+      --slate-200: #e2e8f0;
+      --slate-100: #f1f5f9;
+      --slate-50: #f8fafc;
+      --red-900: #7f1d1d;
+      --red-300: #fca5a5;
+      --red-100: #fee2e2;
+      --red-50: #fef2f2;
+      --orange-950: #431407;
+      --orange-300: #fdba74;
+      --orange-100: #ffedd5;
+      --orange-50: #fff7ed;
+      --yellow-950: #422006;
+      --yellow-300: #fde047;
+      --yellow-100: #fef9c3;
+      --yellow-50: #fefce8;
+      --sky-900: #0c4a6e;
+      --sky-200: #bae6fd;
+      --sky-100: #e0f2fe;
+      --sky-50: #f0f9ff;
+      --rose-700: #be123c;
+      --rose-200: #fecdd3;
+      --rose-50: #fff1f2;
+      --emerald-800: #065f46;
+      --emerald-700: #047857;
+      --emerald-200: #a7f3d0;
+      --emerald-50: #ecfdf5;
+      --amber-900: #78350f;
+      --amber-700: #b45309;
+      --amber-500: #f59e0b;
+      --amber-200: #fde68a;
+      --amber-50: #fffbeb;
+    }
+
     /* Strict A4 Print & Vector Layout Formatting */
     @page {
       size: A4 portrait;
@@ -110,16 +193,14 @@ export function buildStandaloneReportHtml(elementId = 'vapt-pdf-report-root', ti
       background: #ffffff !important;
       color: #0f172a !important;
       font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif !important;
-      font-size: 13px;
+      font-size: 12px;
       line-height: 1.5;
     }
-    .pdf-page {
+    .pdf-page, .report-page {
       width: 210mm !important;
       min-width: 210mm !important;
       max-width: 210mm !important;
-      height: 297mm !important;
       min-height: 297mm !important;
-      max-height: 297mm !important;
       margin: 0 auto !important;
       padding: 12mm 14mm 12mm 14mm !important;
       background: #ffffff !important;
@@ -135,16 +216,16 @@ export function buildStandaloneReportHtml(elementId = 'vapt-pdf-report-root', ti
       box-shadow: none !important;
       border-radius: 0 !important;
     }
-    .pdf-page:last-child {
+    .pdf-page:last-child, .report-page:last-child {
       page-break-after: auto !important;
       break-after: auto !important;
     }
-    .pdf-card, .pdf-block {
+    .pdf-card, .pdf-block, .box, .card, .codeblk, .checkgrid, .mtable, .fhead, .exposure, .risk-cards, .roadmap {
       break-inside: avoid !important;
       page-break-inside: avoid !important;
     }
-    pre, code {
-      font-family: 'JetBrains Mono', monospace !important;
+    pre, code, .mono {
+      font-family: 'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace !important;
       white-space: pre-wrap !important;
       word-break: break-all !important;
       overflow-wrap: anywhere !important;
@@ -154,7 +235,7 @@ export function buildStandaloneReportHtml(elementId = 'vapt-pdf-report-root', ti
         background: #f1f5f9 !important;
         padding: 24px 0;
       }
-      .pdf-page {
+      .pdf-page, .report-page {
         margin: 0 auto 24px auto !important;
         box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.1) !important;
         border-radius: 6px !important;
@@ -213,13 +294,18 @@ export async function exportReportToPdf(elementId = 'vapt-pdf-report-root', file
     const errData = await res.json().catch(() => ({}));
     console.warn('Server vector PDF export note:', errData.error || res.statusText);
     
-    // Fallback: Browser native print engine (which also produces 100% native vector text PDF)
-    console.info('Invoking browser native print engine for vector text PDF...');
-    window.print();
+    // Fallback: Isolated iframe print (prints ONLY the report, NEVER the dashboard screen)
+    console.info('Invoking isolated iframe print engine for vector text PDF...');
+    printIsolatedReport(htmlContent);
     return true;
   } catch (err) {
-    console.error('Vector PDF export error, falling back to browser print:', err);
-    window.print();
+    console.error('Vector PDF export error, falling back to isolated print:', err);
+    try {
+      const htmlContent = buildStandaloneReportHtml(elementId, filename.replace(/\.pdf$/i, ''));
+      printIsolatedReport(htmlContent);
+    } catch (_) {
+      window.print();
+    }
     return false;
   }
 }

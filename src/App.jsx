@@ -762,6 +762,13 @@ export default function App() {
         companyName={currentCompanyName}
         targetUrl={currentTargetUrl}
         riskLevel={currentRiskLevel}
+        onExportPdf={() => {
+          setActiveTab('report');
+          setTimeout(() => {
+            const btn = document.getElementById('btn-download-pdf-report');
+            if (btn) btn.click();
+          }, 400);
+        }}
       />
 
       {/* Main Content Pane */}

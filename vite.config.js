@@ -485,11 +485,10 @@ function strixBackendPlugin() {
 
       // 1.8. Native Vector PDF Generation Route (Produces 100% Selectable/Searchable Vector Text PDF via Headless Chrome)
       server.middlewares.use('/api/reports/generate-pdf', (req, res) => {
-        const session = getAuthenticatedSession(req);
-        if (!session) {
-          res.setHeader('Content-Type', 'application/json');
-          res.statusCode = 401;
-          return res.end(JSON.stringify({ error: 'Unauthorized: Valid session required.' }));
+        applyCorsHeaders(req, res);
+        if (req.method === 'OPTIONS') {
+          res.statusCode = 204;
+          return res.end();
         }
         if (req.method !== 'POST') {
           res.statusCode = 405;
@@ -501,7 +500,7 @@ function strixBackendPlugin() {
         req.on('end', () => {
           try {
             const payload = JSON.parse(body || '{}');
-            const htmlContent = payload.html || '';
+            let htmlContent = payload.html || '';
             const filename = (payload.filename || 'Sennovate_VAPT_Report.pdf').replace(/[^a-zA-Z0-9._-]/g, '_');
 
             if (!htmlContent) {
@@ -509,6 +508,15 @@ function strixBackendPlugin() {
               res.setHeader('Content-Type', 'application/json');
               res.statusCode = 400;
               return res.end(JSON.stringify({ error: 'Missing HTML content' }));
+            }
+
+            // Inline local logo image if present as relative path
+            const logoLocalPath = path.resolve(process.cwd(), 'public/logo/Logo dark.jpg');
+            if (fs.existsSync(logoLocalPath)) {
+              try {
+                const logoB64 = fs.readFileSync(logoLocalPath).toString('base64');
+                htmlContent = htmlContent.replace(/["']\/logo\/Logo%20dark\.jpg["']|["']\/logo\/Logo dark\.jpg["']/g, `"data:image/jpeg;base64,${logoB64}"`);
+              } catch (_) {}
             }
 
             const chromeCandidates = [
