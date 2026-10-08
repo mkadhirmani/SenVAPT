@@ -3,7 +3,7 @@ import http from 'http';
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
-import { execSync } from 'child_process';
+import { execSync, execFileSync } from 'child_process';
 import { fileURLToPath } from 'url';
 import { 
   testSshConnection, 
@@ -1092,6 +1092,17 @@ const server = http.createServer(async (req, res) => {
       res.statusCode = 204;
       return res.end();
     }
+    const session = getAuthenticatedSession(req);
+    if (!session) {
+      res.setHeader('Content-Type', 'application/json');
+      res.statusCode = 401;
+      return res.end(JSON.stringify({ success: false, error: 'Unauthorized: Active authenticated session required to generate reports.' }));
+    }
+    if (session.role !== 'admin' && !session.permissions?.export_reports) {
+      res.setHeader('Content-Type', 'application/json');
+      res.statusCode = 403;
+      return res.end(JSON.stringify({ success: false, error: 'Access Denied: You do not have permission to export reports.' }));
+    }
     if (req.method !== 'POST') {
       res.statusCode = 405;
       return res.end(JSON.stringify({ error: 'Method Not Allowed' }));
@@ -1150,8 +1161,15 @@ const server = http.createServer(async (req, res) => {
 
       fs.writeFileSync(tempHtml, htmlContent, 'utf8');
 
-      // Execute headless Chrome print-to-pdf
-      execSync(`"${chromePath}" --headless --disable-gpu --no-pdf-header-footer --run-all-compositor-stages-before-draw --print-to-pdf="${tempPdf}" "${tempHtml}"`, {
+      // Execute headless Chrome print-to-pdf via safe execFileSync (avoids shell invocation)
+      execFileSync(chromePath, [
+        '--headless',
+        '--disable-gpu',
+        '--no-pdf-header-footer',
+        '--run-all-compositor-stages-before-draw',
+        `--print-to-pdf=${tempPdf}`,
+        tempHtml
+      ], {
         timeout: 45000,
         stdio: ['ignore', 'pipe', 'pipe']
       });
@@ -1780,6 +1798,11 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (pathname === '/api/strix/start-scan') {
+      if (session.role !== 'admin' && !session.permissions?.run_scans) {
+        res.setHeader('Content-Type', 'application/json');
+        res.statusCode = 403;
+        return res.end(JSON.stringify({ success: false, error: 'Access Denied: You do not have permission to launch security scans.' }));
+      }
       try {
         const payload = await parseJsonBody(req);
         const result = await startRemoteStrixScan(payload);
@@ -1794,6 +1817,11 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (pathname === '/api/strix/stop-scan') {
+      if (session.role !== 'admin' && !session.permissions?.run_scans) {
+        res.setHeader('Content-Type', 'application/json');
+        res.statusCode = 403;
+        return res.end(JSON.stringify({ success: false, error: 'Access Denied: You do not have permission to control security scans.' }));
+      }
       try {
         const body = await parseJsonBody(req);
         const result = await stopRemoteStrixScan(body);
@@ -1826,6 +1854,11 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (pathname === '/api/strix/send-input') {
+      if (session.role !== 'admin' && !session.permissions?.run_scans) {
+        res.setHeader('Content-Type', 'application/json');
+        res.statusCode = 403;
+        return res.end(JSON.stringify({ success: false, error: 'Access Denied: Interactive input requires scan execution permissions.' }));
+      }
       try {
         const { scanId, input } = await parseJsonBody(req);
         const result = sendInputToScanSession(scanId, input);
@@ -1868,12 +1901,22 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (pathname === '/api/strix/parse-local-folder') {
+      if (session.role !== 'admin' && !session.permissions?.load_custom_folder) {
+        res.setHeader('Content-Type', 'application/json');
+        res.statusCode = 403;
+        return res.end(JSON.stringify({ success: false, error: 'Access Denied: load_custom_folder permission required.' }));
+      }
       try {
         const { folderPath } = await parseJsonBody(req);
-        if (!folderPath) {
+        if (!folderPath || typeof folderPath !== 'string') {
           res.setHeader('Content-Type', 'application/json');
           res.statusCode = 400;
           return res.end(JSON.stringify({ success: false, error: 'Folder name or path is required.' }));
+        }
+        if (folderPath.includes('..') || folderPath.includes('\0')) {
+          res.setHeader('Content-Type', 'application/json');
+          res.statusCode = 400;
+          return res.end(JSON.stringify({ success: false, error: 'Path traversal detected: Relative path segments are strictly prohibited.' }));
         }
         const result = parseLocalStrixFolder(folderPath);
         res.setHeader('Content-Type', 'application/json');
@@ -1887,6 +1930,11 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (pathname === '/api/strix/trigger-n8n') {
+      if (session.role !== 'admin' && !session.permissions?.run_scans) {
+        res.setHeader('Content-Type', 'application/json');
+        res.statusCode = 403;
+        return res.end(JSON.stringify({ success: false, error: 'Access Denied: You do not have permission to trigger scans.' }));
+      }
       try {
         const payload = await parseJsonBody(req);
         const result = await triggerN8nScanProxy(payload);
@@ -1901,6 +1949,11 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (pathname === '/api/strix/list-local-folders') {
+      if (session.role !== 'admin' && !session.permissions?.load_custom_folder) {
+        res.setHeader('Content-Type', 'application/json');
+        res.statusCode = 403;
+        return res.end(JSON.stringify({ success: false, error: 'Access Denied: load_custom_folder permission required.' }));
+      }
       try {
         const folders = listLocalScanFolders();
         res.setHeader('Content-Type', 'application/json');
@@ -1942,6 +1995,11 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (pathname === '/api/strix/upload-scan-zip') {
+      if (session.role !== 'admin' && !session.permissions?.load_custom_folder) {
+        res.setHeader('Content-Type', 'application/json');
+        res.statusCode = 403;
+        return res.end(JSON.stringify({ success: false, error: 'Access Denied: load_custom_folder permission required.' }));
+      }
       try {
         const payload = await parseJsonBody(req);
         const result = await uploadScanZipProxy(payload);

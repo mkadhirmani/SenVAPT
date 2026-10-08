@@ -2,7 +2,7 @@ import './src/server/loadEnv.js';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import crypto from 'crypto';
-import { execSync } from 'child_process';
+import { execSync, execFileSync } from 'child_process';
 import {
   testSshConnection,
   startRemoteStrixScan,
@@ -490,6 +490,17 @@ function strixBackendPlugin() {
           res.statusCode = 204;
           return res.end();
         }
+        const session = getAuthenticatedSession(req);
+        if (!session) {
+          res.setHeader('Content-Type', 'application/json');
+          res.statusCode = 401;
+          return res.end(JSON.stringify({ success: false, error: 'Unauthorized: Active authenticated session required to generate reports.' }));
+        }
+        if (session.role !== 'admin' && !session.permissions?.export_reports) {
+          res.setHeader('Content-Type', 'application/json');
+          res.statusCode = 403;
+          return res.end(JSON.stringify({ success: false, error: 'Access Denied: You do not have permission to export reports.' }));
+        }
         if (req.method !== 'POST') {
           res.statusCode = 405;
           return res.end(JSON.stringify({ error: 'Method Not Allowed' }));
@@ -552,7 +563,15 @@ function strixBackendPlugin() {
 
             fs.writeFileSync(tempHtml, htmlContent, 'utf8');
 
-            execSync(`"${chromePath}" --headless --disable-gpu --no-pdf-header-footer --run-all-compositor-stages-before-draw --print-to-pdf="${tempPdf}" "${tempHtml}"`, {
+            // Safe execFileSync (avoids shell invocation)
+            execFileSync(chromePath, [
+              '--headless',
+              '--disable-gpu',
+              '--no-pdf-header-footer',
+              '--run-all-compositor-stages-before-draw',
+              `--print-to-pdf=${tempPdf}`,
+              tempHtml
+            ], {
               timeout: 45000,
               stdio: ['ignore', 'pipe', 'pipe']
             });
@@ -1893,6 +1912,11 @@ function strixBackendPlugin() {
           res.statusCode = 401;
           return res.end(JSON.stringify({ success: false, error: 'Unauthorized: Valid session required.' }));
         }
+        if (session.role !== 'admin' && !session.permissions?.run_scans) {
+          res.setHeader('Content-Type', 'application/json');
+          res.statusCode = 403;
+          return res.end(JSON.stringify({ success: false, error: 'Access Denied: You do not have permission to launch security scans.' }));
+        }
         if (req.method !== 'POST') {
           res.statusCode = 405;
           return res.end('Method Not Allowed');
@@ -1922,6 +1946,11 @@ function strixBackendPlugin() {
           res.setHeader('Content-Type', 'application/json');
           res.statusCode = 401;
           return res.end(JSON.stringify({ success: false, error: 'Unauthorized: Valid session required.' }));
+        }
+        if (session.role !== 'admin' && !session.permissions?.run_scans) {
+          res.setHeader('Content-Type', 'application/json');
+          res.statusCode = 403;
+          return res.end(JSON.stringify({ success: false, error: 'Access Denied: You do not have permission to control security scans.' }));
         }
         if (req.method !== 'POST') {
           res.statusCode = 405;
@@ -2088,6 +2117,11 @@ function strixBackendPlugin() {
           res.statusCode = 401;
           return res.end(JSON.stringify({ success: false, error: 'Unauthorized: Valid session required.' }));
         }
+        if (session.role !== 'admin' && !session.permissions?.load_custom_folder) {
+          res.setHeader('Content-Type', 'application/json');
+          res.statusCode = 403;
+          return res.end(JSON.stringify({ success: false, error: 'Access Denied: load_custom_folder permission required.' }));
+        }
         if (req.method !== 'POST') {
           res.statusCode = 405;
           return res.end('Method Not Allowed');
@@ -2098,10 +2132,15 @@ function strixBackendPlugin() {
         req.on('end', () => {
           try {
             const { folderPath } = JSON.parse(body || '{}');
-            if (!folderPath) {
+            if (!folderPath || typeof folderPath !== 'string') {
               res.setHeader('Content-Type', 'application/json');
               res.statusCode = 400;
               return res.end(JSON.stringify({ success: false, error: 'Folder name or path is required.' }));
+            }
+            if (folderPath.includes('..') || folderPath.includes('\0')) {
+              res.setHeader('Content-Type', 'application/json');
+              res.statusCode = 400;
+              return res.end(JSON.stringify({ success: false, error: 'Path traversal detected: Relative path segments are strictly prohibited.' }));
             }
 
             const result = parseLocalStrixFolder(folderPath);
@@ -2123,6 +2162,11 @@ function strixBackendPlugin() {
           res.setHeader('Content-Type', 'application/json');
           res.statusCode = 401;
           return res.end(JSON.stringify({ success: false, error: 'Unauthorized: Valid session required.' }));
+        }
+        if (session.role !== 'admin' && !session.permissions?.run_scans) {
+          res.setHeader('Content-Type', 'application/json');
+          res.statusCode = 403;
+          return res.end(JSON.stringify({ success: false, error: 'Access Denied: You do not have permission to trigger scans.' }));
         }
         if (req.method !== 'POST') {
           res.statusCode = 405;
@@ -2153,6 +2197,11 @@ function strixBackendPlugin() {
           res.setHeader('Content-Type', 'application/json');
           res.statusCode = 401;
           return res.end(JSON.stringify({ success: false, error: 'Unauthorized: Valid session required.', folders: [] }));
+        }
+        if (session.role !== 'admin' && !session.permissions?.load_custom_folder) {
+          res.setHeader('Content-Type', 'application/json');
+          res.statusCode = 403;
+          return res.end(JSON.stringify({ success: false, error: 'Access Denied: load_custom_folder permission required.', folders: [] }));
         }
         try {
           const folders = listLocalScanFolders();
@@ -2227,6 +2276,11 @@ function strixBackendPlugin() {
           res.setHeader('Content-Type', 'application/json');
           res.statusCode = 401;
           return res.end(JSON.stringify({ success: false, error: 'Unauthorized: Valid session required.' }));
+        }
+        if (session.role !== 'admin' && !session.permissions?.load_custom_folder) {
+          res.setHeader('Content-Type', 'application/json');
+          res.statusCode = 403;
+          return res.end(JSON.stringify({ success: false, error: 'Access Denied: load_custom_folder permission required.' }));
         }
         if (req.method !== 'POST') {
           res.statusCode = 405;
