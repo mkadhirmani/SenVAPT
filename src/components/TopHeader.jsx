@@ -10,11 +10,17 @@ import {
   Shield,
   ShieldCheck,
   ShieldAlert,
-  ChevronDown
+  ChevronDown,
+  Eye,
+  EyeOff,
+  Lock,
+  X,
+  CheckCircle2,
+  AlertCircle
 } from 'lucide-react';
 import { SCAN_METADATA } from '../data/scanData';
 import { getStrixServerConfig } from '../utils/strixApi';
-import { checkUserPermission } from '../utils/auth';
+import { checkUserPermission, updateUserPassword, checkPasswordComplexity } from '../utils/auth';
 
 export default function TopHeader({ 
   activeTab, 
@@ -33,11 +39,56 @@ export default function TopHeader({
 }) {
   const [strixConfig, setStrixConfig] = useState(() => getStrixServerConfig());
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPasswords, setShowPasswords] = useState(false);
+  const [passwordError, setPasswordError] = useState('');
+  const [passwordSuccess, setPasswordSuccess] = useState('');
+  const [isSubmittingPassword, setIsSubmittingPassword] = useState(false);
   const isAdmin = currentUser?.role === 'admin';
 
   useEffect(() => {
     setStrixConfig(getStrixServerConfig());
   }, []);
+
+  const handleChangePassword = async (e) => {
+    e.preventDefault();
+    setPasswordError('');
+    setPasswordSuccess('');
+
+    if (!isAdmin && !currentPassword) {
+      setPasswordError('Please enter your current password.');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setPasswordError('New password and confirmation do not match.');
+      return;
+    }
+    const complexity = checkPasswordComplexity(newPassword, currentUser?.username);
+    if (!complexity.valid) {
+      setPasswordError(complexity.error);
+      return;
+    }
+
+    setIsSubmittingPassword(true);
+    try {
+      await updateUserPassword(currentUser.username, newPassword, currentPassword);
+      setPasswordSuccess('Password successfully updated!');
+      setTimeout(() => {
+        setIsChangePasswordOpen(false);
+        setCurrentPassword('');
+        setNewPassword('');
+        setConfirmPassword('');
+        setPasswordSuccess('');
+      }, 1500);
+    } catch (err) {
+      setPasswordError(err.message || 'Failed to update password.');
+    } finally {
+      setIsSubmittingPassword(false);
+    }
+  };
 
   const getTabTitle = () => {
     switch (activeTab) {
@@ -231,6 +282,22 @@ export default function TopHeader({
                 <button
                   onClick={() => {
                     setIsUserMenuOpen(false);
+                    setIsChangePasswordOpen(true);
+                    setPasswordError('');
+                    setPasswordSuccess('');
+                    setCurrentPassword('');
+                    setNewPassword('');
+                    setConfirmPassword('');
+                  }}
+                  className="w-full px-3 py-2 rounded-xl text-left text-xs font-heading font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-white/10 flex items-center gap-2 transition-colors cursor-pointer"
+                >
+                  <Key className="w-3.5 h-3.5 text-amber-500" />
+                  <span>Change Password</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    setIsUserMenuOpen(false);
                     if (onLogout) onLogout();
                   }}
                   className="w-full px-3 py-2 rounded-xl text-left text-xs font-heading font-bold text-rose-500 hover:bg-rose-500/10 flex items-center gap-2 transition-colors cursor-pointer"
@@ -243,6 +310,130 @@ export default function TopHeader({
           </div>
         )}
       </div>
+
+      {/* Change Password Modal */}
+      {isChangePasswordOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fadeIn">
+          <div className={`w-full max-w-md p-6 rounded-2xl border shadow-2xl relative ${
+            theme === 'dark' ? 'bg-[#001B41] border-[#0A3778] text-white' : 'bg-white border-slate-200 text-[#001B41]'
+          }`}>
+            <button
+              onClick={() => setIsChangePasswordOpen(false)}
+              className="absolute top-4 right-4 p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-white cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            <div className="flex items-center gap-2.5 mb-4">
+              <div className="w-8 h-8 rounded-lg bg-[#006FE3]/15 text-[#006FE3] flex items-center justify-center">
+                <Lock className="w-4 h-4" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold font-heading">Change Password</h3>
+                <p className="text-[11px] font-mono text-slate-400">
+                  Account: @{currentUser?.username || 'user'}
+                </p>
+              </div>
+            </div>
+
+            {passwordError && (
+              <div className="mb-4 p-3 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-600 dark:text-rose-400 text-xs font-mono font-bold flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                <span>{passwordError}</span>
+              </div>
+            )}
+
+            {passwordSuccess && (
+              <div className="mb-4 p-3 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 text-xs font-mono font-bold flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
+                <span>{passwordSuccess}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleChangePassword} className="space-y-4">
+              {!isAdmin && (
+                <div className="space-y-1">
+                  <label className="text-xs font-mono font-bold text-slate-600 dark:text-slate-300 uppercase font-heading">Current Password</label>
+                  <input
+                    type={showPasswords ? "text" : "password"}
+                    required
+                    value={currentPassword}
+                    onChange={(e) => setCurrentPassword(e.target.value)}
+                    placeholder="Enter current password"
+                    className={`w-full px-3.5 py-2.5 rounded-xl font-mono text-xs border transition-all ${
+                      theme === 'dark' 
+                        ? 'border-[#0A3778] bg-[#001127] text-white focus:outline-none focus:border-[#006FE3]' 
+                        : 'border-slate-300 bg-slate-50 text-slate-900 focus:outline-none focus:border-[#006FE3] focus:bg-white'
+                    }`}
+                  />
+                </div>
+              )}
+
+              <div className="space-y-1">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-mono font-bold text-slate-600 dark:text-slate-300 uppercase font-heading">New Password</label>
+                  <button
+                    type="button"
+                    onClick={() => setShowPasswords(!showPasswords)}
+                    className="text-[11px] font-mono text-[#006FE3] hover:text-[#4D9AEC] flex items-center gap-1 cursor-pointer font-bold"
+                  >
+                    {showPasswords ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                    <span>{showPasswords ? 'Hide' : 'Show'}</span>
+                  </button>
+                </div>
+                <input
+                  type={showPasswords ? "text" : "password"}
+                  required
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder="Enter strong, unique password"
+                  className={`w-full px-3.5 py-2.5 rounded-xl font-mono text-xs border transition-all ${
+                    theme === 'dark' 
+                      ? 'border-[#0A3778] bg-[#001127] text-white focus:outline-none focus:border-[#006FE3]' 
+                      : 'border-slate-300 bg-slate-50 text-slate-900 focus:outline-none focus:border-[#006FE3] focus:bg-white'
+                  }`}
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-mono font-bold text-slate-600 dark:text-slate-300 uppercase font-heading">Confirm New Password</label>
+                <input
+                  type={showPasswords ? "text" : "password"}
+                  required
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  placeholder="Re-type new password"
+                  className={`w-full px-3.5 py-2.5 rounded-xl font-mono text-xs border transition-all ${
+                    theme === 'dark' 
+                      ? 'border-[#0A3778] bg-[#001127] text-white focus:outline-none focus:border-[#006FE3]' 
+                      : 'border-slate-300 bg-slate-50 text-slate-900 focus:outline-none focus:border-[#006FE3] focus:bg-white'
+                  }`}
+                />
+                <p className="text-[10px] font-mono text-slate-400 mt-1">
+                  Enforces &gt;= 8 characters, 3 character classes (upper, lower, digits, symbols), and cannot match username.
+                </p>
+              </div>
+
+              <div className="pt-3 flex items-center justify-end gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setIsChangePasswordOpen(false)}
+                  className="px-4 py-2.5 rounded-xl text-xs font-heading font-semibold text-slate-500 hover:text-slate-800 dark:hover:text-white cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmittingPassword}
+                  className="px-5 py-2.5 rounded-xl bg-[#006FE3] hover:bg-[#005bbd] text-white font-bold text-xs font-heading transition-all cursor-pointer shadow-md shadow-[#006FE3]/25 active:scale-[0.98] disabled:opacity-50"
+                >
+                  {isSubmittingPassword ? 'Updating...' : 'Update Password'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </header>
   );
 }

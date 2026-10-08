@@ -41,6 +41,8 @@ import {
   updateUserPermissions, 
   createNewUser, 
   deleteUser,
+  updateUserPassword,
+  checkPasswordComplexity,
   ALL_PERMISSIONS, 
   getActiveSessionCount,
   getAuthHeaders
@@ -57,6 +59,10 @@ export default function AdminUserManagement({
   const [selectedUserId, setSelectedUserId] = useState('user');
   const [isAddUserOpen, setIsAddUserOpen] = useState(false);
   const [showNewUserPassword, setShowNewUserPassword] = useState(true);
+  const [passwordResetUser, setPasswordResetUser] = useState(null);
+  const [newPasswordValue, setNewPasswordValue] = useState('');
+  const [showResetPassword, setShowResetPassword] = useState(false);
+  const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
   const [statusMessage, setStatusMessage] = useState(null);
   const [isRefreshingUsers, setIsRefreshingUsers] = useState(false);
 
@@ -144,6 +150,12 @@ export default function AdminUserManagement({
 
     try {
       const cleanUsername = newUserData.username.toLowerCase().trim();
+      const complexity = checkPasswordComplexity(newUserData.password, cleanUsername);
+      if (!complexity.valid) {
+        showFeedback(complexity.error);
+        return;
+      }
+
       const updated = await createNewUser({
         username: cleanUsername,
         name: newUserData.role === 'admin' ? 'Administrator' : newUserData.username,
@@ -159,6 +171,32 @@ export default function AdminUserManagement({
       showFeedback(`User "${cleanUsername}" created with encrypted credentials!`);
     } catch (err) {
       showFeedback(err.message || 'Failed to create user');
+    }
+  };
+
+  const handleResetPasswordSubmit = async (e) => {
+    e?.preventDefault();
+    if (!passwordResetUser || !newPasswordValue) {
+      showFeedback('Password is required');
+      return;
+    }
+
+    const complexity = checkPasswordComplexity(newPasswordValue, passwordResetUser.username);
+    if (!complexity.valid) {
+      showFeedback(complexity.error);
+      return;
+    }
+
+    setIsUpdatingPassword(true);
+    try {
+      await updateUserPassword(passwordResetUser.username, newPasswordValue);
+      showFeedback(`Password for "${passwordResetUser.username}" successfully updated!`);
+      setPasswordResetUser(null);
+      setNewPasswordValue('');
+    } catch (err) {
+      showFeedback(err.message || 'Failed to update password');
+    } finally {
+      setIsUpdatingPassword(false);
     }
   };
 
@@ -572,6 +610,23 @@ export default function AdminUserManagement({
                           <span>View Findings</span>
                         </button>
 
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setPasswordResetUser(user);
+                            setNewPasswordValue('');
+                            setShowResetPassword(false);
+                          }}
+                          className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                            theme === 'dark'
+                              ? 'text-slate-400 hover:text-amber-400 hover:bg-amber-400/10'
+                              : 'text-slate-500 hover:text-amber-600 hover:bg-amber-50'
+                          }`}
+                          title={`Reset password for ${user.username}`}
+                        >
+                          <Key className="w-3.5 h-3.5" />
+                        </button>
+
                         {!isAdmin && (
                           <button
                             onClick={() => handleDeleteUser(user.id)}
@@ -838,6 +893,9 @@ export default function AdminUserManagement({
                     {showNewUserPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
                 </div>
+                <p className="text-[10px] font-mono text-slate-400 mt-1">
+                  Min 8 chars, 3 of uppercase, lowercase, numbers, symbols. Cannot match username.
+                </p>
               </div>
 
               <div className="space-y-1">
@@ -869,6 +927,97 @@ export default function AdminUserManagement({
                   className="px-5 py-2.5 rounded-xl bg-[#006FE3] hover:bg-[#005bbd] text-white font-bold text-xs font-heading transition-all cursor-pointer shadow-md shadow-[#006FE3]/25 active:scale-[0.98]"
                 >
                   Create User
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Reset Password Modal */}
+      {passwordResetUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fadeIn">
+          <div className={`w-full max-w-md p-6 rounded-2xl border shadow-2xl relative ${
+            theme === 'dark' ? 'bg-[#001B41] border-[#0A3778] text-white' : 'bg-white border-slate-200 text-[#001B41]'
+          }`}>
+            <button
+              onClick={() => {
+                setPasswordResetUser(null);
+                setNewPasswordValue('');
+              }}
+              className="absolute top-4 right-4 p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-white cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            <div className="flex items-center gap-2.5 mb-4">
+              <div className="w-8 h-8 rounded-lg bg-amber-500/15 text-amber-500 flex items-center justify-center">
+                <Key className="w-4 h-4" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold font-heading">Reset User Password</h3>
+                <p className="text-[11px] font-mono text-slate-400">
+                  Target: @{passwordResetUser.username} ({passwordResetUser.role})
+                </p>
+              </div>
+            </div>
+
+            <form onSubmit={handleResetPasswordSubmit} className="space-y-4">
+              <div className="space-y-1">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-mono font-bold text-slate-600 dark:text-slate-300 uppercase font-heading">New Password</label>
+                  <button
+                    type="button"
+                    onClick={() => setShowResetPassword(!showResetPassword)}
+                    className="text-[11px] font-mono text-[#006FE3] hover:text-[#4D9AEC] flex items-center gap-1 cursor-pointer font-bold"
+                  >
+                    {showResetPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                    <span>{showResetPassword ? 'Hide' : 'Show'}</span>
+                  </button>
+                </div>
+                <div className="relative">
+                  <input
+                    type={showResetPassword ? "text" : "password"}
+                    required
+                    value={newPasswordValue}
+                    onChange={(e) => setNewPasswordValue(e.target.value)}
+                    placeholder="Enter strong, unique password"
+                    className={`w-full pl-3.5 pr-10 py-2.5 rounded-xl font-mono text-xs border transition-all ${
+                      theme === 'dark' 
+                        ? 'border-[#0A3778] bg-[#001127] text-white focus:outline-none focus:border-[#006FE3]' 
+                        : 'border-slate-300 bg-slate-50 text-slate-900 focus:outline-none focus:border-[#006FE3] focus:bg-white'
+                    }`}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowResetPassword(!showResetPassword)}
+                    className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-[#006FE3] cursor-pointer"
+                  >
+                    {showResetPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+                <p className="text-[10px] font-mono text-slate-400 mt-1">
+                  Enforces &gt;= 8 characters, 3 character classes (upper, lower, digits, symbols), and cannot match username.
+                </p>
+              </div>
+
+              <div className="pt-3 flex items-center justify-end gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPasswordResetUser(null);
+                    setNewPasswordValue('');
+                  }}
+                  className="px-4 py-2.5 rounded-xl text-xs font-heading font-semibold text-slate-500 hover:text-slate-800 dark:hover:text-white cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isUpdatingPassword}
+                  className="px-5 py-2.5 rounded-xl bg-[#006FE3] hover:bg-[#005bbd] text-white font-bold text-xs font-heading transition-all cursor-pointer shadow-md shadow-[#006FE3]/25 active:scale-[0.98] disabled:opacity-50"
+                >
+                  {isUpdatingPassword ? 'Updating...' : 'Update Password'}
                 </button>
               </div>
             </form>

@@ -341,9 +341,41 @@ export async function logoutUser() {
 }
 
 /**
+ * Client-Side Password Complexity Checker
+ * Enforces >=8 chars, character variety, and rejects guessable passwords.
+ */
+export function checkPasswordComplexity(password, username = '') {
+  if (!password || typeof password !== 'string') {
+    return { valid: false, error: 'Password is required.' };
+  }
+  const trimmed = password.trim();
+  if (trimmed.length < 8) {
+    return { valid: false, error: 'Password must be at least 8 characters long.' };
+  }
+  if (username && trimmed.toLowerCase() === username.toLowerCase().trim()) {
+    return { valid: false, error: 'Password cannot be the same as your username.' };
+  }
+  const weakList = ['admin', 'user', 'sales', 'sales123', 'admin123', 'user123', 'password', '123456', '12345678', 'qwerty', 'welcome'];
+  if (weakList.includes(trimmed.toLowerCase())) {
+    return { valid: false, error: 'This password is too common. Please choose a strong, unique password.' };
+  }
+  const hasUpper = /[A-Z]/.test(trimmed);
+  const hasLower = /[a-z]/.test(trimmed);
+  const hasDigit = /[0-9]/.test(trimmed);
+  const hasSpecial = /[^A-Za-z0-9]/.test(trimmed);
+  const varietyCount = [hasUpper, hasLower, hasDigit, hasSpecial].filter(Boolean).length;
+  if (varietyCount < 3) {
+    return { 
+      valid: false, 
+      error: 'Password must include at least 3 of: uppercase letters, lowercase letters, numbers, and symbols.' 
+    };
+  }
+  return { valid: true };
+}
+
+/**
  * Authenticate user credentials securely:
- * Authenticates via backend /api/auth/login endpoint, with client-side fallback
- * to local store and automatic Supabase original password repair.
+ * Authenticates via backend /api/auth/login endpoint.
  */
 export async function authenticateUser(usernameOrEmail, password, selectedRole = null) {
   const trimmedInput = (usernameOrEmail || '').trim().toLowerCase();
@@ -376,14 +408,14 @@ export async function authenticateUser(usernameOrEmail, password, selectedRole =
       return user;
     }
 
-    if (data.error && data.error.startsWith('Access Denied:')) {
+    if (data.error) {
       throw new Error(data.error);
     }
   } catch (err) {
-    if (err.message && err.message.startsWith('Access Denied:')) {
+    if (err.message) {
       throw err;
     }
-    console.warn('Backend login attempt note:', err.message);
+    console.warn('Backend login attempt note:', err);
   }
 
   throw new Error('Invalid username or password.');
@@ -417,46 +449,45 @@ export async function updateUserPermissions(userId, newPermissions) {
 
 /**
  * Update password for any user or admin
- * Syncs securely to backend server
+ * Syncs securely to backend server and validates complexity
  */
-export async function updateUserPassword(userIdOrUsername, newPassword) {
+export async function updateUserPassword(userIdOrUsername, newPassword, currentPassword = '') {
   if (!newPassword || !newPassword.trim()) {
     throw new Error('New password cannot be empty.');
   }
 
-  const users = getUsersList();
-  const trimmed = newPassword.trim();
-  let found = false;
+  const complexity = checkPasswordComplexity(newPassword, userIdOrUsername);
+  if (!complexity.valid) {
+    throw new Error(complexity.error);
+  }
 
-  const updated = users.map(u => {
-    if (u.id === userIdOrUsername || u.username.toLowerCase() === userIdOrUsername.toLowerCase()) {
-      found = true;
-      return {
-        ...u,
-        password: trimmed
-      };
+  try {
+    const res = await fetch('/api/users/update-password', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAuthHeaders()
+      },
+      body: JSON.stringify({
+        targetUsername: userIdOrUsername,
+        currentPassword,
+        newPassword: newPassword.trim()
+      })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.success) {
+      throw new Error(data.error || 'Failed to update password.');
     }
-    return u;
-  });
-
-  if (!found) {
-    throw new Error(`User "${userIdOrUsername}" not found.`);
+  } catch (err) {
+    throw err;
   }
 
-  saveUsersList(updated);
-
-  const current = getCurrentUser();
-  if (current && (current.id === userIdOrUsername || current.username.toLowerCase() === userIdOrUsername.toLowerCase())) {
-    const updatedCurrent = updated.find(u => u.id === current.id || u.username.toLowerCase() === current.username.toLowerCase());
-    sessionStorage.setItem(CURRENT_USER_KEY, JSON.stringify(updatedCurrent));
-  }
-
-  return updated;
+  return true;
 }
 
 /**
  * Add a new user (Admin only)
- * Persists user to server and immediately syncs original password to Supabase vapt_users table.
+ * Persists user to server with complexity validation and PBKDF2 hashing.
  */
 export async function createNewUser(userData) {
   const cleanUsername = (userData.username || '').toLowerCase().trim();
@@ -466,6 +497,11 @@ export async function createNewUser(userData) {
   }
   if (!userData.password || !userData.password.trim()) {
     throw new Error('Password is required.');
+  }
+
+  const complexity = checkPasswordComplexity(userData.password, cleanUsername);
+  if (!complexity.valid) {
+    throw new Error(complexity.error);
   }
 
   const rawPassword = userData.password.trim();
@@ -487,8 +523,16 @@ export async function createNewUser(userData) {
       if (data && data.success && Array.isArray(data.users)) {
         updatedUsers = data.users;
       }
+    } else {
+      const errData = await res.json().catch(() => ({}));
+      if (errData && errData.error) {
+        throw new Error(errData.error);
+      }
     }
   } catch (e) {
+    if (e.message && !e.message.includes('fetch')) {
+      throw e;
+    }
     console.warn('Backend user create API note:', e);
   }
 

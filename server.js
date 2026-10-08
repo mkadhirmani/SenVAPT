@@ -177,8 +177,63 @@ function saveGlobalLlmConfig(conf) {
 }
 
 /**
- * Cryptographic Password Hashing & Verification (PBKDF2-SHA512 with 100,000 iterations & random salt)
+ * Cryptographic Password Management & Enforcement
+ * - Constant-time comparison to prevent side-channel timing attacks
+ * - PBKDF2-SHA512 hashing with 100,000 iterations & random salt
+ * - Enterprise complexity validation & blocking of default/guessable credentials
  */
+const DISALLOWED_WEAK_PASSWORDS = new Set([
+  'admin', 'user', 'sales', 'sales123', 'admin123', 'user123', 'root', 'toor',
+  'password', 'pass123', '123456', '12345678', 'qwerty', 'welcome', 'guest',
+  '[managed_by_auth_server]'
+]);
+
+function constantTimeCompare(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string' || !a || !b) return false;
+  const bufA = Buffer.from(a, 'utf-8');
+  const bufB = Buffer.from(b, 'utf-8');
+  if (bufA.length !== bufB.length) return false;
+  return crypto.timingSafeEqual(bufA, bufB);
+}
+
+function isWeakPassword(password, username = '') {
+  if (!password || typeof password !== 'string') return true;
+  const trimmed = password.trim();
+  if (trimmed.length < 8) return true;
+  const lower = trimmed.toLowerCase();
+  if (DISALLOWED_WEAK_PASSWORDS.has(lower)) return true;
+  if (username && lower === username.toLowerCase().trim()) return true;
+  return false;
+}
+
+function validatePasswordComplexity(password, username = '') {
+  if (!password || typeof password !== 'string') {
+    return { valid: false, error: 'Password is required.' };
+  }
+  const trimmed = password.trim();
+  if (trimmed.length < 8) {
+    return { valid: false, error: 'Password must be at least 8 characters long.' };
+  }
+  if (username && trimmed.toLowerCase() === username.toLowerCase().trim()) {
+    return { valid: false, error: 'Password cannot be the same as your username.' };
+  }
+  if (DISALLOWED_WEAK_PASSWORDS.has(trimmed.toLowerCase())) {
+    return { valid: false, error: 'This password is too common or easily guessable. Please choose a strong, unique password.' };
+  }
+  const hasUpper = /[A-Z]/.test(trimmed);
+  const hasLower = /[a-z]/.test(trimmed);
+  const hasDigit = /[0-9]/.test(trimmed);
+  const hasSpecial = /[^A-Za-z0-9]/.test(trimmed);
+  const varietyCount = [hasUpper, hasLower, hasDigit, hasSpecial].filter(Boolean).length;
+  if (varietyCount < 3) {
+    return { 
+      valid: false, 
+      error: 'Password must contain at least 3 of: uppercase letters, lowercase letters, numbers, and special characters.' 
+    };
+  }
+  return { valid: true };
+}
+
 function hashPassword(password) {
   if (!password) return '';
   const salt = crypto.randomBytes(16).toString('hex');
@@ -189,6 +244,7 @@ function hashPassword(password) {
 function verifyPassword(password, stored) {
   if (!password || !stored) return false;
   if (typeof stored !== 'string') return false;
+  if (stored === '[MANAGED_BY_AUTH_SERVER]') return false;
   if (stored.startsWith('pbkdf2$')) {
     const parts = stored.split('$');
     if (parts.length === 3) {
@@ -202,18 +258,27 @@ function verifyPassword(password, stored) {
       }
     }
   }
-  return (password === stored) || (password.toLowerCase() === stored.toLowerCase());
+  return constantTimeCompare(password, stored);
 }
+
+const filterAllowedAltPasswords = (raw, username) => {
+  if (!raw || typeof raw !== 'string') return '';
+  return raw
+    .split(',')
+    .map(p => p.trim())
+    .filter(p => p && !isWeakPassword(p, username))
+    .join(',');
+};
 
 // Global Users Store Helper (Credentials loaded dynamically from Supabase and store)
 const getDefaultUsersSeed = () => {
   loadEnvVariables();
   const adminPass = process.env.ADMIN_PASSWORD || '@A198vapt';
-  const adminAlt = process.env.ADMIN_ALT_PASSWORDS || '@admin1vapt,@Admin1vapt,admin,admin123';
-  const userPass = process.env.USER_PASSWORD || '@user1vapt';
-  const userAlt = process.env.USER_ALT_PASSWORDS || '@User1vapt,user,user123';
-  const salesPass = process.env.SALES_PASSWORD || '@sales1vapt';
-  const salesAlt = process.env.SALES_ALT_PASSWORDS || '@Sales1vapt,sales,sales123';
+  const adminAlt = filterAllowedAltPasswords(process.env.ADMIN_ALT_PASSWORDS || '@Admin1vapt', 'admin');
+  const userPass = process.env.USER_PASSWORD || '@User1vapt';
+  const userAlt = filterAllowedAltPasswords(process.env.USER_ALT_PASSWORDS || '@user1vapt', 'user');
+  const salesPass = process.env.SALES_PASSWORD || '@Sales1vapt';
+  const salesAlt = filterAllowedAltPasswords(process.env.SALES_ALT_PASSWORDS || '@sales1vapt', 'sales123');
 
   return [
     {
@@ -309,10 +374,10 @@ function getGlobalUsersStoreRaw() {
         const merged = defaults.map(defUser => {
           const match = list.find(u => u.id === defUser.id || u.username?.toLowerCase() === defUser.username?.toLowerCase());
           if (!match) return defUser;
-          const pass = (match.password && match.password !== '[MANAGED_BY_AUTH_SERVER]')
+          const pass = (match.password && match.password !== '[MANAGED_BY_AUTH_SERVER]' && !isWeakPassword(match.password, defUser.username))
             ? match.password
             : (defUser.password || '');
-          const altPass = match.altPassword || defUser.altPassword || '';
+          const altPass = filterAllowedAltPasswords(match.altPassword || defUser.altPassword || '', defUser.username);
           return {
             ...defUser,
             ...match,
@@ -367,56 +432,72 @@ function saveGlobalUsersStore(users) {
 // In-Memory Cryptographic Session Registry
 const activeSessions = new Map(); // token -> { user, role, token, expiresAt, createdAt }
 
-// Login Brute-Force Rate Limiter (Max 5 failed attempts per 15 minutes per IP+username)
+// Login Brute-Force Rate Limiter & Account Lockout
+// - Max 5 failed attempts per 15 minutes per IP+Username (Targeted Account Lockout)
+// - Max 15 failed attempts per 15 minutes per IP (IP-wide Lockout)
 const failedLoginAttempts = new Map(); // key -> { count, lockedUntil }
+const ipFailedAttempts = new Map();    // ip -> { count, lockedUntil }
+
+function getClientIp(req) {
+  const forwarded = req.headers['x-forwarded-for'] || '';
+  return forwarded.split(',')[0].trim() || req.socket?.remoteAddress || '127.0.0.1';
+}
 
 function getRateLimitKey(req, username) {
-  const forwarded = req.headers['x-forwarded-for'] || '';
-  const ip = forwarded.split(',')[0].trim() || req.socket.remoteAddress || '127.0.0.1';
-  return `${ip}:${(username || '').toLowerCase()}`;
+  const ip = getClientIp(req);
+  return `${ip}:${(username || '').toLowerCase().trim()}`;
 }
 
-function isLoginRateLimited(key) {
-  const record = failedLoginAttempts.get(key);
-  if (!record) return false;
-  if (record.lockedUntil && Date.now() < record.lockedUntil) {
+function isLoginRateLimited(req, username) {
+  const now = Date.now();
+  const ip = getClientIp(req);
+
+  // Check IP-wide lockout
+  const ipRecord = ipFailedAttempts.get(ip);
+  if (ipRecord && ipRecord.lockedUntil && now < ipRecord.lockedUntil) {
     return true;
   }
-  if (record.lockedUntil && Date.now() >= record.lockedUntil) {
+  if (ipRecord && ipRecord.lockedUntil && now >= ipRecord.lockedUntil) {
+    ipFailedAttempts.delete(ip);
+  }
+
+  // Check Account-specific lockout for this IP
+  const key = getRateLimitKey(req, username);
+  const userRecord = failedLoginAttempts.get(key);
+  if (userRecord && userRecord.lockedUntil && now < userRecord.lockedUntil) {
+    return true;
+  }
+  if (userRecord && userRecord.lockedUntil && now >= userRecord.lockedUntil) {
     failedLoginAttempts.delete(key);
-    return false;
   }
   return false;
 }
 
-function recordFailedLogin(key) {
-  const record = failedLoginAttempts.get(key) || { count: 0, lockedUntil: null };
-  record.count += 1;
-  if (record.count >= 5) {
-    record.lockedUntil = Date.now() + 15 * 60 * 1000; // 15 minute lockout
+function recordFailedLogin(req, username) {
+  const now = Date.now();
+  const ip = getClientIp(req);
+
+  // Increment IP-wide failed attempts
+  const ipRec = ipFailedAttempts.get(ip) || { count: 0, lockedUntil: null };
+  ipRec.count += 1;
+  if (ipRec.count >= 15) {
+    ipRec.lockedUntil = now + 15 * 60 * 1000; // 15-minute IP lockout
   }
-  failedLoginAttempts.set(key, record);
+  ipFailedAttempts.set(ip, ipRec);
+
+  // Increment account-specific failed attempts
+  const key = getRateLimitKey(req, username);
+  const userRec = failedLoginAttempts.get(key) || { count: 0, lockedUntil: null };
+  userRec.count += 1;
+  if (userRec.count >= 5) {
+    userRec.lockedUntil = now + 15 * 60 * 1000; // 15-minute Account lockout
+  }
+  failedLoginAttempts.set(key, userRec);
 }
 
-function clearFailedLogin(key) {
+function clearFailedLogin(req, username) {
+  const key = getRateLimitKey(req, username);
   failedLoginAttempts.delete(key);
-}
-
-// Constant-Time String Comparison (Prevents Timing Side-Channel Attacks)
-function constantTimeCompare(a, b) {
-  if (typeof a !== 'string' || typeof b !== 'string' || !a || !b) return false;
-  const bufA = Buffer.from(a, 'utf-8');
-  const bufB = Buffer.from(b, 'utf-8');
-  if (bufA.length === bufB.length && crypto.timingSafeEqual(bufA, bufB)) {
-    return true;
-  }
-  // Case-insensitive comparison check
-  const lowerA = Buffer.from(a.toLowerCase(), 'utf-8');
-  const lowerB = Buffer.from(b.toLowerCase(), 'utf-8');
-  if (lowerA.length === lowerB.length && crypto.timingSafeEqual(lowerA, lowerB)) {
-    return true;
-  }
-  return false;
 }
 
 const SESSION_SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex');
@@ -776,14 +857,26 @@ const server = http.createServer(async (req, res) => {
         return res.end(JSON.stringify({ success: false, error: 'Please enter both username and password.' }));
       }
 
-      // Check Rate Limit (Anti-Brute Force)
-      const rateLimitKey = getRateLimitKey(req, trimmedInput);
-      if (isLoginRateLimited(rateLimitKey)) {
+      // Check Rate Limit (Anti-Brute Force Lockout)
+      if (isLoginRateLimited(req, trimmedInput)) {
         res.setHeader('Content-Type', 'application/json');
+        res.setHeader('Retry-After', '900');
         res.statusCode = 429;
         return res.end(JSON.stringify({ 
           success: false, 
           error: 'Too many failed login attempts. Account temporarily locked for 15 minutes for security.' 
+        }));
+      }
+
+      // Explicitly reject known default/weak credentials or password matching username
+      if (isWeakPassword(trimmedPass, trimmedInput)) {
+        console.warn(`[AUTH REJECTED] Weak or default credentials rejected for "${trimmedInput}".`);
+        recordFailedLogin(req, trimmedInput);
+        res.setHeader('Content-Type', 'application/json');
+        res.statusCode = 401;
+        return res.end(JSON.stringify({ 
+          success: false, 
+          error: 'Invalid credentials. Weak or default passwords are not permitted.' 
         }));
       }
 
@@ -805,8 +898,8 @@ const server = http.createServer(async (req, res) => {
           userFoundInDb = true;
           const row = supaUsers[0];
           let valid = false;
-          if (row.password) {
-            valid = verifyPassword(trimmedPass, row.password) || (row.password === trimmedPass);
+          if (row.password && row.password !== '[MANAGED_BY_AUTH_SERVER]') {
+            valid = verifyPassword(trimmedPass, row.password);
           }
 
           if (valid) {
@@ -838,10 +931,18 @@ const server = http.createServer(async (req, res) => {
             u.username?.toLowerCase() === trimmedInput || 
             (u.email && u.email.toLowerCase() === trimmedInput)
           );
-          if (localMatch && (localMatch.password || localMatch.altPassword)) {
-            const valid = verifyPassword(trimmedPass, localMatch.password) ||
-              (localMatch.password === trimmedPass) ||
-              (localMatch.altPassword && localMatch.altPassword.split(',').map(p => p.trim()).includes(trimmedPass));
+          if (localMatch) {
+            let valid = false;
+            if (localMatch.password && localMatch.password !== '[MANAGED_BY_AUTH_SERVER]') {
+              valid = verifyPassword(trimmedPass, localMatch.password);
+            }
+            if (!valid && localMatch.altPassword) {
+              const allowedAlts = localMatch.altPassword
+                .split(',')
+                .map(p => p.trim())
+                .filter(p => p && !isWeakPassword(p, trimmedInput));
+              valid = allowedAlts.some(p => verifyPassword(trimmedPass, p));
+            }
             if (valid) {
               console.log(`[AUTH SUCCESS] Password verified via secure local credentials store for "${localMatch.username}".`);
               matched = { ...localMatch };
@@ -854,7 +955,7 @@ const server = http.createServer(async (req, res) => {
       }
 
       if (!matched) {
-        recordFailedLogin(rateLimitKey);
+        recordFailedLogin(req, trimmedInput);
         res.setHeader('Content-Type', 'application/json');
         res.statusCode = 401;
         return res.end(JSON.stringify({ success: false, error: 'Invalid username or password.' }));
@@ -867,7 +968,7 @@ const server = http.createServer(async (req, res) => {
       }
 
       // Clear failed attempts upon successful authentication
-      clearFailedLogin(rateLimitKey);
+      clearFailedLogin(req, trimmedInput);
 
       const sanitizedUser = { ...matched };
       delete sanitizedUser.password;
@@ -1203,6 +1304,13 @@ const server = http.createServer(async (req, res) => {
         return res.end(JSON.stringify({ success: false, error: 'Password is required.' }));
       }
 
+      const complexity = validatePasswordComplexity(userData.password, cleanUsername);
+      if (!complexity.valid) {
+        res.setHeader('Content-Type', 'application/json');
+        res.statusCode = 400;
+        return res.end(JSON.stringify({ success: false, error: complexity.error }));
+      }
+
       let supaList = [];
       try {
         const { data: supaUsers } = await supabase.from('vapt_users').select('*');
@@ -1218,11 +1326,12 @@ const server = http.createServer(async (req, res) => {
         res.statusCode = 400;
         return res.end(JSON.stringify({ success: false, error: `User "${cleanUsername}" already exists.` }));
       }
+      const hashedPassword = hashPassword(userData.password.trim());
       const newUser = {
         id: `user-${Date.now()}`,
         username: cleanUsername,
         email: userData.email || `${cleanUsername}@sennovate.com`,
-        password: userData.password.trim(),
+        password: hashedPassword,
         name: userData.name || userData.username,
         role: userData.role || 'user',
         title: userData.title || (userData.role === 'admin' ? 'Administrator' : 'Security Analyst'),
@@ -1336,6 +1445,82 @@ const server = http.createServer(async (req, res) => {
       res.setHeader('Content-Type', 'application/json');
       res.statusCode = 200;
       return res.end(JSON.stringify({ success: true, users: getSanitizedUsersStore() }));
+    } catch (e) {
+      res.setHeader('Content-Type', 'application/json');
+      res.statusCode = 400;
+      return res.end(JSON.stringify({ success: false, error: e.message }));
+    }
+  }
+
+  // Update Password for User or Admin (Enforces Password Complexity & Cryptographic Hashing)
+  if (pathname === '/api/users/update-password' && req.method === 'POST') {
+    const session = getAuthenticatedSession(req);
+    if (!session) {
+      res.setHeader('Content-Type', 'application/json');
+      res.statusCode = 401;
+      return res.end(JSON.stringify({ success: false, error: 'Unauthorized: Active authenticated session required.' }));
+    }
+    try {
+      const { targetUsername, currentPassword, newPassword } = await parseJsonBody(req);
+      const cleanTarget = (targetUsername || session.user.username || '').toLowerCase().trim();
+      const isAdmin = session.role === 'admin';
+
+      // Non-admins can only change their own password and must verify current password
+      if (!isAdmin && cleanTarget !== session.user.username.toLowerCase()) {
+        res.setHeader('Content-Type', 'application/json');
+        res.statusCode = 403;
+        return res.end(JSON.stringify({ success: false, error: 'Forbidden: You can only update your own password.' }));
+      }
+
+      const existingUsers = getGlobalUsersStoreRaw();
+      const targetUser = existingUsers.find(u => u.username?.toLowerCase() === cleanTarget || u.id === cleanTarget);
+      if (!targetUser) {
+        res.setHeader('Content-Type', 'application/json');
+        res.statusCode = 404;
+        return res.end(JSON.stringify({ success: false, error: `User "${cleanTarget}" not found.` }));
+      }
+
+      // If non-admin is updating their own password, verify current password
+      if (!isAdmin) {
+        if (!currentPassword) {
+          res.setHeader('Content-Type', 'application/json');
+          res.statusCode = 400;
+          return res.end(JSON.stringify({ success: false, error: 'Current password is required.' }));
+        }
+        const isCurrentValid = verifyPassword(currentPassword, targetUser.password) ||
+          ((targetUser.altPassword || '').split(',').map(s => s.trim()).includes(currentPassword));
+        if (!isCurrentValid) {
+          res.setHeader('Content-Type', 'application/json');
+          res.statusCode = 400;
+          return res.end(JSON.stringify({ success: false, error: 'Current password is incorrect.' }));
+        }
+      }
+
+      // Enforce complexity
+      const complexity = validatePasswordComplexity(newPassword, cleanTarget);
+      if (!complexity.valid) {
+        res.setHeader('Content-Type', 'application/json');
+        res.statusCode = 400;
+        return res.end(JSON.stringify({ success: false, error: complexity.error }));
+      }
+
+      // Hash the new password using PBKDF2
+      const hashedPassword = hashPassword(newPassword.trim());
+      targetUser.password = hashedPassword;
+      delete targetUser.altPassword; // Clear legacy alt passwords once explicitly set
+
+      fs.writeFileSync(USERS_STORE_FILE, JSON.stringify(existingUsers, null, 2), 'utf-8');
+
+      // Sync updated password hash to Supabase
+      try {
+        await supabase.from('vapt_users').update({ password: hashedPassword }).eq('username', targetUser.username);
+      } catch (supaErr) {
+        console.warn('[AUTH] Supabase password sync note:', supaErr.message);
+      }
+
+      res.setHeader('Content-Type', 'application/json');
+      res.statusCode = 200;
+      return res.end(JSON.stringify({ success: true, message: `Password for "${cleanTarget}" successfully updated.` }));
     } catch (e) {
       res.setHeader('Content-Type', 'application/json');
       res.statusCode = 400;

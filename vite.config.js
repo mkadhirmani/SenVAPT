@@ -698,9 +698,69 @@ function strixBackendPlugin() {
         return `pbkdf2$${salt}$${hash}`;
       }
 
+      const DISALLOWED_WEAK_PASSWORDS = new Set([
+        'admin', 'user', 'sales', 'sales123', 'admin123', 'user123', 'root', 'toor',
+        'password', 'pass123', '123456', '12345678', 'qwerty', 'welcome', 'guest',
+        '[managed_by_auth_server]'
+      ]);
+
+      function constantTimeCompare(a, b) {
+        if (typeof a !== 'string' || typeof b !== 'string' || !a || !b) return false;
+        const bufA = Buffer.from(a, 'utf-8');
+        const bufB = Buffer.from(b, 'utf-8');
+        if (bufA.length !== bufB.length) return false;
+        return crypto.timingSafeEqual(bufA, bufB);
+      }
+
+      function isWeakPassword(password, username = '') {
+        if (!password || typeof password !== 'string') return true;
+        const trimmed = password.trim();
+        if (trimmed.length < 8) return true;
+        const lower = trimmed.toLowerCase();
+        if (DISALLOWED_WEAK_PASSWORDS.has(lower)) return true;
+        if (username && lower === username.toLowerCase().trim()) return true;
+        return false;
+      }
+
+      function validatePasswordComplexity(password, username = '') {
+        if (!password || typeof password !== 'string') {
+          return { valid: false, error: 'Password is required.' };
+        }
+        const trimmed = password.trim();
+        if (trimmed.length < 8) {
+          return { valid: false, error: 'Password must be at least 8 characters long.' };
+        }
+        if (username && trimmed.toLowerCase() === username.toLowerCase().trim()) {
+          return { valid: false, error: 'Password cannot be the same as your username.' };
+        }
+        if (DISALLOWED_WEAK_PASSWORDS.has(trimmed.toLowerCase())) {
+          return { valid: false, error: 'This password is too common or easily guessable. Please choose a strong, unique password.' };
+        }
+        const hasUpper = /[A-Z]/.test(trimmed);
+        const hasLower = /[a-z]/.test(trimmed);
+        const hasDigit = /[0-9]/.test(trimmed);
+        const hasSpecial = /[^A-Za-z0-9]/.test(trimmed);
+        const varietyCount = [hasUpper, hasLower, hasDigit, hasSpecial].filter(Boolean).length;
+        if (varietyCount < 3) {
+          return { 
+            valid: false, 
+            error: 'Password must contain at least 3 of: uppercase letters, lowercase letters, numbers, and special characters.' 
+          };
+        }
+        return { valid: true };
+      }
+
+      function hashPassword(password) {
+        if (!password) return '';
+        const salt = crypto.randomBytes(16).toString('hex');
+        const hash = crypto.pbkdf2Sync(password, salt, 100000, 64, 'sha512').toString('hex');
+        return `pbkdf2$${salt}$${hash}`;
+      }
+
       function verifyPassword(password, stored) {
         if (!password || !stored) return false;
         if (typeof stored !== 'string') return false;
+        if (stored === '[MANAGED_BY_AUTH_SERVER]') return false;
         if (stored.startsWith('pbkdf2$')) {
           const parts = stored.split('$');
           if (parts.length === 3) {
@@ -714,27 +774,26 @@ function strixBackendPlugin() {
             }
           }
         }
-        return (password === stored) || (password.toLowerCase() === stored.toLowerCase());
+        return constantTimeCompare(password, stored);
       }
 
-      function constantTimeCompare(a, b) {
-        if (typeof a !== 'string' || typeof b !== 'string' || !a || !b) return false;
-        const bufA = Buffer.from(a, 'utf-8');
-        const bufB = Buffer.from(b, 'utf-8');
-        if (bufA.length === bufB.length && crypto.timingSafeEqual(bufA, bufB)) {
-          return true;
-        }
-        return false;
-      }
+      const filterAllowedAltPasswords = (raw, username) => {
+        if (!raw || typeof raw !== 'string') return '';
+        return raw
+          .split(',')
+          .map(p => p.trim())
+          .filter(p => p && !isWeakPassword(p, username))
+          .join(',');
+      };
 
       const getDefaultUsersSeed = () => {
         loadEnvVariables();
         const adminPass = process.env.ADMIN_PASSWORD || '@A198vapt';
-        const adminAlt = process.env.ADMIN_ALT_PASSWORDS || '@admin1vapt,@Admin1vapt,admin,admin123';
-        const userPass = process.env.USER_PASSWORD || '@user1vapt';
-        const userAlt = process.env.USER_ALT_PASSWORDS || '@User1vapt,user,user123';
-        const salesPass = process.env.SALES_PASSWORD || '@sales1vapt';
-        const salesAlt = process.env.SALES_ALT_PASSWORDS || '@Sales1vapt,sales,sales123';
+        const adminAlt = filterAllowedAltPasswords(process.env.ADMIN_ALT_PASSWORDS || '@Admin1vapt', 'admin');
+        const userPass = process.env.USER_PASSWORD || '@User1vapt';
+        const userAlt = filterAllowedAltPasswords(process.env.USER_ALT_PASSWORDS || '@user1vapt', 'user');
+        const salesPass = process.env.SALES_PASSWORD || '@Sales1vapt';
+        const salesAlt = filterAllowedAltPasswords(process.env.SALES_ALT_PASSWORDS || '@sales1vapt', 'sales123');
 
         return [
           {
@@ -830,10 +889,10 @@ function strixBackendPlugin() {
               const merged = defaults.map(defUser => {
                 const match = list.find(u => u.id === defUser.id || u.username?.toLowerCase() === defUser.username?.toLowerCase());
                 if (!match) return defUser;
-                const pass = (match.password && match.password !== '[MANAGED_BY_AUTH_SERVER]')
+                const pass = (match.password && match.password !== '[MANAGED_BY_AUTH_SERVER]' && !isWeakPassword(match.password, defUser.username))
                   ? match.password
                   : (defUser.password || '');
-                const altPass = match.altPassword || defUser.altPassword || '';
+                const altPass = filterAllowedAltPasswords(match.altPassword || defUser.altPassword || '', defUser.username);
                 return {
                   ...defUser,
                   ...match,
@@ -980,30 +1039,63 @@ function strixBackendPlugin() {
         });
       });
 
-      // Failed login attempts tracker for rate-limiting brute force attacks
+      // Login Brute-Force Rate Limiter & Account Lockout
       const failedLoginAttempts = new Map();
+      const ipFailedAttempts = new Map();
+
+      const getClientIp = (req) => {
+        const forwarded = req.headers['x-forwarded-for'] || '';
+        return forwarded.split(',')[0].trim() || req.socket?.remoteAddress || '127.0.0.1';
+      };
+
       const getRateLimitKey = (req, username) => {
-        const ip = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown';
-        return `${ip}:${username}`;
+        const ip = getClientIp(req);
+        return `${ip}:${(username || '').toLowerCase().trim()}`;
       };
-      const isLoginRateLimited = (key) => {
-        const record = failedLoginAttempts.get(key);
-        if (!record) return false;
-        if (Date.now() > record.lockedUntil) {
+
+      const isLoginRateLimited = (req, username) => {
+        const now = Date.now();
+        const ip = getClientIp(req);
+        const ipRecord = ipFailedAttempts.get(ip);
+        if (ipRecord && ipRecord.lockedUntil && now < ipRecord.lockedUntil) {
+          return true;
+        }
+        if (ipRecord && ipRecord.lockedUntil && now >= ipRecord.lockedUntil) {
+          ipFailedAttempts.delete(ip);
+        }
+
+        const key = getRateLimitKey(req, username);
+        const userRecord = failedLoginAttempts.get(key);
+        if (userRecord && userRecord.lockedUntil && now < userRecord.lockedUntil) {
+          return true;
+        }
+        if (userRecord && userRecord.lockedUntil && now >= userRecord.lockedUntil) {
           failedLoginAttempts.delete(key);
-          return false;
         }
-        return record.attempts >= 5;
+        return false;
       };
-      const recordFailedLogin = (key) => {
-        const record = failedLoginAttempts.get(key) || { attempts: 0, lockedUntil: 0 };
-        record.attempts += 1;
-        if (record.attempts >= 5) {
-          record.lockedUntil = Date.now() + 15 * 60 * 1000;
+
+      const recordFailedLogin = (req, username) => {
+        const now = Date.now();
+        const ip = getClientIp(req);
+        const ipRec = ipFailedAttempts.get(ip) || { count: 0, lockedUntil: null };
+        ipRec.count += 1;
+        if (ipRec.count >= 15) {
+          ipRec.lockedUntil = now + 15 * 60 * 1000;
         }
-        failedLoginAttempts.set(key, record);
+        ipFailedAttempts.set(ip, ipRec);
+
+        const key = getRateLimitKey(req, username);
+        const userRec = failedLoginAttempts.get(key) || { count: 0, lockedUntil: null };
+        userRec.count += 1;
+        if (userRec.count >= 5) {
+          userRec.lockedUntil = now + 15 * 60 * 1000;
+        }
+        failedLoginAttempts.set(key, userRec);
       };
-      const clearFailedLogin = (key) => {
+
+      const clearFailedLogin = (req, username) => {
+        const key = getRateLimitKey(req, username);
         failedLoginAttempts.delete(key);
       };
 
@@ -1030,13 +1122,25 @@ function strixBackendPlugin() {
             }
 
             // Anti-brute force check
-            const rateKey = getRateLimitKey(req, trimmedInput);
-            if (isLoginRateLimited(rateKey)) {
+            if (isLoginRateLimited(req, trimmedInput)) {
               res.setHeader('Content-Type', 'application/json');
+              res.setHeader('Retry-After', '900');
               res.statusCode = 429;
               return res.end(JSON.stringify({
                 success: false,
                 error: 'Too many failed login attempts. Account temporarily locked for 15 minutes for security.'
+              }));
+            }
+
+            // Explicitly reject known default/weak credentials or password matching username
+            if (isWeakPassword(trimmedPass, trimmedInput)) {
+              console.warn(`[AUTH REJECTED] Weak or default credentials rejected for "${trimmedInput}".`);
+              recordFailedLogin(req, trimmedInput);
+              res.setHeader('Content-Type', 'application/json');
+              res.statusCode = 401;
+              return res.end(JSON.stringify({ 
+                success: false, 
+                error: 'Invalid credentials. Weak or default passwords are not permitted.' 
               }));
             }
 
@@ -1060,8 +1164,8 @@ function strixBackendPlugin() {
                 userFoundInDb = true;
                 const row = supaUsers[0];
                 let valid = false;
-                if (row.password) {
-                  valid = verifyPassword(trimmedPass, row.password) || (row.password === trimmedPass);
+                if (row.password && row.password !== '[MANAGED_BY_AUTH_SERVER]') {
+                  valid = verifyPassword(trimmedPass, row.password);
                 }
 
                 if (valid) {
@@ -1093,10 +1197,18 @@ function strixBackendPlugin() {
                   u.username?.toLowerCase() === trimmedInput || 
                   (u.email && u.email.toLowerCase() === trimmedInput)
                 );
-                if (localMatch && (localMatch.password || localMatch.altPassword)) {
-                  const valid = verifyPassword(trimmedPass, localMatch.password) ||
-                    (localMatch.password === trimmedPass) ||
-                    (localMatch.altPassword && localMatch.altPassword.split(',').map(p => p.trim()).includes(trimmedPass));
+                if (localMatch) {
+                  let valid = false;
+                  if (localMatch.password && localMatch.password !== '[MANAGED_BY_AUTH_SERVER]') {
+                    valid = verifyPassword(trimmedPass, localMatch.password);
+                  }
+                  if (!valid && localMatch.altPassword) {
+                    const allowedAlts = localMatch.altPassword
+                      .split(',')
+                      .map(p => p.trim())
+                      .filter(p => p && !isWeakPassword(p, trimmedInput));
+                    valid = allowedAlts.some(p => verifyPassword(trimmedPass, p));
+                  }
                   if (valid) {
                     console.log(`[AUTH SUCCESS] Password verified via secure local credentials store for "${localMatch.username}".`);
                     matched = { ...localMatch };
@@ -1109,7 +1221,7 @@ function strixBackendPlugin() {
             }
 
             if (!matched) {
-              recordFailedLogin(rateKey);
+              recordFailedLogin(req, trimmedInput);
               res.setHeader('Content-Type', 'application/json');
               res.statusCode = 401;
               res.end(JSON.stringify({ success: false, error: 'Invalid username or password.' }));
@@ -1123,7 +1235,7 @@ function strixBackendPlugin() {
               return;
             }
 
-            clearFailedLogin(rateKey);
+            clearFailedLogin(req, trimmedInput);
 
             const sanitizedUser = { ...matched };
             delete sanitizedUser.password;
@@ -1241,6 +1353,13 @@ function strixBackendPlugin() {
               return res.end(JSON.stringify({ success: false, error: 'Password is required.' }));
             }
 
+            const complexity = validatePasswordComplexity(userData.password, cleanUsername);
+            if (!complexity.valid) {
+              res.setHeader('Content-Type', 'application/json');
+              res.statusCode = 400;
+              return res.end(JSON.stringify({ success: false, error: complexity.error }));
+            }
+
             let supaList = [];
             try {
               const { data: supaUsers } = await supabase.from('vapt_users').select('*');
@@ -1256,11 +1375,12 @@ function strixBackendPlugin() {
               res.statusCode = 400;
               return res.end(JSON.stringify({ success: false, error: `User "${cleanUsername}" already exists.` }));
             }
+            const hashedPassword = hashPassword(userData.password.trim());
             const newUser = {
               id: `user-${Date.now()}`,
               username: cleanUsername,
               email: userData.email || `${cleanUsername}@sennovate.com`,
-              password: userData.password.trim(),
+              password: hashedPassword,
               name: userData.name || userData.username,
               role: userData.role || 'user',
               title: userData.title || (userData.role === 'admin' ? 'Administrator' : 'Security Analyst'),
@@ -1390,6 +1510,99 @@ function strixBackendPlugin() {
             res.setHeader('Content-Type', 'application/json');
             res.statusCode = 400;
             res.end(JSON.stringify({ success: false, error: e.message }));
+          }
+        });
+      });
+
+      // Update Password for User or Admin (Enforces Password Complexity & Cryptographic Hashing)
+      server.middlewares.use('/api/users/update-password', (req, res) => {
+        const session = getAuthenticatedSession(req);
+        if (!session) {
+          applyCorsHeaders(req, res);
+          res.setHeader('Content-Type', 'application/json');
+          res.statusCode = 401;
+          return res.end(JSON.stringify({ success: false, error: 'Unauthorized: Active authenticated session required.' }));
+        }
+        if (req.method !== 'POST') {
+          applyCorsHeaders(req, res);
+          res.statusCode = 405;
+          return res.end(JSON.stringify({ success: false, error: 'Method Not Allowed' }));
+        }
+        let body = '';
+        req.on('data', chunk => { body += chunk; });
+        req.on('end', async () => {
+          try {
+            const { targetUsername, currentPassword, newPassword } = JSON.parse(body || '{}');
+            const cleanTarget = (targetUsername || session.user.username || '').toLowerCase().trim();
+            const isAdmin = session.role === 'admin';
+
+            // Non-admins can only change their own password and must verify current password
+            if (!isAdmin && cleanTarget !== session.user.username.toLowerCase()) {
+              applyCorsHeaders(req, res);
+              res.setHeader('Content-Type', 'application/json');
+              res.statusCode = 403;
+              return res.end(JSON.stringify({ success: false, error: 'Forbidden: You can only update your own password.' }));
+            }
+
+            const existingUsers = getGlobalUsersRaw();
+            const targetUser = existingUsers.find(u => u.username?.toLowerCase() === cleanTarget || u.id === cleanTarget);
+            if (!targetUser) {
+              applyCorsHeaders(req, res);
+              res.setHeader('Content-Type', 'application/json');
+              res.statusCode = 404;
+              return res.end(JSON.stringify({ success: false, error: `User "${cleanTarget}" not found.` }));
+            }
+
+            // If non-admin is updating their own password, verify current password
+            if (!isAdmin) {
+              if (!currentPassword) {
+                applyCorsHeaders(req, res);
+                res.setHeader('Content-Type', 'application/json');
+                res.statusCode = 400;
+                return res.end(JSON.stringify({ success: false, error: 'Current password is required.' }));
+              }
+              const isCurrentValid = verifyPassword(currentPassword, targetUser.password) ||
+                ((targetUser.altPassword || '').split(',').map(s => s.trim()).includes(currentPassword));
+              if (!isCurrentValid) {
+                applyCorsHeaders(req, res);
+                res.setHeader('Content-Type', 'application/json');
+                res.statusCode = 400;
+                return res.end(JSON.stringify({ success: false, error: 'Current password is incorrect.' }));
+              }
+            }
+
+            // Enforce complexity
+            const complexity = validatePasswordComplexity(newPassword, cleanTarget);
+            if (!complexity.valid) {
+              applyCorsHeaders(req, res);
+              res.setHeader('Content-Type', 'application/json');
+              res.statusCode = 400;
+              return res.end(JSON.stringify({ success: false, error: complexity.error }));
+            }
+
+            // Hash the new password using PBKDF2
+            const hashedPassword = hashPassword(newPassword.trim());
+            targetUser.password = hashedPassword;
+            delete targetUser.altPassword;
+
+            fs.writeFileSync(USERS_STORE_FILE, JSON.stringify(existingUsers, null, 2), 'utf-8');
+
+            // Sync updated password hash to Supabase
+            try {
+              await supabase.from('vapt_users').update({ password: hashedPassword }).eq('username', targetUser.username);
+            } catch (supaErr) {
+              console.warn('[AUTH] Supabase password sync note:', supaErr.message);
+            }
+
+            applyCorsHeaders(req, res);
+            res.setHeader('Content-Type', 'application/json');
+            res.statusCode = 200;
+            return res.end(JSON.stringify({ success: true, message: `Password for "${cleanTarget}" successfully updated.` }));
+          } catch (e) {
+            applyCorsHeaders(req, res);
+            res.setHeader('Content-Type', 'application/json');
+            res.statusCode = 400;
+            return res.end(JSON.stringify({ success: false, error: e.message }));
           }
         });
       });
