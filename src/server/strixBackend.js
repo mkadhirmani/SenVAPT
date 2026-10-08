@@ -385,10 +385,58 @@ export function getSanitizedServerConfig() {
   };
 }
 
+export const CANONICAL_STRIX_COMMAND = 'strix -t "{target}" -n';
+
 export function saveGlobalServerConfig(newConfig) {
   if (!newConfig) return globalStrixConfig;
 
-  // SSRF Protection: validate webhook URLs before saving
+  // 1. Command Injection Prevention: Strict command validation
+  if (newConfig.command !== undefined && newConfig.command !== null) {
+    const cmdStr = String(newConfig.command).trim();
+    const SHELL_METACHARS_REGEX = /[;&|`$()<>\n\r!\\]/;
+    const VALID_COMMAND_REGEX = /^strix\s+-t\s+["']?\{target\}["']?(\s+-n)?$/;
+    if (SHELL_METACHARS_REGEX.test(cmdStr) || !VALID_COMMAND_REGEX.test(cmdStr)) {
+      throw new Error('Command injection attempt detected: Arbitrary commands and shell metacharacters are strictly forbidden in scanner configuration. Only canonical template "strix -t \\"{target}\\" -n" is permitted.');
+    }
+  }
+
+  // 2. Strict Host, Port, and SSH Parameter Validation
+  if (newConfig.host !== undefined && newConfig.host !== null && newConfig.host !== '') {
+    const hostStr = String(newConfig.host).trim();
+    if (!/^[a-zA-Z0-9.-]+$/.test(hostStr)) {
+      throw new Error('Invalid host configuration: Hostname or IP contains invalid characters or shell metacharacters.');
+    }
+  }
+
+  if (newConfig.port !== undefined && newConfig.port !== null && newConfig.port !== '') {
+    const portNum = Number(newConfig.port);
+    if (!Number.isInteger(portNum) || portNum < 1 || portNum > 65535) {
+      throw new Error('Invalid port: Port must be an integer between 1 and 65535.');
+    }
+  }
+
+  if (newConfig.username !== undefined && newConfig.username !== null && newConfig.username !== '') {
+    const userStr = String(newConfig.username).trim();
+    if (!/^[a-zA-Z0-9_.-]+$/.test(userStr)) {
+      throw new Error('Invalid username: Username contains invalid characters.');
+    }
+  }
+
+  if (newConfig.remoteOutputDir !== undefined && newConfig.remoteOutputDir !== null && newConfig.remoteOutputDir !== '') {
+    const dirStr = String(newConfig.remoteOutputDir).trim();
+    if (!/^\/[a-zA-Z0-9_./-]+$/.test(dirStr) || dirStr.includes('..')) {
+      throw new Error('Invalid remoteOutputDir: Path must be an absolute path without shell metacharacters or directory traversal.');
+    }
+  }
+
+  if (newConfig.strixLlm !== undefined && newConfig.strixLlm !== null && newConfig.strixLlm !== '') {
+    const llmStr = String(newConfig.strixLlm).trim();
+    if (!/^[a-zA-Z0-9_./:-]+$/.test(llmStr)) {
+      throw new Error('Invalid strixLlm: Model identifier contains invalid characters.');
+    }
+  }
+
+  // 3. SSRF Protection: validate webhook URLs before saving
   if (newConfig.n8nWebhookUrl) {
     const check = validateWebhookUrlSync(newConfig.n8nWebhookUrl);
     if (!check.valid) {
@@ -424,6 +472,9 @@ export function saveGlobalServerConfig(newConfig) {
       merged[key] = value;
     }
   }
+
+  // Enforce canonical immutable command template
+  merged.command = CANONICAL_STRIX_COMMAND;
 
   globalStrixConfig = merged;
   try {
@@ -3795,7 +3846,13 @@ export function startRemoteStrixScan(rawParams = {}) {
     const mode = params.triggerMode || globalStrixConfig.triggerMode || 'n8n';
 
     const id = params.scanId || `scan-${Date.now()}`;
-    const targetUrl = params.targetUrl;
+    const targetUrl = typeof params.targetUrl === 'string' ? params.targetUrl.trim() : '';
+
+    if (!targetUrl || /[;&|`$()<>\s"'\\]/.test(targetUrl.replace(/^https?:\/\//i, ''))) {
+      const err = new Error('Invalid target URL: Target URL contains invalid characters or shell metacharacters.');
+      return reject(err);
+    }
+
     const companyName = sanitizeCompanyName(params.companyName, targetUrl);
 
     // 1. Enterprise n8n Webhook Mode (Preferred & Highly Available)
@@ -4045,7 +4102,8 @@ export function startRemoteStrixScan(rawParams = {}) {
 
           envCmds.push(`mkdir -p "${targetScanDir}"`);
           envCmds.push(`cd "${targetScanDir}"`);
-          envCmds.push(`strix -t "${targetUrl}" -n | tee -a "${targetScanDir}/scan.log"`);
+          const safeTargetUrl = targetUrl.replace(/["'`$\\]/g, '');
+          envCmds.push(`strix -t "${safeTargetUrl}" -n | tee -a "${targetScanDir}/scan.log"`);
           envCmds.push(`LATEST_RUN_DIR=$(ls -td "${targetScanDir}/strix_runs/"* 2>/dev/null | head -n 1 || ls -td "/root/${cleanDomain}-scan/strix_runs/"* 2>/dev/null | head -n 1 || ls -td "/root/${brandSlug}-scan/strix_runs/"* 2>/dev/null | head -n 1)`);
           envCmds.push(`echo "[OUTPUT FOLDER PATH] $LATEST_RUN_DIR"`);
 

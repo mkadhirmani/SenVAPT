@@ -315,11 +315,12 @@ export default function AdminUserManagement({
                     },
                     body: JSON.stringify(json)
                   });
-                  if (res.ok) {
-                    showFeedback('System Snapshot Restored! Refreshing data...');
-                    setTimeout(() => window.location.reload(), 1200);
+                  const resData = await res.json().catch(() => ({}));
+                  if (res.ok && resData.success) {
+                    showFeedback(resData.message || 'System Snapshot Restored! Refreshing data...');
+                    setTimeout(() => window.location.reload(), 1500);
                   } else {
-                    throw new Error('Import API failed (Requires Admin privileges)');
+                    throw new Error(resData.error || 'Import API failed (Requires Admin privileges)');
                   }
                 } catch (err) {
                   showFeedback(`Import Failed: ${err.message}`);

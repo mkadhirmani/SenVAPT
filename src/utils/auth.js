@@ -436,7 +436,30 @@ export async function updateUserPermissions(userId, newPermissions) {
     }
     return u;
   });
-  saveUsersList(updated);
+  localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(updated));
+
+  // Sync to dedicated authorized permissions endpoint
+  try {
+    const res = await fetch('/api/users/update-permission', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAuthHeaders()
+      },
+      body: JSON.stringify({ userId, permissions: newPermissions })
+    });
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.error || 'Permission update rejected by server authorization boundary');
+    }
+    const data = await res.json();
+    if (data.users && Array.isArray(data.users)) {
+      localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(data.users));
+    }
+  } catch (err) {
+    console.error('Permission sync note:', err.message);
+    throw err;
+  }
 
   const current = getCurrentUser();
   if (current && (current.id === userId || current.username === userId)) {

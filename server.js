@@ -381,13 +381,20 @@ function getGlobalUsersStoreRaw() {
           return {
             ...defUser,
             ...match,
+            // Security: Core identity attributes of default seed accounts are strictly immutable
+            id: defUser.id,
+            username: defUser.username,
+            role: defUser.role,
             password: pass,
             altPassword: altPass
           };
         });
         for (const u of list) {
           if (!merged.some(m => m.id === u.id || m.username?.toLowerCase() === u.username?.toLowerCase())) {
-            merged.push({ ...u });
+            // Prevent custom injected users from impersonating default administrator
+            if (u.username?.toLowerCase() !== 'admin' && u.id !== 'admin') {
+              merged.push({ ...u });
+            }
           }
         }
         return merged;
@@ -412,21 +419,59 @@ function getSanitizedUsersStore(includePasswords = false) {
   });
 }
 
+const ADMIN_ONLY_PERMISSIONS = ['manage_users', 'manage_settings', 'view_tokens', 'view_terminal', 'load_custom_folder'];
+
 function saveGlobalUsersStore(users) {
-  try {
-    const existingRaw = getGlobalUsersStoreRaw();
-    const merged = users.map(u => {
-      const match = existingRaw.find(e => e.id === u.id || e.username === u.username);
-      return {
-        ...u,
-        password: u.password || match?.password || ''
-      };
-    });
-    fs.writeFileSync(USERS_STORE_FILE, JSON.stringify(merged, null, 2), 'utf-8');
-    return true;
-  } catch (e) {
-    return false;
+  const existingRaw = getGlobalUsersStoreRaw();
+  if (!Array.isArray(users)) {
+    throw new Error('Invalid users data: Expected array of user objects.');
   }
+
+  // 1. Strict Privilege Escalation & Role Tampering Detection
+  for (const u of users) {
+    const match = existingRaw.find(e => e.id === u.id || e.username?.toLowerCase() === u.username?.toLowerCase());
+    if (match) {
+      // Disallow modifying user role
+      if (u.role && u.role !== match.role) {
+        throw new Error(`Privilege escalation attempt detected: Modifying role for user "${match.username}" (from "${match.role}" to "${u.role}") is strictly prohibited.`);
+      }
+      // Disallow granting administrative permissions to non-admin accounts
+      if (u.permissions && match.role !== 'admin') {
+        for (const permKey of ADMIN_ONLY_PERMISSIONS) {
+          if (u.permissions[permKey] === true) {
+            throw new Error(`Privilege escalation attempt detected: Cannot grant administrative permission "${permKey}" to non-admin account "${match.username}".`);
+          }
+        }
+      }
+    }
+  }
+
+  // 2. Principle of Least Privilege: Whitelist only non-security profile fields
+  const merged = existingRaw.map(existingUser => {
+    const incoming = users.find(u => u.id === existingUser.id || u.username?.toLowerCase() === existingUser.username?.toLowerCase());
+    if (!incoming) return existingUser;
+
+    return {
+      ...existingUser,
+      name: typeof incoming.name === 'string' ? incoming.name.slice(0, 100) : existingUser.name,
+      title: typeof incoming.title === 'string' ? incoming.title.slice(0, 100) : existingUser.title,
+      avatar: typeof incoming.avatar === 'string' ? incoming.avatar.slice(0, 300) : existingUser.avatar,
+      status: incoming.status !== undefined ? incoming.status : existingUser.status,
+      assignedTargets: Array.isArray(incoming.assignedTargets) ? incoming.assignedTargets : existingUser.assignedTargets,
+      scansCount: typeof incoming.scansCount === 'number' ? incoming.scansCount : existingUser.scansCount,
+      // Security-critical attributes remain immutable
+      id: existingUser.id,
+      username: existingUser.username,
+      role: existingUser.role,
+      password: existingUser.password,
+      altPassword: existingUser.altPassword,
+      passwordHash: existingUser.passwordHash,
+      permissions: existingUser.permissions
+    };
+  });
+
+  fs.writeFileSync(USERS_STORE_FILE, JSON.stringify(merged, null, 2), 'utf-8');
+  return true;
 }
 
 // In-Memory Cryptographic Session Registry
@@ -1541,7 +1586,7 @@ const server = http.createServer(async (req, res) => {
       if (Array.isArray(users)) {
         saveGlobalUsersStore(users);
         try {
-          const payloads = users.map(formatUserForSupabase);
+          const payloads = getSanitizedUsersStore(true).map(formatUserForSupabase);
           if (payloads.length > 0) {
             supabase.from('vapt_users').upsert(payloads, { onConflict: 'username' }).then(() => {}, () => {});
           }
@@ -1550,6 +1595,84 @@ const server = http.createServer(async (req, res) => {
       res.setHeader('Content-Type', 'application/json');
       res.statusCode = 200;
       return res.end(JSON.stringify({ success: true, count: users ? users.length : 0 }));
+    } catch (e) {
+      res.setHeader('Content-Type', 'application/json');
+      res.statusCode = 400;
+      return res.end(JSON.stringify({ success: false, error: e.message }));
+    }
+  }
+
+  // Dedicated User Permission Management Endpoint (Admin Only)
+  if ((pathname === '/api/users/update-permission' || pathname === '/api/users/update-permissions') && req.method === 'POST') {
+    const session = getAuthenticatedSession(req);
+    if (!session || session.role !== 'admin') {
+      res.setHeader('Content-Type', 'application/json');
+      res.statusCode = 403;
+      return res.end(JSON.stringify({ success: false, error: 'Access Denied: Administrator privilege required.' }));
+    }
+    try {
+      const data = await parseJsonBody(req);
+      const { userId, permission, permissions, value } = data;
+      if (!userId) {
+        res.setHeader('Content-Type', 'application/json');
+        res.statusCode = 400;
+        return res.end(JSON.stringify({ success: false, error: 'Target userId is required.' }));
+      }
+
+      const existingRaw = getGlobalUsersStoreRaw();
+      const targetUser = existingRaw.find(u => u.id === userId || u.username?.toLowerCase() === String(userId).toLowerCase());
+      if (!targetUser) {
+        res.setHeader('Content-Type', 'application/json');
+        res.statusCode = 404;
+        return res.end(JSON.stringify({ success: false, error: `User "${userId}" not found.` }));
+      }
+
+      const permsToUpdate = {};
+      if (permission) {
+        permsToUpdate[permission] = Boolean(value);
+      } else if (permissions && typeof permissions === 'object') {
+        Object.assign(permsToUpdate, permissions);
+      }
+
+      // Root administrator privilege protection
+      if (targetUser.id === 'admin' || targetUser.username === 'admin') {
+        if (permsToUpdate['manage_users'] === false) {
+          res.setHeader('Content-Type', 'application/json');
+          res.statusCode = 400;
+          return res.end(JSON.stringify({ success: false, error: 'Cannot revoke Root Administrator privileges.' }));
+        }
+      }
+
+      // Role boundary check: Administrative permissions can only be granted to admin accounts
+      if (targetUser.role !== 'admin') {
+        for (const [permKey, permVal] of Object.entries(permsToUpdate)) {
+          if (permVal === true && ADMIN_ONLY_PERMISSIONS.includes(permKey)) {
+            res.setHeader('Content-Type', 'application/json');
+            res.statusCode = 403;
+            return res.end(JSON.stringify({ 
+              success: false, 
+              error: `Access Denied: Administrative permission "${permKey}" can only be granted to admin accounts.` 
+            }));
+          }
+        }
+      }
+
+      targetUser.permissions = { ...(targetUser.permissions || {}), ...permsToUpdate };
+      fs.writeFileSync(USERS_STORE_FILE, JSON.stringify(existingRaw, null, 2), 'utf-8');
+
+      try {
+        await supabase.from('vapt_users').update({ permissions: targetUser.permissions }).eq('username', targetUser.username);
+      } catch (_) {}
+
+      console.log(`[AUDIT] Permission update: Admin "${session.user?.username}" modified permissions for "${targetUser.username}" (${JSON.stringify(permsToUpdate)})`);
+
+      res.setHeader('Content-Type', 'application/json');
+      res.statusCode = 200;
+      return res.end(JSON.stringify({ 
+        success: true, 
+        message: `Permissions updated for user "${targetUser.username}".`,
+        users: getSanitizedUsersStore()
+      }));
     } catch (e) {
       res.setHeader('Content-Type', 'application/json');
       res.statusCode = 400;
@@ -1570,7 +1693,6 @@ const server = http.createServer(async (req, res) => {
       exportedAt: new Date().toISOString(),
       serverConfig: getSanitizedServerConfig(),
       llmConfig: getSanitizedLlmConfig(),
-      users: getSanitizedUsersStore(),
       scans: getServerScanHistory()
     };
     res.setHeader('Content-Type', 'application/json');
@@ -1588,14 +1710,40 @@ const server = http.createServer(async (req, res) => {
     try {
       const data = await parseJsonBody(req);
       const backup = data.backup || data;
-      if (backup.serverConfig) saveGlobalServerConfig(backup.serverConfig);
-      if (backup.llmConfig) saveGlobalLlmConfig(backup.llmConfig);
-      if (backup.users) saveGlobalUsersStore(backup.users);
-      if (backup.scans) saveServerScanHistory(backup.scans);
-      
+
+      // Security: Disallow user data manipulation or credential overwriting via backup import
+      if (backup.users) {
+        console.warn(`[SECURITY AUDIT] User data in backup import ignored to protect authentication store and prevent account takeover. Requested by admin: "${session.user?.username}".`);
+      }
+
+      if (backup.serverConfig && typeof backup.serverConfig === 'object') {
+        saveGlobalServerConfig(backup.serverConfig);
+      }
+      if (backup.llmConfig && typeof backup.llmConfig === 'object') {
+        saveGlobalLlmConfig(backup.llmConfig);
+      }
+      if (backup.scans && Array.isArray(backup.scans)) {
+        const sanitizedScans = backup.scans.slice(0, 500).map(s => ({
+          id: String(s.id || `scan-${Date.now()}`).slice(0, 100),
+          targetUrl: String(s.targetUrl || s.target || '').slice(0, 300),
+          companyName: String(s.companyName || '').slice(0, 100),
+          status: String(s.status || 'completed').slice(0, 30),
+          date: String(s.date || s.startTime || new Date().toISOString()).slice(0, 50),
+          findings: Array.isArray(s.findings) ? s.findings : [],
+          stats: typeof s.stats === 'object' ? s.stats : {},
+          executiveSummary: typeof s.executiveSummary === 'string' ? s.executiveSummary : ''
+        }));
+        saveServerScanHistory(sanitizedScans);
+      }
+
+      console.log(`[AUDIT] System backup restored by admin "${session.user?.username}" from IP "${getClientIp(req)}" at ${new Date().toISOString()}`);
+
       res.setHeader('Content-Type', 'application/json');
       res.statusCode = 200;
-      return res.end(JSON.stringify({ success: true, message: 'System snapshot imported and applied successfully' }));
+      return res.end(JSON.stringify({ 
+        success: true, 
+        message: 'System snapshot imported and applied successfully. User accounts and credentials were preserved to prevent tampering.' 
+      }));
     } catch (e) {
       res.setHeader('Content-Type', 'application/json');
       res.statusCode = 400;
