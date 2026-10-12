@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "name": "Sennovate Official Brand Tokens",
+  "version": "1.1.0",
+  "authority": "OFFICIAL BRAND RULE",
+  "source": "Sennovate Brand Guidelines (Slides 12-18)",
+  "colors": {
+    "core": {
+      "sennovateBlue": {
+        "hex": "#006FE3",
+        "rgb": "rgb(0, 111, 227)",
+        "cmyk": "100%, 51%, 0%, 11%",
+        "pantone": "285 C"
+      },
+      "sennovateDarkBlue": {
+        "hex": "#001B41",
+        "rgb": "rgb(0, 27, 65)",
+        "cmyk": "100%, 58%, 0%, 75%",
+        "pantone": "295 C"
+      },
+      "sennovateWhite": {
+        "hex": "#FFFFFF",
+        "rgb": "rgb(255, 255, 255)",
+        "cmyk": "0%, 0%, 0%, 0%",
+        "pantone": "White"
+      }
+    },
+    "supporting": {
+      "green": {
+        "hex": "#299346",
+        "rgb": "rgb(41, 147, 70)",
+        "cmyk": "72, 0, 53, 42"
+      },
+      "purple": {
+        "hex": "#3C2C86",
+        "rgb": "rgb(60, 44, 134)",
+        "cmyk": "55, 67, 0, 47"
+      },
+      "terraCotta": {
+        "hex": "#B9623C",
+        "rgb": "rgb(185, 98, 60)",
+        "cmyk": "0, 47, 67, 27"
+      }
+    },
+    "variations": {
+      "tints": ["100%", "70%", "50%", "30%", "10%"]
+    }
+  },
+  "typography": {
+    "primary": {
+      "family": "Satoshi",
+      "weights": ["Bold (700)", "Medium (500)", "Regular (400)"],
+      "hierarchy": {
+        "mainHeading": { "size": "32pt", "weight": "Bold (700)" }
+      }
+    },
+    "secondary": {
+      "family": "Inter",
+      "weights": ["Medium (500)", "Regular (400)", "Light (300)"],
+      "hierarchy": {
+        "subHeading": { "size": "24pt", "weight": "Regular (400)" },
+        "body": { "size": "18pt", "weight": "Regular (400)" },
+        "subText": { "size": "14pt", "weight": "Regular (400)" }
+      }
+    }
+  }
+}

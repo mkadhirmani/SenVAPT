@@ -1,0 +1,199 @@
+<!-- 
+  [EXAMPLE ONLY - NON-MANDATORY REFERENCE]
+  Authority: [EXAMPLE]
+  Notice: This file is an illustrative reference implementation for developer and agent guidance.
+  It is NOT an immutable or mandatory official Sennovate screen design.
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sennovate - Secure Enterprise Login</title>
+  <link rel="stylesheet" href="../../tokens/tokens.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    body {
+      background-color: var(--sennovate-light-slate);
+      font-family: var(--font-family-body);
+      color: var(--color-text-primary);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      margin: 0;
+      padding: var(--space-4);
+      box-sizing: border-box;
+    }
+    .login-container {
+      width: 100%;
+      max-width: 420px;
+    }
+    .brand-header {
+      text-align: center;
+      margin-bottom: var(--space-6);
+    }
+    .brand-logo {
+      height: 32px;
+      margin-bottom: var(--space-3);
+    }
+    .brand-tagline {
+      font-size: var(--font-size-sm);
+      color: var(--color-text-secondary);
+    }
+    .login-card {
+      background: var(--color-bg-surface);
+      border: 1px solid var(--color-border-subtle);
+      border-radius: var(--radius-lg);
+      padding: var(--space-8);
+      box-shadow: var(--shadow-md);
+    }
+    .card-title {
+      font-family: var(--font-family-display);
+      font-size: var(--font-size-2xl);
+      font-weight: 700;
+      margin-bottom: var(--space-2);
+      color: var(--sennovate-deep-navy);
+    }
+    .card-subtitle {
+      font-size: var(--font-size-base);
+      color: var(--color-text-secondary);
+      margin-bottom: var(--space-6);
+    }
+    .sso-btn {
+      width: 100%;
+      height: 40px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: var(--space-3);
+      border: 1px solid var(--color-border-subtle);
+      border-radius: var(--radius-md);
+      background: #FFFFFF;
+      font-weight: 500;
+      font-size: var(--font-size-base);
+      cursor: pointer;
+      margin-bottom: var(--space-4);
+      transition: var(--transition-fast);
+    }
+    .sso-btn:hover {
+      background-color: #F8FAFC;
+      border-color: var(--color-border-strong);
+    }
+    .divider {
+      display: flex;
+      align-items: center;
+      text-align: center;
+      margin: var(--space-5) 0;
+      color: var(--color-text-muted);
+      font-size: var(--font-size-xs);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .divider::before, .divider::after {
+      content: '';
+      flex: 1;
+      border-bottom: 1px solid var(--color-border-subtle);
+    }
+    .divider span {
+      padding: 0 var(--space-3);
+    }
+    .form-group {
+      margin-bottom: var(--space-4);
+    }
+    .form-label {
+      display: block;
+      font-size: var(--font-size-sm);
+      font-weight: 500;
+      margin-bottom: var(--space-2);
+      color: var(--sennovate-deep-navy);
+    }
+    .form-input {
+      width: 100%;
+      height: 40px;
+      padding: 0 var(--space-3);
+      border: 1px solid var(--color-border-subtle);
+      border-radius: var(--radius-md);
+      font-size: var(--font-size-base);
+      font-family: var(--font-family-body);
+      box-sizing: border-box;
+      transition: var(--transition-fast);
+    }
+    .form-input:focus {
+      outline: none;
+      border-color: var(--sennovate-blue);
+      box-shadow: 0 0 0 3px rgba(0, 102, 255, 0.15);
+    }
+    .submit-btn {
+      width: 100%;
+      height: 44px;
+      background-color: var(--sennovate-blue);
+      color: #FFFFFF;
+      border: none;
+      border-radius: var(--radius-md);
+      font-weight: 600;
+      font-size: var(--font-size-base);
+      cursor: pointer;
+      margin-top: var(--space-4);
+      transition: var(--transition-fast);
+    }
+    .submit-btn:hover {
+      background-color: #005BC0;
+    }
+    .login-footer {
+      text-align: center;
+      margin-top: var(--space-6);
+      font-size: var(--font-size-xs);
+      color: var(--color-text-muted);
+    }
+    .login-footer a {
+      color: var(--sennovate-blue);
+      text-decoration: none;
+    }
+    .login-footer a:hover {
+      text-decoration: underline;
+    }
+  </style>
+</head>
+<body>
+  <div class="login-container">
+    <div class="brand-header">
+      <img src="../../assets/logos/sennovate-logo-dark.svg" alt="Sennovate Logo" class="brand-logo">
+      <div class="brand-tagline">Security Simplified. Trust Amplified.</div>
+    </div>
+    
+    <div class="login-card">
+      <h1 class="card-title">Sign in</h1>
+      <p class="card-subtitle">Access your enterprise security dashboard</p>
+
+      <button class="sso-btn" type="button">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+        <span>Sign in with Enterprise SSO</span>
+      </button>
+
+      <div class="divider"><span>or continue with email</span></div>
+
+      <form action="#" method="POST" onsubmit="event.preventDefault();">
+        <div class="form-group">
+          <label class="form-label" for="email">Work Email</label>
+          <input type="email" id="email" class="form-input" placeholder="name@company.com" required>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="password">Password</label>
+          <input type="password" id="password" class="form-input" placeholder="••••••••" required>
+        </div>
+
+        <button type="submit" class="submit-btn">Continue to Dashboard</button>
+      </form>
+    </div>
+
+    <div class="login-footer">
+      Protected by Sennovate Zero-Trust Architecture.<br>
+      <a href="#">Privacy Policy</a> &bull; <a href="#">Terms of Service</a> &bull; <a href="#">System Status</a>
+    </div>
+  </div>
+</body>
+</html>

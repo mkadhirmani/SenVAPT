@@ -16,6 +16,32 @@
   --sennovate-green: #299346;
   --sennovate-purple: #3C2C86;
   --sennovate-amber: #B9623C;
+
+  /* Sennovate Product Skill tokens (sennovate skill/tokens/tokens.css) */
+  --sennovate-dark-blue: #001B41;
+  --sennovate-white: #FFFFFF;
+  --sennovate-support-green: #299346;
+  --sennovate-support-purple: #3C2C86;
+  --sennovate-support-terracotta: #B9623C;
+  --font-primary-display: 'Satoshi', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-secondary-body: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
+  --color-bg-canvas: #F8FAFC;
+  --color-bg-surface: #FFFFFF;
+  --color-border-subtle: #E2E8F0;
+  --color-border-strong: #CBD5E1;
+  --color-text-primary: var(--sennovate-dark-blue);
+  --color-text-secondary: #4A5568;
+  --color-text-muted: #94A3B8;
+  --color-status-success: var(--sennovate-support-green);
+  --color-status-warning: var(--sennovate-support-terracotta);
+  --color-status-danger: #DC2626;
+  --color-status-info: var(--sennovate-blue);
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --shadow-sm: 0 1px 2px 0 rgba(0, 27, 65, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0, 27, 65, 0.08), 0 2px 4px -1px rgba(0, 27, 65, 0.04);
 }
 
 @layer base {
@@ -25,17 +51,17 @@
   }
 
   h1, h2, h3, h4, .heading-brand {
-    font-family: 'Satoshi', '"Plus Jakarta Sans"', 'Inter', system-ui, sans-serif;
+    font-family: var(--font-primary-display);
     letter-spacing: -0.02em;
   }
 }
 
 @layer utilities {
   .font-heading {
-    font-family: 'Satoshi', '"Plus Jakarta Sans"', 'Inter', system-ui, sans-serif;
+    font-family: var(--font-primary-display);
   }
   .font-brand {
-    font-family: 'Satoshi', '"Plus Jakarta Sans"', 'Inter', system-ui, sans-serif;
+    font-family: var(--font-primary-display);
   }
   
   .sennovate-glass-dark {
@@ -134,63 +160,10 @@
   background: #006FE3;
 }
 
-/* PDF Print styles */
+/* Printing the dashboard itself: the A4 report is printed from its own isolated
+   document (see utils/pdfExport.js), so only hide app chrome here. */
 @media print {
-  @page {
-    size: A4 portrait;
-    margin: 0;
-  }
-  *, *::before, *::after {
-    -webkit-print-color-adjust: exact !important;
-    print-color-adjust: exact !important;
-    box-sizing: border-box !important;
-  }
-  html, body {
-    margin: 0 !important;
-    padding: 0 !important;
-    background: #ffffff !important;
-    color: #0f172a !important;
-  }
-  /* Strictly hide all dashboard chrome: sidebar, top header, navbars, chatbot, modals, buttons */
   aside, nav, header, .no-print, [role="navigation"], .chatbot-container, #strix-hud, button {
     display: none !important;
   }
-  /* Reset outer container margins and paddings */
-  #root, #root > div, main {
-    margin: 0 !important;
-    padding: 0 !important;
-    background: transparent !important;
-    width: 100% !important;
-    max-width: none !important;
-    overflow: visible !important;
-  }
-  #vapt-pdf-report-root {
-    display: block !important;
-    width: 210mm !important;
-    margin: 0 auto !important;
-    padding: 0 !important;
-  }
-  .pdf-page, .report-page {
-    width: 210mm !important;
-    min-height: 297mm !important;
-    margin: 0 !important;
-    padding: 12mm 14mm !important;
-    background: #ffffff !important;
-    box-sizing: border-box !important;
-    page-break-after: always !important;
-    break-after: page !important;
-    box-shadow: none !important;
-    border: none !important;
-    border-radius: 0 !important;
-    overflow: hidden !important;
-  }
-  .pdf-page:last-child, .report-page:last-child {
-    page-break-after: auto !important;
-    break-after: auto !important;
-  }
-  .pdf-card, .pdf-block, .box, .card, .codeblk, .checkgrid, .mtable, .fhead {
-    break-inside: avoid !important;
-    page-break-inside: avoid !important;
-  }
 }
-

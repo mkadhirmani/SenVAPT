@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "name": "Sennovate Proposed Product UI Tokens",
+  "version": "1.1.0",
+  "authority": "PRODUCT UI STANDARD",
+  "description": "Application-level design system tokens. These are NOT official brand guidelines, but standardized UI engineering tokens.",
+  "neutrals": {
+    "canvas": { "value": "#F8FAFC", "description": "Light mode application canvas background" },
+    "surface": { "value": "#FFFFFF", "description": "Card, modal, and panel background" },
+    "borderSubtle": { "value": "#E2E8F0", "description": "Card borders, table row dividers, input borders" },
+    "borderStrong": { "value": "#CBD5E1", "description": "Dividers, emphasized borders, active input borders" },
+    "textPrimary": { "value": "#001B41", "description": "Primary typography (Sennovate Dark Blue)" },
+    "textSecondary": { "value": "#4A5568", "description": "Secondary typography, labels, subtitles" },
+    "textMuted": { "value": "#94A3B8", "description": "Placeholders, timestamps, disabled text" }
+  },
+  "semantics": {
+    "success": { "value": "#299346", "bg": "#ECFDF5", "border": "#A7F3D0" },
+    "warning": { "value": "#B9623C", "bg": "#FFFBEB", "border": "#FDE68A" },
+    "danger": { "value": "#DC2626", "bg": "#FEF2F2", "border": "#FECACA" },
+    "info": { "value": "#006FE3", "bg": "#EFF6FF", "border": "#BFDBFE" }
+  },
+  "spacing": {
+    "base": "4px",
+    "scale": {
+      "1": "4px",
+      "2": "8px",
+      "3": "12px",
+      "4": "16px",
+      "5": "20px",
+      "6": "24px",
+      "8": "32px",
+      "10": "40px",
+      "12": "48px",
+      "16": "64px"
+    }
+  },
+  "radius": {
+    "sm": "4px",
+    "md": "8px",
+    "lg": "12px",
+    "pill": "9999px"
+  },
+  "shadows": {
+    "sm": "0 1px 2px 0 rgba(0, 27, 65, 0.05)",
+    "md": "0 4px 6px -1px rgba(0, 27, 65, 0.08), 0 2px 4px -1px rgba(0, 27, 65, 0.04)",
+    "lg": "0 10px 15px -3px rgba(0, 27, 65, 0.1), 0 4px 6px -2px rgba(0, 27, 65, 0.05)"
+  }
+}

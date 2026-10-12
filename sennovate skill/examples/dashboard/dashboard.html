@@ -1,0 +1,385 @@
+<!-- 
+  [EXAMPLE ONLY - NON-MANDATORY REFERENCE]
+  Authority: [EXAMPLE]
+  Notice: This file is an illustrative reference implementation for developer and agent guidance.
+  It is NOT an immutable or mandatory official Sennovate screen design.
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sennovate - Security Operations Dashboard</title>
+  <link rel="stylesheet" href="../../tokens/tokens.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background-color: var(--sennovate-light-slate);
+      font-family: var(--font-family-body);
+      color: var(--color-text-primary);
+      display: flex;
+      height: 100vh;
+      overflow: hidden;
+    }
+    /* Sidebar */
+    .sidebar {
+      width: 240px;
+      background-color: var(--sennovate-deep-navy);
+      color: #FFFFFF;
+      display: flex;
+      flex-direction: column;
+      flex-shrink: 0;
+      border-right: 1px solid rgba(255,255,255,0.08);
+    }
+    .sidebar-header {
+      padding: var(--space-4) var(--space-5);
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+    }
+    .sidebar-logo {
+      height: 24px;
+      display: block;
+    }
+    .sidebar-nav {
+      flex: 1;
+      padding: var(--space-4) var(--space-3);
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-1);
+    }
+    .nav-link {
+      display: flex;
+      align-items: center;
+      gap: var(--space-3);
+      padding: var(--space-2) var(--space-3);
+      border-radius: var(--radius-md);
+      color: #94A3B8;
+      text-decoration: none;
+      font-size: var(--font-size-base);
+      font-weight: 500;
+      transition: var(--transition-fast);
+    }
+    .nav-link:hover {
+      color: #FFFFFF;
+      background: rgba(255, 255, 255, 0.05);
+    }
+    .nav-link.active {
+      color: var(--sennovate-cyan);
+      background: rgba(0, 102, 255, 0.15);
+      border-left: 3px solid var(--sennovate-blue);
+    }
+    .sidebar-footer {
+      padding: var(--space-4);
+      border-top: 1px solid rgba(255,255,255,0.08);
+      display: flex;
+      align-items: center;
+      gap: var(--space-3);
+    }
+    .user-avatar {
+      width: 32px;
+      height: 32px;
+      border-radius: var(--radius-pill);
+      background: var(--sennovate-blue);
+      color: #FFFFFF;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: var(--font-size-xs);
+      font-weight: 600;
+    }
+    .user-meta {
+      font-size: var(--font-size-xs);
+    }
+    .user-name { font-weight: 600; color: #FFFFFF; }
+    .user-role { color: #94A3B8; }
+
+    /* Main Area */
+    .main-wrapper {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow-y: auto;
+    }
+    .top-header {
+      height: 60px;
+      background: #FFFFFF;
+      border-bottom: 1px solid var(--color-border-subtle);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 var(--space-8);
+      flex-shrink: 0;
+    }
+    .page-title {
+      font-family: var(--font-family-display);
+      font-size: var(--font-size-xl);
+      font-weight: 700;
+      color: var(--sennovate-deep-navy);
+    }
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: var(--space-3);
+    }
+    .tenant-pill {
+      background: var(--sennovate-ice-blue);
+      color: var(--sennovate-blue);
+      font-size: var(--font-size-xs);
+      font-weight: 600;
+      padding: var(--space-1) var(--space-3);
+      border-radius: var(--radius-pill);
+    }
+
+    /* Content Area */
+    .content-area {
+      padding: var(--space-8);
+      max-width: 1400px;
+      width: 100%;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-6);
+    }
+
+    /* KPI Grid */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: var(--space-4);
+    }
+    .kpi-card {
+      background: #FFFFFF;
+      border: 1px solid var(--color-border-subtle);
+      border-radius: var(--radius-lg);
+      padding: var(--space-4);
+      box-shadow: var(--shadow-sm);
+    }
+    .kpi-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: var(--space-2);
+    }
+    .kpi-title {
+      font-size: var(--font-size-sm);
+      color: var(--color-text-secondary);
+      font-weight: 500;
+    }
+    .kpi-value {
+      font-family: var(--font-family-display);
+      font-size: var(--font-size-3xl);
+      font-weight: 700;
+      color: var(--sennovate-deep-navy);
+      margin-bottom: var(--space-1);
+    }
+    .kpi-badge {
+      font-size: var(--font-size-xs);
+      padding: 2px 6px;
+      border-radius: var(--radius-sm);
+      font-weight: 600;
+    }
+    .kpi-badge.success { background: #ECFDF5; color: #065F46; }
+    .kpi-badge.warning { background: #FFFBEB; color: #92400E; }
+
+    /* Split Section */
+    .split-section {
+      display: grid;
+      grid-template-columns: 2fr 1fr;
+      gap: var(--space-6);
+    }
+    .panel {
+      background: #FFFFFF;
+      border: 1px solid var(--color-border-subtle);
+      border-radius: var(--radius-lg);
+      padding: var(--space-5);
+      box-shadow: var(--shadow-sm);
+    }
+    .panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: var(--space-4);
+    }
+    .panel-title {
+      font-family: var(--font-family-display);
+      font-size: var(--font-size-lg);
+      font-weight: 600;
+      color: var(--sennovate-deep-navy);
+    }
+
+    /* Table inside panel */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: var(--font-size-sm);
+    }
+    th {
+      text-align: left;
+      padding: var(--space-2) var(--space-3);
+      font-size: var(--font-size-xs);
+      color: var(--color-text-muted);
+      border-bottom: 1px solid var(--color-border-subtle);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    td {
+      padding: var(--space-3);
+      border-bottom: 1px solid var(--color-border-subtle);
+    }
+    tr:hover td {
+      background-color: #F8FAFC;
+    }
+    .font-mono { font-family: var(--font-family-mono); font-size: var(--font-size-xs); }
+    .badge-status {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: var(--radius-pill);
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .status-ok { background: #ECFDF5; color: #065F46; }
+    .status-alert { background: #FEF2F2; color: #991B1B; }
+  </style>
+</head>
+<body>
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="sidebar-header">
+      <img src="../../assets/logos/sennovate-logo-white.svg" alt="Sennovate Logo" class="sidebar-logo">
+    </div>
+    <nav class="sidebar-nav">
+      <a href="#" class="nav-link active"><span>Overview</span></a>
+      <a href="#" class="nav-link"><span>Identity & Access</span></a>
+      <a href="#" class="nav-link"><span>Compliance (Vanta)</span></a>
+      <a href="#" class="nav-link"><span>AI Security Audit</span></a>
+      <a href="#" class="nav-link"><span>Audit Logs</span></a>
+      <a href="#" class="nav-link"><span>API Keys & Secrets</span></a>
+      <a href="#" class="nav-link"><span>Settings</span></a>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="user-avatar">SP</div>
+      <div class="user-meta">
+        <div class="user-name">Senthil P.</div>
+        <div class="user-role">Security Admin</div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Main View -->
+  <div class="main-wrapper">
+    <header class="top-header">
+      <h1 class="page-title">Security Posture Overview</h1>
+      <div class="header-actions">
+        <span class="tenant-pill">Tenant: Production-East</span>
+        <button class="kpi-badge success" style="border:none; cursor:pointer;">All Systems Operational</button>
+      </div>
+    </header>
+
+    <main class="content-area">
+      <!-- 4 KPI Cards -->
+      <section class="kpi-grid">
+        <div class="kpi-card">
+          <div class="kpi-header">
+            <span class="kpi-title">Security Score</span>
+            <span class="kpi-badge success">98 / 100</span>
+          </div>
+          <div class="kpi-value">A+</div>
+          <div style="font-size: 12px; color: #64748B;">SOC2 & ISO 27001 compliant</div>
+        </div>
+
+        <div class="kpi-card">
+          <div class="kpi-header">
+            <span class="kpi-title">Active Identities</span>
+            <span class="kpi-badge success">+12 this wk</span>
+          </div>
+          <div class="kpi-value">1,482</div>
+          <div style="font-size: 12px; color: #64748B;">100% MFA verified</div>
+        </div>
+
+        <div class="kpi-card">
+          <div class="kpi-header">
+            <span class="kpi-title">Active AI Audits</span>
+            <span class="kpi-badge success">Running</span>
+          </div>
+          <div class="kpi-value">4</div>
+          <div style="font-size: 12px; color: #64748B;">Vanta integration synced</div>
+        </div>
+
+        <div class="kpi-card">
+          <div class="kpi-header">
+            <span class="kpi-title">Pending Incidents</span>
+            <span class="kpi-badge warning">1 Review</span>
+          </div>
+          <div class="kpi-value">0 Critical</div>
+          <div style="font-size: 12px; color: #64748B;">Avg resolution: 14 mins</div>
+        </div>
+      </section>
+
+      <!-- Split Section -->
+      <section class="split-section">
+        <!-- Main Panel -->
+        <div class="panel">
+          <div class="panel-header">
+            <h2 class="panel-title">Recent Identity & Security Events</h2>
+            <a href="#" style="color: var(--sennovate-blue); font-size: 13px; text-decoration: none; font-weight: 500;">View All Logs &rarr;</a>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>Timestamp (UTC)</th>
+                <th>Actor</th>
+                <th>Action</th>
+                <th>Target</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="font-mono">2026-09-19 21:05</td>
+                <td>admin@sennovate.com</td>
+                <td>Rotate OAuth Secret</td>
+                <td class="font-mono">auth0-prod-app</td>
+                <td><span class="badge-status status-ok">Success</span></td>
+              </tr>
+              <tr>
+                <td class="font-mono">2026-09-19 20:42</td>
+                <td>ai_agent_audit</td>
+                <td>Scan IAM Roles</td>
+                <td class="font-mono">aws-iam-role-audit</td>
+                <td><span class="badge-status status-ok">Passed</span></td>
+              </tr>
+              <tr>
+                <td class="font-mono">2026-09-19 19:18</td>
+                <td>secops_lead</td>
+                <td>Quarantine IP Range</td>
+                <td class="font-mono">198.51.100.0/24</td>
+                <td><span class="badge-status status-alert">Quarantined</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Side Panel -->
+        <div class="panel">
+          <div class="panel-header">
+            <h2 class="panel-title">Quick Actions</h2>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 12px;">
+            <button style="padding: 10px; background: var(--sennovate-blue); color: #fff; border: none; border-radius: 8px; font-weight: 500; cursor: pointer;">
+              + Provision New Identity
+            </button>
+            <button style="padding: 10px; background: #fff; border: 1px solid #E2E8F0; border-radius: 8px; font-weight: 500; cursor: pointer; color: var(--sennovate-dark-blue);">
+              Run Vanta Compliance Scan
+            </button>
+            <button style="padding: 10px; background: #fff; border: 1px solid #E2E8F0; border-radius: 8px; font-weight: 500; cursor: pointer; color: var(--sennovate-dark-blue);">
+              Generate Audit Report (PDF)
+            </button>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+</body>
+</html>

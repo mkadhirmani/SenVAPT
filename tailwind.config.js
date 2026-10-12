@@ -8,9 +8,10 @@ export default {
   theme: {
     extend: {
       fontFamily: {
-        sans: ['"Plus Jakarta Sans"', 'Inter', 'system-ui', 'sans-serif'],
-        heading: ['Satoshi', '"Plus Jakarta Sans"', 'Inter', 'system-ui', 'sans-serif'],
-        brand: ['Satoshi', '"Plus Jakarta Sans"', 'Inter', 'system-ui', 'sans-serif'],
+        // [OFFICIAL BRAND RULE] Satoshi = headings/display, Inter = body & UI (sennovate skill/brand/typography.md)
+        sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', 'Roboto', 'sans-serif'],
+        heading: ['Satoshi', 'Inter', 'system-ui', 'sans-serif'],
+        brand: ['Satoshi', 'Inter', 'system-ui', 'sans-serif'],
         mono: ['"JetBrains Mono"', 'monospace'],
       },
       boxShadow: {

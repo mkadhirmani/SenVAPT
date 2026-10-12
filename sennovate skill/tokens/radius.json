@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "name": "Sennovate Border Radius Tokens",
+  "version": "1.0.0",
+  "authority": "PRODUCT UI STANDARD",
+  "radius": {
+    "none": { "value": "0px" },
+    "sm": { "value": "4px", "description": "Status tags, badges, code snippets, tooltips" },
+    "md": { "value": "8px", "description": "Buttons, text inputs, selects, dropdowns, table rows" },
+    "lg": { "value": "12px", "description": "Cards, modals, popovers, dashboard containers" },
+    "xl": { "value": "16px", "description": "Large hero containers, marketing callouts" },
+    "pill": { "value": "9999px", "description": "Status pills, avatars, circular action buttons" }
+  }
+}

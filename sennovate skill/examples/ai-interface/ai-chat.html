@@ -1,0 +1,327 @@
+<!-- 
+  [EXAMPLE ONLY - NON-MANDATORY REFERENCE]
+  Authority: [EXAMPLE]
+  Notice: This file is an illustrative reference implementation for developer and agent guidance.
+  It is NOT an immutable or mandatory official Sennovate screen design.
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sennovate - Senoptic AI Security Assistant</title>
+  <link rel="stylesheet" href="../../tokens/tokens.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background-color: var(--sennovate-light-slate);
+      font-family: var(--font-family-body);
+      color: var(--color-text-primary);
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+    }
+    header {
+      background: #FFFFFF;
+      border-bottom: 1px solid var(--color-border-subtle);
+      padding: var(--space-3) var(--space-6);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: var(--space-3);
+    }
+    .brand-logo { height: 22px; }
+    .brand-app {
+      font-size: var(--font-size-xs);
+      background: var(--sennovate-ice-blue);
+      color: var(--sennovate-blue);
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: var(--radius-pill);
+    }
+
+    .chat-container {
+      flex: 1;
+      overflow-y: auto;
+      padding: var(--space-6);
+      max-width: 900px;
+      width: 100%;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-6);
+    }
+
+    /* Message Bubbles */
+    .message-row {
+      display: flex;
+      gap: var(--space-4);
+      width: 100%;
+    }
+    .message-row.user {
+      flex-direction: row-reverse;
+    }
+    .avatar {
+      width: 36px;
+      height: 36px;
+      border-radius: var(--radius-pill);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+    .avatar.ai {
+      background: var(--sennovate-deep-navy);
+      color: var(--sennovate-cyan);
+    }
+    .avatar.user {
+      background: var(--sennovate-blue);
+      color: #FFFFFF;
+    }
+    .message-body {
+      max-width: 75%;
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-2);
+    }
+    .bubble {
+      padding: var(--space-4);
+      border-radius: var(--radius-lg);
+      font-size: var(--font-size-base);
+      line-height: 1.5;
+    }
+    .bubble.user {
+      background: var(--sennovate-blue);
+      color: #FFFFFF;
+      border-top-right-radius: var(--radius-sm);
+    }
+    .bubble.ai {
+      background: #FFFFFF;
+      border: 1px solid var(--color-border-subtle);
+      box-shadow: var(--shadow-sm);
+      border-top-left-radius: var(--radius-sm);
+    }
+
+    /* Thinking state */
+    .thinking-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-2);
+      background: #F1F5F9;
+      padding: 4px 10px;
+      border-radius: var(--radius-pill);
+      font-size: var(--font-size-xs);
+      color: var(--color-text-secondary);
+      font-weight: 500;
+    }
+    .pulse-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--sennovate-blue);
+      animation: pulse 1.2s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); opacity: 1; }
+      50% { transform: scale(1.5); opacity: 0.4; }
+    }
+
+    /* Tool Card */
+    .tool-card {
+      background: #F8FAFC;
+      border: 1px solid var(--color-border-subtle);
+      border-left: 3px solid var(--sennovate-blue);
+      border-radius: var(--radius-md);
+      padding: var(--space-3);
+      font-size: var(--font-size-xs);
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-2);
+    }
+    .tool-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-weight: 600;
+      color: var(--sennovate-deep-navy);
+    }
+    .font-mono {
+      font-family: var(--font-family-mono);
+      font-size: 11px;
+      background: #EDF2F7;
+      padding: 4px 8px;
+      border-radius: var(--radius-sm);
+      color: #334155;
+    }
+
+    /* Human Approval Banner */
+    .approval-box {
+      background: #FFFBEB;
+      border: 1px solid #FDE68A;
+      border-radius: var(--radius-md);
+      padding: var(--space-4);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-top: var(--space-2);
+    }
+    .approval-title {
+      font-size: var(--font-size-sm);
+      font-weight: 600;
+      color: #92400E;
+    }
+    .approval-desc {
+      font-size: var(--font-size-xs);
+      color: #B45309;
+      margin-top: 2px;
+    }
+    .approval-btn {
+      padding: 6px 14px;
+      border-radius: var(--radius-md);
+      font-size: var(--font-size-xs);
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+    }
+    .btn-approve { background: var(--sennovate-blue); color: #FFFFFF; }
+    .btn-reject { background: #FFFFFF; border: 1px solid #CBD5E1; color: #475569; margin-right: 6px; }
+
+    /* Citations */
+    .citations {
+      display: flex;
+      gap: var(--space-2);
+      margin-top: var(--space-2);
+    }
+    .citation-pill {
+      font-size: 11px;
+      background: var(--sennovate-ice-blue);
+      color: var(--sennovate-blue);
+      padding: 2px 8px;
+      border-radius: var(--radius-pill);
+      text-decoration: none;
+      font-weight: 500;
+    }
+
+    /* Input Dock */
+    .input-dock {
+      background: #FFFFFF;
+      border-top: 1px solid var(--color-border-subtle);
+      padding: var(--space-4) var(--space-6);
+    }
+    .input-wrapper {
+      max-width: 900px;
+      margin: 0 auto;
+      display: flex;
+      gap: var(--space-3);
+      border: 1px solid var(--color-border-subtle);
+      border-radius: var(--radius-lg);
+      padding: var(--space-2) var(--space-3);
+      background: #FFFFFF;
+      box-shadow: var(--shadow-sm);
+    }
+    .input-wrapper textarea {
+      flex: 1;
+      border: none;
+      outline: none;
+      resize: none;
+      font-family: var(--font-family-body);
+      font-size: var(--font-size-base);
+      height: 40px;
+      padding: 8px 0;
+    }
+    .send-btn {
+      background: var(--sennovate-blue);
+      color: #FFFFFF;
+      border: none;
+      border-radius: var(--radius-md);
+      padding: 0 var(--space-4);
+      font-weight: 500;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <img src="../../assets/logos/sennovate-logo-dark.svg" alt="Sennovate Logo" class="brand-logo">
+      <span class="brand-app">Senoptic AI Auditor</span>
+    </div>
+    <div style="font-size: 12px; color: #64748B;">
+      Model: Sennovate Security LLM v2.4 &bull; Connected to Vanta
+    </div>
+  </header>
+
+  <main class="chat-container">
+    <!-- User Message -->
+    <div class="message-row user">
+      <div class="avatar user">SP</div>
+      <div class="message-body">
+        <div class="bubble user">
+          Check if our current AWS IAM policies comply with SOC2 CC6.1 least-privilege standards.
+        </div>
+      </div>
+    </div>
+
+    <!-- AI Response with Tool Execution & Approval -->
+    <div class="message-row">
+      <div class="avatar ai">🛡️</div>
+      <div class="message-body">
+        <div class="thinking-pill">
+          <span class="pulse-dot"></span>
+          <span>Executed security audit tool (240ms)</span>
+        </div>
+
+        <div class="tool-card">
+          <div class="tool-header">
+            <span>Tool: <code>vanta_iam_compliance_scan</code></span>
+            <span style="color: #10B981; font-weight: 600;">Completed</span>
+          </div>
+          <div class="font-mono">Input: { "control": "SOC2-CC6.1", "scope": "aws-production" }</div>
+          <div class="font-mono">Output: { "compliant": false, "flagged_roles": 2, "issue": "Wildcard '*' action on S3" }</div>
+        </div>
+
+        <div class="bubble ai">
+          <p>I scanned your production IAM configuration against <strong>SOC2 CC6.1</strong>. Two roles were flagged for excessive permissions:</p>
+          <ul style="margin: 8px 0 8px 20px; font-size: 13px;">
+            <li><code>lambda-audit-worker</code> has wildcard <code>s3:*</code> access.</li>
+            <li><code>staging-deploy-bot</code> has unrotated access keys older than 90 days.</li>
+          </ul>
+          <p>I can automatically constrain the policy to read-only access and initiate key rotation.</p>
+
+          <div class="approval-box">
+            <div>
+              <div class="approval-title">Human-in-the-Loop Confirmation</div>
+              <div class="approval-desc">Allow Senoptic to restrict IAM wildcard permissions on AWS Production?</div>
+            </div>
+            <div>
+              <button class="approval-btn btn-reject">Reject</button>
+              <button class="approval-btn btn-approve">Approve & Fix</button>
+            </div>
+          </div>
+
+          <div class="citations">
+            <a href="#" class="citation-pill">[1] SOC2 CC6.1 Control Guide</a>
+            <a href="#" class="citation-pill">[2] Vanta Policy Synced</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <footer class="input-dock">
+    <div class="input-wrapper">
+      <textarea placeholder="Ask Senoptic about identity risks, compliance controls, or audit logs..."></textarea>
+      <button class="send-btn">Send</button>
+    </div>
+  </footer>
+</body>
+</html>

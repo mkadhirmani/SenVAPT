@@ -16,7 +16,7 @@ import {
 import { initializeKnowledgeBase } from '../utils/ragEngine';
 import { fetchLocalStrixFolder, listLocalScanFoldersApi } from '../utils/strixApi';
 import { saveScanToSupabase } from '../utils/supabaseClient';
-import { sortVulnerabilities } from '../utils/severityUtils';
+import { sortVulnerabilities, computeOverallRisk } from '../utils/severityUtils';
 import { sanitizeCompanyName } from '../utils/domainUtils';
 
 export default function ScanDataLoader({ isOpen, onClose, onDataLoaded, currentTarget, theme = 'light' }) {
@@ -60,8 +60,8 @@ export default function ScanDataLoader({ isOpen, onClose, onDataLoaded, currentT
       const metadata = data.metadata || {
         runId: data.folderName || cleanPath,
         targetUrl: data.targetUrl || 'https://target.com',
-        overallRiskLevel: data.riskLevel || 'ELEVATED',
-        overallRiskScore: data.riskScore || 7.2,
+        overallRiskLevel: computeOverallRisk(vulns).level,
+        overallRiskScore: computeOverallRisk(vulns).score,
         tokens: data.tokens || 0,
         requests: data.requests || 0,
         cost: data.cost || 0
@@ -284,8 +284,8 @@ export default function ScanDataLoader({ isOpen, onClose, onDataLoaded, currentT
         tokens: totalTokens,
         requests: runJson.llm_usage?.requests || 524,
         cost: runJson.llm_usage?.cost || 7.19,
-        overallRiskLevel: parsedVulns.some(v => v.severity === 'HIGH' || v.severity === 'CRITICAL') ? 'HIGH' : 'ELEVATED',
-        overallRiskScore: parsedVulns.some(v => v.severity === 'HIGH' || v.severity === 'CRITICAL') ? 8.2 : 6.5
+        overallRiskLevel: computeOverallRisk(parsedVulns).level,
+        overallRiskScore: computeOverallRisk(parsedVulns).score
       };
 
       initializeKnowledgeBase(parsedVulns, metadata);

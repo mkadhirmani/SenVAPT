@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "name": "Sennovate Typography Tokens",
+  "version": "1.0.0",
+  "fontFamilies": {
+    "display": {
+      "value": "'Satoshi', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+      "authority": "OFFICIAL BRAND RULE",
+      "description": "Primary display font for headings, heroes, and metrics"
+    },
+    "body": {
+      "value": "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+      "authority": "OFFICIAL BRAND RULE",
+      "description": "Secondary body font for paragraphs, forms, and tables"
+    },
+    "mono": {
+      "value": "'JetBrains Mono', 'Fira Code', 'SF Mono', Consolas, monospace",
+      "authority": "PRODUCT UI STANDARD",
+      "description": "Monospace font for code, API tokens, hashes, and timestamps"
+    }
+  },
+  "fontWeights": {
+    "regular": { "value": "400", "authority": "OFFICIAL BRAND RULE" },
+    "medium": { "value": "500", "authority": "OFFICIAL BRAND RULE" },
+    "semibold": { "value": "600", "authority": "PRODUCT UI STANDARD" },
+    "bold": { "value": "700", "authority": "OFFICIAL BRAND RULE" }
+  },
+  "fontSize": {
+    "xs": { "value": "12px", "lineHeight": "16px", "authority": "PRODUCT UI STANDARD" },
+    "sm": { "value": "13px", "lineHeight": "18px", "authority": "PRODUCT UI STANDARD" },
+    "base": { "value": "14px", "lineHeight": "20px", "authority": "PRODUCT UI STANDARD" },
+    "md": { "value": "16px", "lineHeight": "24px", "authority": "PRODUCT UI STANDARD" },
+    "lg": { "value": "18px", "lineHeight": "26px", "authority": "PRODUCT UI STANDARD" },
+    "xl": { "value": "20px", "lineHeight": "28px", "authority": "PRODUCT UI STANDARD" },
+    "2xl": { "value": "24px", "lineHeight": "32px", "authority": "PRODUCT UI STANDARD" },
+    "3xl": { "value": "28px", "lineHeight": "36px", "authority": "PRODUCT UI STANDARD" },
+    "4xl": { "value": "36px", "lineHeight": "44px", "authority": "PRODUCT UI STANDARD" }
+  }
+}

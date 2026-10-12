@@ -135,3 +135,68 @@ export function getSeverityStyles(severity) {
       };
   }
 }
+
+/* ==========================================================================
+ * OVERALL RISK SCORE (aggregate posture score for a whole assessment)
+ * --------------------------------------------------------------------------
+ * The overall score must represent ALL confirmed findings, not just the single
+ * most severe one. It is a severity-weighted average of the CVSS v3.1 base
+ * scores of every finding:
+ *
+ *     Overall = Σ (weightᵢ × CVSSᵢ) / Σ weightᵢ
+ *
+ *   Severity weights: Critical 10 · High 5 · Medium 2 · Low 1 · Info 0
+ *   (Informational items carry no exploitable risk and are excluded.)
+ *   Missing CVSS → severity mid-point (C 9.5, H 8.0, M 5.5, L 2.0).
+ *
+ * The weights keep critical issues dominant without letting one finding
+ * define the whole posture, and many low-severity issues cannot fully dilute
+ * a critical one. Rating bands follow CVSS v3.1 qualitative ratings.
+ * ========================================================================== */
+export const RISK_WEIGHTS = { CRITICAL: 10, HIGH: 5, MEDIUM: 2, LOW: 1, INFO: 0 };
+const SEVERITY_MIDPOINT_CVSS = { CRITICAL: 9.5, HIGH: 8.0, MEDIUM: 5.5, LOW: 2.0, INFO: 0 };
+
+export function getFindingCvss(v) {
+  const n = typeof v?.cvss === 'number' ? v.cvss : parseFloat(v?.cvss);
+  if (Number.isFinite(n) && n >= 0 && n <= 10) return n;
+  return SEVERITY_MIDPOINT_CVSS[normalizeSeverity(v?.severity)];
+}
+
+export function riskLevelFromScore(score) {
+  if (!(score > 0)) return 'NONE';
+  if (score >= 9.0) return 'CRITICAL';
+  if (score >= 7.0) return 'HIGH';
+  if (score >= 4.0) return 'MEDIUM';
+  return 'LOW';
+}
+
+/**
+ * Returns { score, level, maxCvss, counts, scoredFindings, method }.
+ */
+export function computeOverallRisk(vulnerabilities) {
+  const list = Array.isArray(vulnerabilities) ? vulnerabilities : [];
+  const counts = { CRITICAL: 0, HIGH: 0, MEDIUM: 0, LOW: 0, INFO: 0 };
+  let weighted = 0;
+  let weightSum = 0;
+  let maxCvss = 0;
+  list.forEach(v => {
+    const sev = normalizeSeverity(v?.severity);
+    counts[sev] += 1;
+    const cvss = getFindingCvss(v);
+    if (cvss > maxCvss) maxCvss = cvss;
+    const w = RISK_WEIGHTS[sev];
+    if (w > 0) {
+      weighted += w * cvss;
+      weightSum += w;
+    }
+  });
+  const score = weightSum > 0 ? Math.round((weighted / weightSum) * 10) / 10 : 0;
+  return {
+    score,
+    level: riskLevelFromScore(score),
+    maxCvss: Math.round(maxCvss * 10) / 10,
+    counts,
+    scoredFindings: list.length - counts.INFO,
+    method: 'Severity-weighted average CVSS (C×10, H×5, M×2, L×1)'
+  };
+}

@@ -569,6 +569,7 @@ function strixBackendPlugin() {
               '--disable-gpu',
               '--no-pdf-header-footer',
               '--run-all-compositor-stages-before-draw',
+              '--virtual-time-budget=20000',
               `--print-to-pdf=${tempPdf}`,
               tempHtml
             ], {

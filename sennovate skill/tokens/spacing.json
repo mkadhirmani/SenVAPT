@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "name": "Sennovate Spacing Tokens",
+  "version": "1.0.0",
+  "authority": "PRODUCT UI STANDARD",
+  "baseUnit": "4px",
+  "spacing": {
+    "0": { "value": "0px" },
+    "1": { "value": "4px", "description": "Micro gap, badge padding" },
+    "2": { "value": "8px", "description": "Tight button gap, internal input padding" },
+    "3": { "value": "12px", "description": "Compact list padding, item spacing" },
+    "4": { "value": "16px", "description": "Standard card padding, form field gap" },
+    "5": { "value": "20px", "description": "Medium container padding" },
+    "6": { "value": "24px", "description": "Section padding, dialog header gap" },
+    "8": { "value": "32px", "description": "Page section spacing, layout gutter" },
+    "10": { "value": "40px", "description": "Large section gap" },
+    "12": { "value": "48px", "description": "Hero section padding" },
+    "16": { "value": "64px", "description": "Major landing section gap" }
+  }
+}

@@ -1,0 +1,197 @@
+<!-- 
+  [EXAMPLE ONLY - NON-MANDATORY REFERENCE]
+  Authority: [EXAMPLE]
+  Notice: This file is an illustrative reference implementation for developer and agent guidance.
+  It is NOT an immutable or mandatory official Sennovate screen design.
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sennovate - Enterprise Audit Log Table</title>
+  <link rel="stylesheet" href="../../tokens/tokens.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    body {
+      background-color: var(--sennovate-light-slate);
+      font-family: var(--font-family-body);
+      color: var(--color-text-primary);
+      padding: var(--space-8);
+      margin: 0;
+    }
+    .table-card {
+      background: #FFFFFF;
+      border: 1px solid var(--color-border-subtle);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-sm);
+      overflow: hidden;
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+    .table-toolbar {
+      padding: var(--space-4) var(--space-6);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid var(--color-border-subtle);
+    }
+    .search-box {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+      border: 1px solid var(--color-border-subtle);
+      border-radius: var(--radius-md);
+      padding: 0 var(--space-3);
+      height: 36px;
+      width: 320px;
+    }
+    .search-box input {
+      border: none;
+      outline: none;
+      font-size: var(--font-size-sm);
+      width: 100%;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: var(--font-size-sm);
+    }
+    th {
+      text-align: left;
+      padding: var(--space-3) var(--space-6);
+      background-color: var(--sennovate-light-slate);
+      color: var(--color-text-secondary);
+      font-size: var(--font-size-xs);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      border-bottom: 1px solid var(--color-border-subtle);
+    }
+    td {
+      padding: var(--space-3) var(--space-6);
+      border-bottom: 1px solid var(--color-border-subtle);
+      vertical-align: middle;
+    }
+    tr:hover td {
+      background-color: #F8FAFC;
+    }
+    .font-mono {
+      font-family: var(--font-family-mono);
+      font-size: var(--font-size-xs);
+      color: #334155;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 2px 8px;
+      border-radius: var(--radius-pill);
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .badge-success { background: #ECFDF5; color: #065F46; }
+    .badge-danger { background: #FEF2F2; color: #991B1B; }
+    .badge-warning { background: #FFFBEB; color: #92400E; }
+    .table-footer {
+      padding: var(--space-3) var(--space-6);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: var(--font-size-xs);
+      color: var(--color-text-secondary);
+      background: #FFFFFF;
+    }
+    .pagination {
+      display: flex;
+      gap: var(--space-1);
+    }
+    .page-btn {
+      border: 1px solid var(--color-border-subtle);
+      background: #FFFFFF;
+      padding: 4px 10px;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      font-size: var(--font-size-xs);
+    }
+    .page-btn.active {
+      background: var(--sennovate-blue);
+      color: #FFFFFF;
+      border-color: var(--sennovate-blue);
+    }
+  </style>
+</head>
+<body>
+  <div class="table-card">
+    <div class="table-toolbar">
+      <div>
+        <h2 style="font-family: var(--font-family-display); font-size: 18px; color: var(--sennovate-deep-navy);">Identity Governance Audit Stream</h2>
+        <p style="font-size: 12px; color: #64748B;">Real-time event stream across connected cloud directories</p>
+      </div>
+      <div class="search-box">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+        <input type="text" placeholder="Search by actor, IP, or event...">
+      </div>
+    </div>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Timestamp (UTC)</th>
+          <th>Actor</th>
+          <th>Event Type</th>
+          <th>Target</th>
+          <th>Source IP</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="font-mono">2026-09-19 21:12:04</td>
+          <td><strong>senthil.p@sennovate.com</strong></td>
+          <td>Policy Update (MFA Required)</td>
+          <td class="font-mono">org-policy-01</td>
+          <td class="font-mono">198.51.100.22</td>
+          <td><span class="badge badge-success">Approved</span></td>
+        </tr>
+        <tr>
+          <td class="font-mono">2026-09-19 20:58:31</td>
+          <td><strong>ai_senoptic_agent</strong></td>
+          <td>Automated Quarantine</td>
+          <td class="font-mono">user-dev-918</td>
+          <td class="font-mono">203.0.113.88</td>
+          <td><span class="badge badge-warning">Quarantined</span></td>
+        </tr>
+        <tr>
+          <td class="font-mono">2026-09-19 20:14:19</td>
+          <td><strong>service_account_vanta</strong></td>
+          <td>SOC2 CC6.1 Control Check</td>
+          <td class="font-mono">vanta-sync</td>
+          <td class="font-mono">54.210.12.90</td>
+          <td><span class="badge badge-success">Passed</span></td>
+        </tr>
+        <tr>
+          <td class="font-mono">2026-09-19 19:45:00</td>
+          <td><strong>unknown_client</strong></td>
+          <td>Failed Auth Challenge</td>
+          <td class="font-mono">api.sennovate.com/v1/auth</td>
+          <td class="font-mono">192.0.2.14</td>
+          <td><span class="badge badge-danger">Blocked</span></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="table-footer">
+      <span>Showing 1 to 4 of 284 recorded events</span>
+      <div class="pagination">
+        <button class="page-btn">Previous</button>
+        <button class="page-btn active">1</button>
+        <button class="page-btn">2</button>
+        <button class="page-btn">3</button>
+        <button class="page-btn">Next</button>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

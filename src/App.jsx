@@ -15,7 +15,7 @@ import StrixConnectionModal from './components/StrixConnectionModal';
 import LoginScreen from './components/LoginScreen';
 import AdminUserManagement from './components/AdminUserManagement';
 import { SCAN_METADATA, VULNERABILITIES } from './data/scanData';
-import { sortVulnerabilities } from './utils/severityUtils';
+import { sortVulnerabilities, computeOverallRisk } from './utils/severityUtils';
 import {
   getStoredScanHistory,
   saveScanHistory,
@@ -321,8 +321,8 @@ export default function App() {
       highCount: resolvedVulns.filter(v => v.severity === 'HIGH').length,
       medCount: resolvedVulns.filter(v => v.severity === 'MEDIUM').length,
       lowCount: resolvedVulns.filter(v => v.severity === 'LOW').length,
-      riskLevel: resolvedVulns.some(v => v.severity === 'CRITICAL') ? 'CRITICAL' : (resolvedVulns.some(v => v.severity === 'HIGH') ? 'HIGH' : (resolvedVulns.length > 0 ? 'ELEVATED' : 'LOW')),
-      riskScore: resolvedVulns.length > 0 ? (resolvedVulns[0]?.cvss || 5.5) : 4.0,
+      riskLevel: computeOverallRisk(resolvedVulns).level,
+      riskScore: computeOverallRisk(resolvedVulns).score,
       metadata: {
         ...(scan.metadata || {}),
         totalFindings: resolvedVulns.length,
@@ -330,8 +330,8 @@ export default function App() {
         highCount: resolvedVulns.filter(v => v.severity === 'HIGH').length,
         medCount: resolvedVulns.filter(v => v.severity === 'MEDIUM').length,
         lowCount: resolvedVulns.filter(v => v.severity === 'LOW').length,
-        overallRiskScore: resolvedVulns.length > 0 ? (resolvedVulns[0]?.cvss || 5.5) : 4.0,
-        overallRiskLevel: resolvedVulns.some(v => v.severity === 'CRITICAL') ? 'CRITICAL' : (resolvedVulns.some(v => v.severity === 'HIGH') ? 'HIGH' : (resolvedVulns.length > 0 ? 'ELEVATED' : 'LOW'))
+        overallRiskScore: computeOverallRisk(resolvedVulns).score,
+        overallRiskLevel: computeOverallRisk(resolvedVulns).level
       }
     };
 
@@ -419,8 +419,8 @@ export default function App() {
       highCount: resolvedVulns.filter(v => v.severity === 'HIGH').length,
       medCount: resolvedVulns.filter(v => v.severity === 'MEDIUM').length,
       lowCount: resolvedVulns.filter(v => v.severity === 'LOW').length,
-      riskLevel: resolvedVulns.some(v => v.severity === 'CRITICAL') ? 'CRITICAL' : (resolvedVulns.some(v => v.severity === 'HIGH') ? 'HIGH' : (resolvedVulns.length > 0 ? 'ELEVATED' : 'LOW')),
-      riskScore: resolvedVulns.length > 0 ? (resolvedVulns[0]?.cvss || 5.5) : 4.0,
+      riskLevel: computeOverallRisk(resolvedVulns).level,
+      riskScore: computeOverallRisk(resolvedVulns).score,
       metadata: {
         ...(newScanData.metadata || {}),
         createdBy: creatorUser,
@@ -432,8 +432,8 @@ export default function App() {
         highCount: resolvedVulns.filter(v => v.severity === 'HIGH').length,
         medCount: resolvedVulns.filter(v => v.severity === 'MEDIUM').length,
         lowCount: resolvedVulns.filter(v => v.severity === 'LOW').length,
-        overallRiskScore: resolvedVulns.length > 0 ? (resolvedVulns[0]?.cvss || 5.5) : 4.0,
-        overallRiskLevel: resolvedVulns.some(v => v.severity === 'CRITICAL') ? 'CRITICAL' : (resolvedVulns.some(v => v.severity === 'HIGH') ? 'HIGH' : (resolvedVulns.length > 0 ? 'ELEVATED' : 'LOW'))
+        overallRiskScore: computeOverallRisk(resolvedVulns).score,
+        overallRiskLevel: computeOverallRisk(resolvedVulns).level
       }
     };
 
@@ -645,8 +645,8 @@ export default function App() {
       targetUrl: targetUrlVal,
       timestamp: customMeta.timestamp || new Date().toISOString().replace('T', ' ').slice(0, 16),
       duration: extra.duration || '38 min',
-      riskLevel: customMeta.overallRiskLevel || (critCount > 0 ? "CRITICAL" : (highCount > 0 ? "HIGH" : (medCount > 0 ? "ELEVATED" : "LOW"))),
-      riskScore: customMeta.overallRiskScore || (critCount > 0 ? 9.2 : (highCount > 0 ? 8.2 : 6.5)),
+      riskLevel: computeOverallRisk(customVulns).level,
+      riskScore: computeOverallRisk(customVulns).score,
       findingsCount: customVulns.length,
       critCount: critCount,
       highCount: highCount,
@@ -671,7 +671,9 @@ export default function App() {
         critCount: critCount,
         highCount: highCount,
         medCount: medCount,
-        lowCount: lowCount
+        lowCount: lowCount,
+        overallRiskScore: computeOverallRisk(customVulns).score,
+        overallRiskLevel: computeOverallRisk(customVulns).level
       }
     };
 
@@ -693,6 +695,7 @@ export default function App() {
   const currentHighCount = currentVulnerabilities.filter(v => v.severity === 'HIGH').length;
   const currentMedCount = currentVulnerabilities.filter(v => v.severity === 'MEDIUM').length;
   const currentLowCount = currentVulnerabilities.filter(v => v.severity === 'LOW').length;
+  const currentOverallRisk = computeOverallRisk(currentVulnerabilities);
 
   const currentMetadata = activeScan ? {
     ...(activeScan.metadata || SCAN_METADATA),
@@ -709,8 +712,10 @@ export default function App() {
     highCount: currentHighCount,
     medCount: currentMedCount,
     lowCount: currentLowCount,
-    overallRiskScore: currentVulnerabilities.length > 0 ? (currentVulnerabilities[0]?.cvss || 5.5) : (activeScan.riskScore || 0),
-    overallRiskLevel: currentCritCount > 0 ? 'CRITICAL' : (currentHighCount > 0 ? 'HIGH' : (currentMedCount > 0 ? 'ELEVATED' : (currentVulnerabilities.length > 0 ? 'LOW' : (activeScan.riskLevel || 'NONE')))),
+    overallRiskScore: currentOverallRisk.score,
+    overallRiskMaxCvss: currentOverallRisk.maxCvss,
+    overallRiskMethod: currentOverallRisk.method,
+    overallRiskLevel: currentOverallRisk.level,
     tokens: typeof activeScan.tokens === 'number' ? activeScan.tokens : (typeof activeScan.metadata?.tokens === 'number' ? activeScan.metadata.tokens : 0),
     requests: typeof activeScan.requests === 'number' ? activeScan.requests : (typeof activeScan.metadata?.requests === 'number' ? activeScan.metadata.requests : 0),
     cost: typeof activeScan.cost === 'number' ? activeScan.cost : (typeof activeScan.metadata?.cost === 'number' ? activeScan.metadata.cost : 0),

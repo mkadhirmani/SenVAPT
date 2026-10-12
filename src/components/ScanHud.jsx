@@ -39,6 +39,7 @@ import {
   sendStrixInput 
 } from '../utils/strixApi';
 import { checkUserPermission } from '../utils/auth';
+import { computeOverallRisk } from '../utils/severityUtils';
 import { saveScanToSupabase } from '../utils/supabaseClient';
 import { extractDomainInfo, sanitizeCompanyName, getDisplayDomain } from '../utils/domainUtils';
 
@@ -530,8 +531,8 @@ export default function ScanHud({
         const highCount = results.highCount || vulns.filter(v => v.severity === 'HIGH').length;
         const medCount = results.medCount || vulns.filter(v => v.severity === 'MEDIUM').length;
         const lowCount = results.lowCount || vulns.filter(v => v.severity === 'LOW').length;
-        const riskLevel = results.riskLevel || (critCount > 0 ? 'CRITICAL' : highCount > 0 ? 'HIGH' : medCount > 0 ? 'ELEVATED' : 'LOW');
-        const riskScore = results.riskScore || (critCount > 0 ? 9.2 : highCount > 0 ? 8.2 : medCount > 0 ? 6.5 : 4.0);
+        const riskLevel = vulns.length > 0 ? computeOverallRisk(vulns).level : (results.riskLevel || 'NONE');
+        const riskScore = vulns.length > 0 ? computeOverallRisk(vulns).score : (results.riskScore || 0);
 
         let detectedTarget = results.targetUrl;
         if (!detectedTarget || detectedTarget === 'https://target.com' || detectedTarget.includes('target.com')) {
@@ -687,8 +688,8 @@ export default function ScanHud({
         const highCount = results.highCount || vulns.filter(v => v.severity === 'HIGH').length;
         const medCount = results.medCount || vulns.filter(v => v.severity === 'MEDIUM').length;
         const lowCount = results.lowCount || vulns.filter(v => v.severity === 'LOW').length;
-        const riskLevel = results.riskLevel || (critCount > 0 ? 'CRITICAL' : highCount > 0 ? 'HIGH' : medCount > 0 ? 'ELEVATED' : 'LOW');
-        const riskScore = results.riskScore || (critCount > 0 ? 9.2 : highCount > 0 ? 8.2 : medCount > 0 ? 6.5 : 4.0);
+        const riskLevel = vulns.length > 0 ? computeOverallRisk(vulns).level : (results.riskLevel || 'NONE');
+        const riskScore = vulns.length > 0 ? computeOverallRisk(vulns).score : (results.riskScore || 0);
 
         let detectedTarget = results.targetUrl;
         if (!detectedTarget || detectedTarget === 'https://target.com' || detectedTarget.includes('target.com')) {
@@ -817,8 +818,8 @@ export default function ScanHud({
         const highCount = results.highCount || vulns.filter(v => v.severity === 'HIGH').length;
         const medCount = results.medCount || vulns.filter(v => v.severity === 'MEDIUM').length;
         const lowCount = results.lowCount || vulns.filter(v => v.severity === 'LOW').length;
-        const riskLevel = results.riskLevel || (critCount > 0 ? 'CRITICAL' : highCount > 0 ? 'HIGH' : medCount > 0 ? 'ELEVATED' : 'LOW');
-        const riskScore = results.riskScore || (critCount > 0 ? 9.2 : highCount > 0 ? 8.2 : medCount > 0 ? 6.5 : 4.0);
+        const riskLevel = vulns.length > 0 ? computeOverallRisk(vulns).level : (results.riskLevel || 'NONE');
+        const riskScore = vulns.length > 0 ? computeOverallRisk(vulns).score : (results.riskScore || 0);
 
         let detectedTarget = results.targetUrl;
         if (!detectedTarget || detectedTarget === 'https://target.com' || detectedTarget.includes('target.com')) {
@@ -1100,8 +1101,8 @@ export default function ScanHud({
       const highCount = parsedVulns.filter(v => v.severity === 'HIGH').length;
       const medCount = parsedVulns.filter(v => v.severity === 'MEDIUM').length;
       const lowCount = parsedVulns.filter(v => v.severity === 'LOW').length;
-      const riskLevel = critCount > 0 ? 'CRITICAL' : (highCount > 0 ? 'HIGH' : (medCount > 0 ? 'ELEVATED' : 'LOW'));
-      const riskScore = critCount > 0 ? 9.2 : (highCount > 0 ? 8.2 : 6.5);
+      const riskLevel = computeOverallRisk(parsedVulns).level;
+      const riskScore = computeOverallRisk(parsedVulns).score;
 
       // Resolve the true target domain / URL from the uploaded folder's files
       let detectedTarget = '';
@@ -1520,8 +1521,8 @@ export default function ScanHud({
             const highCount = results.highCount || vulns.filter(v => v.severity === 'HIGH').length;
             const medCount = results.medCount || vulns.filter(v => v.severity === 'MEDIUM').length;
             const lowCount = results.lowCount || vulns.filter(v => v.severity === 'LOW').length;
-            const riskLevel = results.riskLevel || (critCount > 0 ? 'CRITICAL' : highCount > 0 ? 'HIGH' : medCount > 0 ? 'ELEVATED' : 'LOW');
-            const riskScore = results.riskScore || (critCount > 0 ? 9.2 : highCount > 0 ? 8.2 : medCount > 0 ? 6.5 : 4.0);
+            const riskLevel = vulns.length > 0 ? computeOverallRisk(vulns).level : (results.riskLevel || 'NONE');
+            const riskScore = vulns.length > 0 ? computeOverallRisk(vulns).score : (results.riskScore || 0);
 
             const effectiveFolderName = results.folderName || (results.outputFolderPath ? results.outputFolderPath.split('/').filter(Boolean).pop() : `scan-${Date.now()}`);
             const domainInfo = extractDomainInfo(targetUrl || results.targetUrl);
@@ -1850,8 +1851,8 @@ export default function ScanHud({
             const actualScanId = serverFolderName || (resolvedRunFolder ? resolvedRunFolder.split('/').filter(Boolean).pop() : scanId);
             const highCount = fetchedMetadata.highCount || fetchedVulnerabilities.filter(v => v.severity === 'HIGH').length;
             const medCount = fetchedMetadata.medCount || fetchedVulnerabilities.filter(v => v.severity === 'MEDIUM').length;
-            const riskLevel = fetchedMetadata.overallRiskLevel || (highCount > 0 ? 'HIGH' : medCount > 0 ? 'ELEVATED' : 'LOW');
-            const riskScore = fetchedMetadata.overallRiskScore || (highCount > 0 ? 8.2 : medCount > 0 ? 6.5 : 4.0);
+            const riskLevel = fetchedVulnerabilities.length > 0 ? computeOverallRisk(fetchedVulnerabilities).level : (fetchedMetadata.overallRiskLevel || 'NONE');
+            const riskScore = fetchedVulnerabilities.length > 0 ? computeOverallRisk(fetchedVulnerabilities).score : (fetchedMetadata.overallRiskScore || 0);
 
             // Update stats to exact real results from run.json
             setScanStats(prev => ({

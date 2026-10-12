@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { sortVulnerabilities, getSeverityStyles } from '../utils/severityUtils';
+import { sortVulnerabilities, getSeverityStyles, computeOverallRisk } from '../utils/severityUtils';
 import { 
   ShieldAlert, 
   ShieldCheck, 
@@ -68,8 +68,10 @@ export default function DashboardOverview({
   ].filter(Boolean).join(', ') || `${vulnerabilities.length} Findings`;
 
   const targetUrl = currentTarget.targetUrl || metadata.targetUrl || "";
-  const riskScore = currentTarget.riskScore || metadata.overallRiskScore || topVuln?.cvss || (critVulns.length > 0 ? 9.2 : highVulns.length > 0 ? 8.2 : (medVulns.length > 0 ? 6.5 : 0));
-  const riskLevel = currentTarget.riskLevel || metadata.overallRiskLevel || (riskScore >= 7.0 ? 'HIGH' : (riskScore >= 4.0 ? 'ELEVATED' : 'LOW'));
+  // Overall posture score aggregates EVERY finding (not just the worst one).
+  const overallRisk = useMemo(() => computeOverallRisk(vulnerabilities), [vulnerabilities]);
+  const riskScore = overallRisk.score;
+  const riskLevel = overallRisk.level;
 
   const rawTokens = typeof currentTarget.tokens === 'number' 
     ? currentTarget.tokens 
@@ -368,7 +370,7 @@ export default function DashboardOverview({
             <span className={`text-xs font-semibold tracking-wider uppercase ${
               theme === 'dark' ? 'text-slate-300' : 'text-slate-500'
             }`}>
-              THREAT RATING
+              OVERALL RISK SCORE
             </span>
             <div className="w-7 h-7 rounded-lg bg-red-50 border border-red-200 flex items-center justify-center">
               <Flame className="w-4 h-4 text-red-600 flex-shrink-0" />
@@ -377,7 +379,7 @@ export default function DashboardOverview({
           
           <div className="space-y-1.5">
             <div className="text-3xl font-heading font-bold text-slate-900 dark:text-white tracking-tight">
-              {riskScore}<span className="text-sm font-normal text-slate-400"> / 10.0</span>
+              {riskScore.toFixed(1)}<span className="text-sm font-normal text-slate-400"> / 10.0</span>
             </div>
             <div className="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-1.5 overflow-hidden">
               <div 
@@ -387,8 +389,8 @@ export default function DashboardOverview({
             </div>
           </div>
 
-          <div className="text-xs text-slate-600 dark:text-slate-400 font-medium">
-            <span>{riskLevel} Severity Detected</span>
+          <div className="text-xs text-slate-600 dark:text-slate-400 font-medium" title={`${overallRisk.method}. Highest single finding: CVSS ${overallRisk.maxCvss}`}>
+            <span>{riskLevel} overall &bull; weighted across {overallRisk.scoredFindings} findings</span>
           </div>
         </div>
 
@@ -443,7 +445,7 @@ export default function DashboardOverview({
           <div className="space-y-1">
             <div className="flex items-center gap-2">
               <span className="text-3xl font-heading font-bold text-slate-900 dark:text-white tracking-tight">
-                {topVuln ? topVuln.cvss : 8.2}
+                {topVuln ? overallRisk.maxCvss.toFixed(1) : '0.0'}
               </span>
               <span className={`text-xs font-semibold px-2 py-0.5 rounded border uppercase ${
                 (topVuln?.severity || 'HIGH') === 'CRITICAL'
@@ -454,11 +456,11 @@ export default function DashboardOverview({
                   ? 'bg-yellow-50 text-yellow-900 border-yellow-200'
                   : 'bg-sky-50 text-sky-700 border-sky-200'
               }`}>
-                {topVuln ? topVuln.severity : 'HIGH'}
+                {topVuln ? topVuln.severity : 'NONE'}
               </span>
             </div>
             <div className="text-xs font-mono text-slate-500 truncate">
-              {topVuln?.cwe || 'CWE-639'}
+              {topVuln?.cwe || '—'}
             </div>
           </div>
 

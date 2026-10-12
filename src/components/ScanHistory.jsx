@@ -18,7 +18,7 @@ import {
   RefreshCw, 
   Server 
 } from 'lucide-react';
-import { exportReportToPdf } from '../utils/pdfExport';
+import { computeOverallRisk } from '../utils/severityUtils';
 import { fetchAllRemoteScans } from '../utils/strixApi';
 
 export default function ScanHistory({ 
@@ -153,9 +153,12 @@ export default function ScanHistory({
       <div className="space-y-3">
         {filteredHistory.map((scan) => {
           const isActive = scan.id === activeScanId;
-          const isCritical = scan.riskLevel === 'CRITICAL';
-          const isHigh = scan.riskLevel === 'HIGH';
-          const isElevated = scan.riskLevel === 'ELEVATED';
+          const scanRisk = Array.isArray(scan.vulnerabilities) && scan.vulnerabilities.length > 0
+            ? computeOverallRisk(scan.vulnerabilities)
+            : { level: scan.riskLevel || 'NONE', score: scan.riskScore || 0 };
+          const isCritical = scanRisk.level === 'CRITICAL';
+          const isHigh = scanRisk.level === 'HIGH';
+          const isElevated = scanRisk.level === 'MEDIUM' || scanRisk.level === 'ELEVATED';
 
           return (
             <div
@@ -245,7 +248,7 @@ export default function ScanHistory({
                       : 'bg-emerald-50 border-emerald-200 text-emerald-700'
                   }`}>
                     <div className="text-[10px] uppercase font-semibold tracking-wider">Risk Level</div>
-                    <div className="text-xs font-bold">{scan.riskLevel || 'ASSESSED'} ({scan.riskScore || 8.2})</div>
+                    <div className="text-xs font-bold">{scanRisk.level} ({Number(scanRisk.score).toFixed(1)}/10)</div>
                   </div>
 
                   {/* Findings Count */}

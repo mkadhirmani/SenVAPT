@@ -8,7 +8,7 @@ import tls from 'tls';
 import { execSync, execFileSync } from 'child_process';
 import { Client } from 'ssh2';
 import { supabase, formatScanForSupabase } from '../utils/supabaseClient.js';
-import { sortVulnerabilities } from '../utils/severityUtils.js';
+import { sortVulnerabilities, computeOverallRisk } from '../utils/severityUtils.js';
 import { sanitizeCompanyName, extractDomainInfo } from '../utils/domainUtils.js';
 
 /**
@@ -1318,8 +1318,8 @@ export function parseLocalStrixFolder(folderPath) {
     requests: requests,
     cost: costNumber,
     duration: runData.duration || (runData.start_time && runData.end_time ? `${Math.round((new Date(runData.end_time) - new Date(runData.start_time)) / 60000)} min` : '38 min'),
-    riskLevel: critCount > 0 ? 'CRITICAL' : (maxCvss >= 7.0 || highCount > 0 ? 'HIGH' : maxCvss >= 4.0 || medCount > 0 ? 'ELEVATED' : 'LOW'),
-    riskScore: maxCvss > 0 ? maxCvss : (critCount > 0 ? 9.2 : (highCount > 0 ? 8.2 : (medCount > 0 ? 6.5 : 4.0))),
+    riskLevel: computeOverallRisk(parsedVulns).level,
+    riskScore: computeOverallRisk(parsedVulns).score,
     findingsCount: parsedVulns.length,
     critCount: critCount,
     highCount: highCount,
@@ -1349,8 +1349,8 @@ export function parseLocalStrixFolder(folderPath) {
       cost: costNumber,
       inputTokens: inputTokens,
       outputTokens: outputTokens,
-      overallRiskLevel: critCount > 0 ? 'CRITICAL' : (maxCvss >= 7.0 || highCount > 0 ? 'HIGH' : maxCvss >= 4.0 || medCount > 0 ? 'ELEVATED' : 'LOW'),
-      overallRiskScore: maxCvss > 0 ? maxCvss : (critCount > 0 ? 9.2 : (highCount > 0 ? 8.2 : (medCount > 0 ? 6.5 : 4.0))),
+      overallRiskLevel: computeOverallRisk(parsedVulns).level,
+      overallRiskScore: computeOverallRisk(parsedVulns).score,
       totalFindings: parsedVulns.length,
       critCount: critCount,
       highCount: highCount,
@@ -3238,8 +3238,8 @@ print("===END_JSON===")
               duration: "Remote Autonomous Scan",
               status: "Completed",
               profile: "Autonomous Penetration Test (OWASP WSTG)",
-              riskLevel: critCount > 0 ? 'CRITICAL' : (maxCvss >= 7.0 || highCount > 0 ? 'HIGH' : maxCvss >= 4.0 || medCount > 0 ? 'ELEVATED' : 'LOW'),
-              riskScore: maxCvss > 0 ? maxCvss : (critCount > 0 ? 9.2 : (highCount > 0 ? 8.2 : (medCount > 0 ? 6.5 : 4.0))),
+              riskLevel: computeOverallRisk(parsedVulns).level,
+              riskScore: computeOverallRisk(parsedVulns).score,
               findingsCount: parsedVulns.length,
               critCount,
               highCount,
@@ -3271,8 +3271,8 @@ print("===END_JSON===")
                 inputTokens: inputTokens,
                 outputTokens: outputTokens,
                 cost: costNumber,
-                overallRiskLevel: critCount > 0 ? 'CRITICAL' : (maxCvss >= 7.0 || highCount > 0 ? 'HIGH' : maxCvss >= 4.0 || medCount > 0 ? 'ELEVATED' : 'LOW'),
-                overallRiskScore: maxCvss > 0 ? maxCvss : (critCount > 0 ? 9.2 : (highCount > 0 ? 8.2 : (medCount > 0 ? 6.5 : 4.0))),
+                overallRiskLevel: computeOverallRisk(parsedVulns).level,
+                overallRiskScore: computeOverallRisk(parsedVulns).score,
                 totalFindings: parsedVulns.length,
                 critCount,
                 highCount,
@@ -3532,8 +3532,8 @@ print("===END_ALL_JSON===")
                 duration: "Autonomous Penetration Test",
                 status: "Completed",
                 profile: "Autonomous VAPT (OWASP WSTG v4.2)",
-                riskLevel: critCount > 0 ? 'CRITICAL' : (maxCvss >= 7.0 || highCount > 0 ? 'HIGH' : maxCvss >= 4.0 || medCount > 0 ? 'ELEVATED' : 'LOW'),
-                riskScore: maxCvss > 0 ? maxCvss : (critCount > 0 ? 9.2 : (highCount > 0 ? 8.2 : (medCount > 0 ? 6.5 : 4.0))),
+                riskLevel: computeOverallRisk(parsedVulns).level,
+                riskScore: computeOverallRisk(parsedVulns).score,
                 findingsCount: parsedVulns.length,
                 critCount,
                 highCount,
@@ -3562,8 +3562,8 @@ print("===END_ALL_JSON===")
                   inputTokens: inputTokens,
                   outputTokens: outputTokens,
                   cost: costNumber,
-                  overallRiskLevel: critCount > 0 ? 'CRITICAL' : (maxCvss >= 7.0 || highCount > 0 ? 'HIGH' : maxCvss >= 4.0 || medCount > 0 ? 'ELEVATED' : 'LOW'),
-                  overallRiskScore: maxCvss > 0 ? maxCvss : (critCount > 0 ? 9.2 : (highCount > 0 ? 8.2 : (medCount > 0 ? 6.5 : 4.0))),
+                  overallRiskLevel: computeOverallRisk(parsedVulns).level,
+                  overallRiskScore: computeOverallRisk(parsedVulns).score,
                   totalFindings: parsedVulns.length,
                   critCount,
                   highCount,
